@@ -1,0 +1,71 @@
+import { Card, Typography, Divider, Collapse } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
+
+const { Title, Paragraph, Text } = Typography;
+const { Panel } = Collapse;
+
+export default function Help() {
+  const role = localStorage.getItem('role') || 'candidate';
+
+  const candidateHelp = (
+    <>
+      <Title level={3}>求职者帮助中心</Title>
+      <Paragraph>快连 QLink 为您提供一站式智能求职服务。以下是常见问题与操作指南。</Paragraph>
+      <Divider />
+      <Collapse accordion>
+        <Panel header="如何上传简历？" key="1">
+          <Paragraph>进入「上传简历」页面，点击“选择文件并上传”，支持 PDF / Word / TXT 格式。上传后 AI 自动解析并生成结构化画像。</Paragraph>
+        </Panel>
+        <Panel header="AI 虚拟面试官怎么使用？" key="2">
+          <Paragraph>在「虚拟面试」页面，点击“开始面试”按钮，AI 面试官将引导您多轮对话，了解您的期望职位、薪资、技能等，并自动更新您的简历画像。</Paragraph>
+        </Panel>
+        <Panel header="岗位推荐是如何生成的？" key="3">
+          <Paragraph>系统基于您的简历画像（技能、地点、薪资期望等）与平台所有岗位进行智能匹配，按匹配度排序展示。点击“刷新匹配”可获取最新结果。</Paragraph>
+        </Panel>
+        <Panel header="如何管理我的简历？" key="4">
+          <Paragraph>在「我的简历」页面可查看、编辑、删除已上传的简历。编辑功能支持修改姓名、技能、工作经历等所有字段。</Paragraph>
+        </Panel>
+        <Panel header="浏览岗位和搜索" key="5">
+          <Paragraph>「浏览岗位」页面展示平台所有公开岗位（含权威平台抓取岗位）。您可通过关键字、地点、薪资范围进行筛选，点击岗位卡片查看详细信息。</Paragraph>
+        </Panel>
+        <Panel header="数据分析与简历诊断" key="6">
+          <Paragraph>「数据分析」中公开招聘偏好来自国企/外企岗位 JD；录用画像主要来自 Reddit、V2EX、Hacker News 等公开社区经验帖，经清洗与统计模型（加权频率、Wilson 置信区间）生成结论，不以用户自愿提交为主。请先点击「同步网络经验数据」，再查看统计结论与简历诊断。</Paragraph>
+        </Panel>
+      </Collapse>
+    </>
+  );
+
+  const employerHelp = (
+    <>
+      <Title level={3}>招聘方帮助中心</Title>
+      <Paragraph>欢迎使用快连 QLink 招聘管理平台，高效连接优质人才。</Paragraph>
+      <Divider />
+      <Collapse accordion>
+        <Panel header="如何发布新岗位？" key="1">
+          <Paragraph>进入「发布岗位」页面，上传 JD 文件或直接粘贴岗位描述，AI 将自动解析并结构化存储。发布后立即可被求职者搜索和匹配。</Paragraph>
+        </Panel>
+        <Panel header="如何管理我的岗位？" key="2">
+          <Paragraph>在「我的岗位」页面可查看、编辑、删除已发布的岗位。点击“查看”可预览详情，“编辑”修改信息，“删除”将移除岗位及其相关匹配记录。</Paragraph>
+        </Panel>
+        <Panel header="如何查看匹配的候选人？" key="3">
+          <Paragraph>在「我的岗位」列表中，点击某个岗位的“候选人”按钮，即可看到系统根据技能、地点等维度为您推荐的最匹配求职者，并支持在线查看简历详情。</Paragraph>
+        </Panel>
+        <Panel header="匹配评分依据是什么？" key="4">
+          <Paragraph>系统综合评估候选人的技能吻合度、薪资期望、工作地点、经验年限等因素，给出 0-10 分的匹配评分，助您快速筛选合适人选。</Paragraph>
+        </Panel>
+        <Panel header="如何联系候选人？" key="5">
+          <Paragraph>当前版本支持查看候选人的联系方式（若简历中包含）。未来将推出在线邀请、面试安排等一站式功能，敬请期待。</Paragraph>
+        </Panel>
+      </Collapse>
+    </>
+  );
+
+  return (
+    <Card
+      className="content-card"
+      title={<span><QuestionCircleOutlined /> 帮助中心</span>}
+    >
+      {role === 'candidate' ? candidateHelp : employerHelp}
+    </Card>
+  );
+}

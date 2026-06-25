@@ -1,0 +1,16 @@
+aiosmtplib==5.1.0
+bcrypt==4.0.1
+cffi==2.0.0
+cryptography==47.0.0
+ecdsa==0.19.2
+Jinja2==3.1.6
+MarkupSafe==3.0.3
+passlib==1.7.4
+pyasn1==0.6.3
+pycparser==3.0
+python-jose==3.5.0
+python-multipart==0.0.27
+rsa==4.9.1
+six==1.17.0
+apscheduler
+httpx

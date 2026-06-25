@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>快连 QLink - AI智能招聘匹配平台</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: #1a1a2e;
+      line-height: 1.6;
+    }
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+    
+    /* 导航 */
+    nav {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 16px 0; border-bottom: 1px solid #eee;
+    }
+    .logo { display: flex; align-items: center; gap: 12px; }
+    .logo svg { height: 36px; }
+    .nav-links { display: flex; gap: 32px; align-items: center; }
+    .nav-links a { text-decoration: none; color: #1a1a2e; font-weight: 500; transition: color 0.2s; }
+    .nav-links a:hover { color: #1890FF; }
+    .btn {
+      display: inline-block; padding: 10px 24px; border-radius: 8px;
+      font-weight: 600; text-decoration: none; transition: all 0.2s;
+    }
+    .btn-primary { background: #1890FF; color: white; border: none; }
+    .btn-primary:hover { background: #1470cc; }
+    .btn-outline { border: 2px solid #1890FF; color: #1890FF; }
+    .btn-outline:hover { background: #1890FF; color: white; }
+    
+    /* 主视觉 */
+    .hero {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 80px 0; flex-wrap: wrap;
+    }
+    .hero-text { max-width: 500px; }
+    .hero-text h1 { font-size: 48px; line-height: 1.2; margin-bottom: 24px; }
+    .hero-text h1 span { color: #1890FF; }
+    .hero-text p { font-size: 18px; color: #555; margin-bottom: 40px; }
+    .hero-btns { display: flex; gap: 16px; }
+    .hero-visual {
+      width: 450px; height: 350px;
+      background: linear-gradient(135deg, #e6f0ff 0%, #fff2ec 100%);
+      border-radius: 24px; display: flex; align-items: center; justify-content: center;
+    }
+    
+    /* 特色 */
+    .features {
+      padding: 80px 0; background: #f9fafb; text-align: center;
+    }
+    .features h2 { font-size: 36px; margin-bottom: 48px; }
+    .feature-cards {
+      display: flex; gap: 32px; justify-content: center; flex-wrap: wrap;
+    }
+    .feature-card {
+      background: white; border-radius: 16px; padding: 32px; width: 280px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05); transition: transform 0.2s;
+    }
+    .feature-card:hover { transform: translateY(-4px); }
+    .feature-icon { font-size: 36px; margin-bottom: 16px; }
+    .feature-card h3 { margin-bottom: 12px; }
+    .feature-card p { color: #555; }
+    
+    /* CTA */
+    .cta {
+      padding: 80px 0; text-align: center;
+    }
+    .cta h2 { font-size: 36px; margin-bottom: 24px; }
+    .cta p { font-size: 18px; color: #555; margin-bottom: 40px; }
+    
+    /* 页脚 */
+    footer { border-top: 1px solid #eee; padding: 24px 0; text-align: center; color: #888; font-size: 14px; }
+    
+    /* 响应式 */
+    @media (max-width: 768px) {
+      .hero { flex-direction: column; text-align: center; }
+      .hero-text h1 { font-size: 36px; }
+      .hero-visual { width: 100%; height: 250px; margin-top: 40px; }
+      .feature-cards { flex-direction: column; align-items: center; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- 导航 -->
+    <nav>
+      <div class="logo">
+        <!-- 嵌入 Logo SVG -->
+        <svg width="140" height="42" viewBox="0 0 200 60" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="30" cy="30" r="16" fill="none" stroke="#1890FF" stroke-width="4"/>
+          <circle cx="40" cy="30" r="16" fill="none" stroke="#FF6B35" stroke-width="4"/>
+          <polygon points="32,18 36,28 30,28 34,42" fill="#FF6B35"/>
+          <text x="62" y="38" font-family="Arial, sans-serif" font-size="22" font-weight="bold" fill="#1a1a2e">快连</text>
+          <text x="120" y="38" font-family="Arial, sans-serif" font-size="14" font-weight="500" fill="#888">QLink</text>
+        </svg>
+      </div>
+      <div class="nav-links">
+        <a href="#">首页</a>
+        <a href="#">岗位浏览</a>
+        <a href="#">AI面试</a>
+        <a href="/login" class="btn btn-outline">登录</a>
+        <a href="/register" class="btn btn-primary">免费注册</a>
+      </div>
+    </nav>
+    
+    <!-- 主视觉 -->
+    <section class="hero">
+      <div class="hero-text">
+        <h1>AI驱动的<br/><span>智能招聘匹配平台</span></h1>
+        <p>快连QLink，用人工智能连接求职者与招聘方。<br/>上传简历、AI面试、精准匹配，让机会更快找到你。</p>
+        <div class="hero-btns">
+          <a href="/register" class="btn btn-primary">立即开始</a>
+          <a href="#" class="btn btn-outline">了解更多</a>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <svg width="300" height="200" viewBox="0 0 300 200" xmlns="http://www.w3.org/2000/svg">
+          <rect width="300" height="200" fill="none"/>
+          <circle cx="70" cy="100" r="30" fill="#1890FF" opacity="0.8"/>
+          <circle cx="230" cy="100" r="30" fill="#FF6B35" opacity="0.8"/>
+          <path d="M100 100 L200 100" stroke="#1a1a2e" stroke-width="3" stroke-dasharray="10 10"/>
+          <text x="120" y="85" font-size="14" fill="#1a1a2e" font-weight="bold">匹配</text>
+          <text x="110" y="130" font-size="12" fill="#555">技能 · 薪资 · 地点</text>
+        </svg>
+      </div>
+    </section>
+  </div>
+  
+  <!-- 特色功能 -->
+  <section class="features">
+    <div class="container">
+      <h2>为什么选择快连？</h2>
+      <div class="feature-cards">
+        <div class="feature-card">
+          <div class="feature-icon">📄</div>
+          <h3>智能简历解析</h3>
+          <p>上传简历，AI自动提取关键信息，生成结构化画像，无需手动填写。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🤖</div>
+          <h3>虚拟面试官</h3>
+          <p>与AI面试官实时对话，深度挖掘您的技能与期望，并自动更新画像。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🎯</div>
+          <h3>精准岗位匹配</h3>
+          <p>基于技能、地点、薪资等多维度本地高速匹配，每周更新权威招聘数据。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+  
+  <!-- CTA -->
+  <section class="cta">
+    <div class="container">
+      <h2>立即开启您的智能求职之旅</h2>
+      <p>无论是求职者还是招聘方，快连QLink都能助您高效连接。</p>
+      <a href="/register" class="btn btn-primary" style="font-size: 18px; padding: 14px 48px;">免费注册</a>
+    </div>
+  </section>
+  
+  <!-- 页脚 -->
+  <footer>
+    <div class="container">
+      &copy; 2024 快连 QLink. All rights reserved. AI招聘平台
+    </div>
+  </footer>
+</body>
+</html>

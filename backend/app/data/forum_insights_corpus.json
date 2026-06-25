@@ -1,0 +1,104 @@
+[
+  {
+    "platform": "corpus",
+    "title": "互联网大厂后端面试经验汇总",
+    "body": "多位网友分享：字节、阿里、腾讯后端岗普遍考察算法与项目深度，985/211 背景较多但非硬性。沟通协作、跨部门推进在复试中常被追问。录用者多具备 Java/Go、分布式、数据库优化经验。",
+    "companies": ["字节跳动", "阿里巴巴", "腾讯"]
+  },
+  {
+    "platform": "corpus",
+    "title": "国企央企信息化岗位上岸帖",
+    "body": "国家电网、三大运营商信息化岗：硕士占比高，要求党员或政治素养的帖子较多。笔试含行测+专业，面试重稳定性与责任心。录用背景常见 211 以上，项目经历偏运维/信息系统建设。",
+    "companies": ["国家电网", "中国移动", "中国电信"]
+  },
+  {
+    "platform": "corpus",
+    "title": "外企咨询与科技校招面经",
+    "body": "麦肯锡、BCG、埃森哲：案例分析与客户沟通是核心，英语书面与口头表达权重高。Google、Microsoft 重视算法、系统设计与领导力故事（带团队、主导项目）。",
+    "companies": ["McKinsey", "BCG", "Accenture", "Google", "Microsoft"]
+  },
+  {
+    "platform": "corpus",
+    "title": "华为研发岗录用背景讨论",
+    "body": "论坛综合：华为研发多要求扎实基础与工程落地，通信/嵌入式/软件开发方向技能词频高。压力面试与团队协作场景题常见，录用者简历常突出项目主导与加班抗压表述。",
+    "companies": ["华为技术有限公司"]
+  },
+  {
+    "platform": "corpus",
+    "title": "银行科技条线上岸经验",
+    "body": "工行、建行、招行科技岗：金融基础知识、合规意识、稳定性被多次提及。技术栈 Java/SQL 较多，录用画像中硕士与 211 以上学校比例较高，实习经历偏金融 IT。",
+    "companies": ["中国工商银行", "中国建设银行", "招商银行"]
+  },
+  {
+    "platform": "corpus",
+    "title": "Apple 软硬件研发面试与 offer 经验",
+    "body": "多位候选人分享 Apple 研发岗：算法与系统设计权重高，项目经历需能讲清技术决策与跨团队协作。常见考察 Swift/Objective-C、iOS/macOS 工程化、性能优化。录用者背景以 985/211 硕士为主，亦见优秀本科生；软实力侧重沟通表达与主人翁意识。",
+    "companies": ["Apple"]
+  },
+  {
+    "platform": "corpus",
+    "title": "Apple 产品与设计岗录用信号",
+    "body": "产品与设计方向：作品集与案例复盘是核心，面试常追问用户洞察、指标定义、跨职能推动。英语沟通在部分团队为加分项。录用画像显示对数据驱动迭代、细节品味与抗压能力的高频提及。",
+    "companies": ["Apple"]
+  },
+  {
+    "platform": "corpus",
+    "title": "外资科技巨头综合面经（Apple / Google / Microsoft）",
+    "body": "社区汇总：外企科技岗普遍重视算法基础、系统思维与领导力故事（主导项目、带新人）。Google 偏算法与大规模系统，Microsoft 偏云与工程文化，Apple 偏产品体验与端到端交付。沟通、协作、英语书面表达在复试中频繁出现。",
+    "companies": ["Apple", "Google", "Microsoft"]
+  },
+  {
+    "platform": "corpus",
+    "title": "Amazon / Meta 技术岗录用讨论",
+    "body": "Amazon 注重领导力准则（Leadership Principles）与行为面试，技术栈 AWS、分布式常见。Meta 重视算法、产品思维与快速迭代文化。录用者简历多突出量化成果、跨团队推进与抗压能力。",
+    "companies": ["Amazon", "Meta"]
+  },
+  {
+    "platform": "corpus",
+    "title": "Apple 校招 iOS 开发上岸 offer 复盘",
+    "body": "校招拿到 Apple iOS offer：一面算法+基础，二面项目深挖与协作场景，三面团队匹配。简历中写清 Swift、Instruments 性能优化、与设计师的对接案例。不是 985 也有录取，但项目证据要扎实。",
+    "companies": ["Apple"]
+  },
+  {
+    "platform": "corpus",
+    "title": "Apple 机器学习岗面试经验",
+    "body": "Apple ML 岗考察 Python、深度学习框架与业务落地，行为面问跨团队推进与失败复盘。录用者常见有顶会/竞赛或工业界落地指标。沟通表达与英文读写多次被提及。",
+    "companies": ["Apple"]
+  },
+  {
+    "platform": "corpus",
+    "title": "Apple 硬件工程面试与录用背景",
+    "body": "硬件相关岗重视系统思维、测试验证与供应链协作经验。面试含技术深度与主人翁意识场景题。公开帖中硕士占比高，亦强调工程实践与责任心。",
+    "companies": ["Apple"]
+  },
+  {
+    "platform": "corpus",
+    "title": "Apple 供应链/运营类岗位面经",
+    "body": "非研发岗同样看重数据分析、跨部门协调与结果导向。案例面会追问如何推动流程改进及量化收益。软实力词频：沟通、细致、抗压。",
+    "companies": ["Apple"]
+  },
+  {
+    "platform": "corpus",
+    "title": "Apple 面试失败复盘：二面项目讲不清",
+    "body": "二面挂因项目细节与指标说不清，并非学校层次问题。建议提前用 STAR 结构准备协作与决策故事。失败帖不计入院校偏好，但提示项目表达重要性。",
+    "companies": ["Apple"]
+  },
+  {
+    "platform": "corpus",
+    "title": "Google 研发岗算法与系统面经汇总",
+    "body": "Google 校招/社招常考算法、系统设计；录用画像技能词频：python、算法、分布式。经验帖提及沟通、协作与英语表达。",
+    "companies": ["Google"]
+  },
+  {
+    "platform": "corpus",
+    "title": "Microsoft Azure 相关岗位录用讨论",
+    "body": "Microsoft 云与后端岗重视 C#、分布式与工程文化 fit。行为面考察成长型思维与协作。公开样本中领导力故事与项目主导表述较多。",
+    "companies": ["Microsoft"]
+  },
+  {
+    "platform": "corpus",
+    "title": "比亚迪新能源汽车研发面试经验",
+    "body": "比亚迪研发岗关注电池/电控相关知识与工程落地，校招要求专业基础扎实。不是 211 也有机会，但项目与实习要匹配方向。",
+    "companies": ["比亚迪"]
+  }
+]
