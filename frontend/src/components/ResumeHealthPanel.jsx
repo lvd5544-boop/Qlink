@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Progress, Alert, Row, Col, Tag, Space, Typography } from 'antd';
-import { CheckCircleOutlined, RightOutlined } from '@ant-design/icons';
+import { Progress, Alert, Row, Col, Tag, Space, Typography, Button } from 'antd';
+import { CheckCircleOutlined, RightOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import SuggestionDiffCard from './SuggestionDiffCard';
 import HealthScoreDetailModal from './HealthScoreDetailModal';
+import EvidenceFollowupModal from './EvidenceFollowupModal';
 
 const { Text } = Typography;
 
@@ -48,8 +49,11 @@ export default function ResumeHealthPanel({
   onDismissSuggestion,
   applyingId = null,
   compact = false,
+  onFollowupApplied,
 }) {
   const [detailType, setDetailType] = useState(null);
+  const [followupOpen, setFollowupOpen] = useState(false);
+  const [followupEntry, setFollowupEntry] = useState(null);
 
   if (!healthCheck) {
     return (
@@ -96,6 +100,23 @@ export default function ResumeHealthPanel({
 
   const activeDetail = detailType ? detailMap[detailType] : null;
 
+  const unquantified = healthCheck.quantification?.unquantified_entries || [];
+  const firstUnquantified = unquantified[0];
+
+  const openFollowupForFirst = () => {
+    if (!firstUnquantified) return;
+    setFollowupEntry({
+      entryType: firstUnquantified.entry_type,
+      entryIndex: firstUnquantified.index,
+    });
+    setFollowupOpen(true);
+  };
+
+  const handleFollowupRegenerated = (regenerated) => {
+    onFollowupApplied?.(regenerated);
+    setFollowupOpen(false);
+  };
+
   return (
     <div>
       <Row gutter={16}>
@@ -137,6 +158,26 @@ export default function ResumeHealthPanel({
         </div>
       )}
 
+      {unquantified.length > 0 && (
+        <Alert
+          style={{ marginTop: 16 }}
+          type="warning"
+          showIcon
+          message={`有 ${unquantified.length} 段经历缺少量化数据`}
+          description="点击「AI 追问」补充真实数据，系统将生成带数字的证据句"
+          action={(
+            <Button
+              size="small"
+              type="primary"
+              icon={<QuestionCircleOutlined />}
+              onClick={openFollowupForFirst}
+            >
+              AI 追问
+            </Button>
+          )}
+        />
+      )}
+
       {actions.length > 0 && (
         <div style={{ marginTop: 20 }}>
           <Text strong style={{ fontSize: 15 }}>逐条对比与采纳</Text>
@@ -171,6 +212,15 @@ export default function ResumeHealthPanel({
         onClose={() => setDetailType(null)}
         title={activeDetail?.title}
         detail={activeDetail?.data}
+      />
+
+      <EvidenceFollowupModal
+        open={followupOpen}
+        onClose={() => setFollowupOpen(false)}
+        resumeId={resumeId}
+        entryType={followupEntry?.entryType}
+        entryIndex={followupEntry?.entryIndex}
+        onRegenerated={handleFollowupRegenerated}
       />
     </div>
   );

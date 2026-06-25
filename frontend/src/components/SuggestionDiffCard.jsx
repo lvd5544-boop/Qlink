@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Card, Button, Space, Tag, Typography, Input, Spin } from 'antd';
-import { CheckOutlined, CloseOutlined, EditOutlined, RiseOutlined } from '@ant-design/icons';
+import { CheckOutlined, CloseOutlined, EditOutlined, RiseOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import api from '../api';
+import EvidenceFollowupModal from './EvidenceFollowupModal';
 
 const { Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -20,6 +21,13 @@ export default function SuggestionDiffCard({
   const [editedText, setEditedText] = useState(suggestion.suggested_text || '');
   const [preview, setPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [followupOpen, setFollowupOpen] = useState(false);
+
+  const entryType = suggestion.entry_type
+    || (suggestion.patch?.section === 'projects' ? 'project' : 'work');
+  const entryIndex = suggestion.entry_index ?? suggestion.patch?.index;
+  const showFollowup = suggestion.needs_followup
+    || suggestion.patch?.action === 'append_quantification';
 
   const buildPatch = (finalText) => {
     const patch = { ...suggestion.patch };
@@ -82,6 +90,20 @@ export default function SuggestionDiffCard({
     const finalText = (editedText || suggestion.suggested_text || '').trim();
     const patch = buildPatch(finalText);
     onAccept({ ...suggestion, patch, suggested_text: finalText });
+  };
+
+  const handleFollowupRegenerated = (regenerated) => {
+    const finalText = regenerated.example_after;
+    setEditedText(finalText);
+    setEditing(false);
+    const patch = buildPatch(finalText);
+    onAccept({
+      ...suggestion,
+      ...regenerated,
+      patch,
+      suggested_text: finalText,
+      original_text: regenerated.example_before,
+    });
   };
 
   const original = suggestion.original_text || '（空）';
@@ -202,6 +224,15 @@ export default function SuggestionDiffCard({
       </div>
 
       <Space style={{ marginTop: 12 }} wrap>
+        {showFollowup && entryIndex != null && (
+          <Button
+            size="small"
+            icon={<QuestionCircleOutlined />}
+            onClick={() => setFollowupOpen(true)}
+          >
+            AI 追问补充
+          </Button>
+        )}
         <Button
           type="primary"
           size="small"
@@ -221,6 +252,15 @@ export default function SuggestionDiffCard({
           </Button>
         )}
       </Space>
+
+      <EvidenceFollowupModal
+        open={followupOpen}
+        onClose={() => setFollowupOpen(false)}
+        resumeId={resumeId}
+        entryType={entryType}
+        entryIndex={entryIndex}
+        onRegenerated={handleFollowupRegenerated}
+      />
     </Card>
   );
 }

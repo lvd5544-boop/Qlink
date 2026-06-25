@@ -41,6 +41,12 @@ from .resume_suggestion_store import (
     sync_suggestions_for_source,
 )
 from .resume_coach import generate_resume_coach
+from .evidence_followup import (
+    generate_followup_questions,
+    get_entry_context,
+    list_unquantified_entries,
+    regenerate_evidence_sentence,
+)
 from .matching_hybrid import full_match_evaluation, extract_breakdown_for_api
 from .auth import get_current_user
 from .auth_routes import router as auth_router
@@ -389,6 +395,24 @@ class ResumeCoachRequest(BaseModel):
     target_job_title: Optional[str] = None
 
 
+class EvidenceFollowupQuestionsRequest(BaseModel):
+    entry_type: str  # work | project
+    index: int
+
+
+class EvidenceFollowupAnswer(BaseModel):
+    id: Optional[str] = None
+    question: Optional[str] = None
+    answer: str
+
+
+class EvidenceFollowupRegenerateRequest(BaseModel):
+    entry_type: str
+    index: int
+    answers: list[EvidenceFollowupAnswer]
+
+
+
 async def _resolve_target_job(
     db: AsyncSession,
     resume_id: str,
@@ -723,6 +747,103 @@ async def dismiss_resume_suggestion(
         "status": "ok",
         "pending_suggestions": await list_pending_suggestions(db, resume_id),
     }
+
+
+@app.get("/resumes/{resume_id}/evidence-followup/unquantified")
+async def list_unquantified_for_resume(
+    resume_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """列出缺量化的经历/项目，供前端触发追问弹窗。"""
+    resume = await db.get(Resume, resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="简历不存在")
+    if resume.user_id != str(current_user.id):
+        raise HTTPException(status_code=403, detail="无权访问该简历")
+
+    entries = list_unquantified_entries(resume.parsed_json or {})
+    return {
+        "resume_id": resume_id,
+        "count": len(entries),
+        "entries": [
+            {
+                "entry_type": e["entry_type"],
+                "index": e["index"],
+                "name": e["name"],
+                "role": e.get("role"),
+                "description_preview": (e.get("description") or "")[:120],
+            }
+            for e in entries
+        ],
+    }
+
+
+@app.post("/resumes/{resume_id}/evidence-followup/questions")
+async def evidence_followup_questions(
+    resume_id: str,
+    body: EvidenceFollowupQuestionsRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """缺量化时生成 2~3 个追问。"""
+    resume = await db.get(Resume, resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="简历不存在")
+    if resume.user_id != str(current_user.id):
+        raise HTTPException(status_code=403, detail="无权访问该简历")
+
+    try:
+        context = get_entry_context(resume.parsed_json or {}, body.entry_type, body.index)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    questions = generate_followup_questions(context)
+    return {
+        "resume_id": resume_id,
+        "entry_type": body.entry_type,
+        "index": body.index,
+        "context": {
+            "name": context["name"],
+            "role": context.get("role"),
+            "example_before": context.get("description") or "（暂无描述）",
+            "field_path": context["field_path"],
+        },
+        "questions": questions,
+    }
+
+
+@app.post("/resumes/{resume_id}/evidence-followup/regenerate")
+async def evidence_followup_regenerate(
+    resume_id: str,
+    body: EvidenceFollowupRegenerateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """用户回答追问后，生成带数字的 example_after 证据句。"""
+    resume = await db.get(Resume, resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="简历不存在")
+    if resume.user_id != str(current_user.id):
+        raise HTTPException(status_code=403, detail="无权访问该简历")
+
+    if not body.answers:
+        raise HTTPException(status_code=400, detail="请至少回答一个问题")
+
+    try:
+        context = get_entry_context(resume.parsed_json or {}, body.entry_type, body.index)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    result = regenerate_evidence_sentence(
+        context,
+        [a.model_dump() for a in body.answers],
+    )
+    return {
+        "resume_id": resume_id,
+        **result,
+    }
+
 
 
 @app.get("/dashboard/candidate/{user_id}")

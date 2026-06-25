@@ -192,6 +192,16 @@ export default function MyResumes() {
     }
   };
 
+  const handleFollowupApplied = async (regenerated) => {
+    if (!selectedId || !regenerated?.patch) return;
+    await handleApplySuggestion(selectedId, {
+      id: `followup_${regenerated.field_path}`,
+      patch: regenerated.patch,
+      suggested_text: regenerated.example_after,
+    });
+  };
+
+
   const handleDelete = (resumeId) => {
     Modal.confirm({
       title: '确认删除',
@@ -309,6 +319,7 @@ export default function MyResumes() {
                 resumeId={selectedResume.id}
                 onApplySuggestion={(s) => handleApplySuggestion(selectedResume.id, s)}
                 onDismissSuggestion={(s) => handleDismissSuggestion(selectedResume.id, s)}
+                onFollowupApplied={handleFollowupApplied}
                 applyingId={applyingId}
               />
             </Card>

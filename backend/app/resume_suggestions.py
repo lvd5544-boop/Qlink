@@ -478,6 +478,9 @@ def build_actionable_suggestions(parsed_json: dict, health_check: Optional[dict]
             "title": f"为「{name}」补充量化成果",
             "description": "建议补充数字、比例或规模，让成果更可验证",
             "priority": "高",
+            "needs_followup": True,
+            "entry_type": entry.get("entry_type"),
+            "entry_index": entry.get("index"),
             "patch": {
                 "action": "append_quantification",
                 "section": section,
@@ -500,6 +503,9 @@ def build_actionable_suggestions(parsed_json: dict, health_check: Optional[dict]
                 "title": f"为「{company}」补充量化成果",
                 "description": "建议补充数字、比例或规模，让成果更可验证",
                 "priority": "高",
+                "needs_followup": True,
+                "entry_type": "work",
+                "entry_index": idx,
                 "patch": {
                     "action": "append_quantification",
                     "section": "work_experience",
@@ -538,6 +544,9 @@ def build_actionable_suggestions(parsed_json: dict, health_check: Optional[dict]
                 "title": f"丰富「{exp.get('company') or f'经历 {idx + 1}'}」描述",
                 "description": "描述较短，可补充职责范围与量化成果",
                 "priority": "中",
+                "needs_followup": True,
+                "entry_type": "work",
+                "entry_index": idx,
                 "patch": {
                     "action": "append_quantification",
                     "section": "work_experience",
