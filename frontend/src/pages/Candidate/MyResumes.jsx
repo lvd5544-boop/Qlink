@@ -10,6 +10,7 @@ import ResumeHealthPanel from '../../components/ResumeHealthPanel';
 import ResumeDocumentView from '../../components/ResumeDocumentView';
 import ResumeEditForm from '../../components/ResumeEditForm';
 import ResumeCoachPanel from '../../components/ResumeCoachPanel';
+import ResumeVariantsPanel from '../../components/ResumeVariantsPanel';
 import { notifyDashboardRefresh } from '../../utils/dashboardSync';
 
 const { Text, Paragraph } = Typography;
@@ -201,6 +202,20 @@ export default function MyResumes() {
     });
   };
 
+  const handleVariantApplied = async (data) => {
+    if (!selectedId) return;
+    setEditData(data.parsed_json);
+    setResumes((prev) => prev.map((r) => (
+      r.id === selectedId
+        ? { ...r, parsed: data.parsed_json, health_check: data.health_check }
+        : r
+    )));
+    if (data.dashboard_indicators) {
+      notifyDashboardRefresh({ indicators: data.dashboard_indicators });
+    }
+    await fetchTopMatches(selectedId);
+    await fetchPendingSuggestions(selectedId);
+  };
 
   const handleDelete = (resumeId) => {
     Modal.confirm({
@@ -330,6 +345,12 @@ export default function MyResumes() {
               onDismissSuggestion={(s) => handleDismissSuggestion(selectedResume.id, s)}
               onSuggestionsUpdated={setPendingSuggestions}
               applyingId={applyingId}
+            />
+            <ResumeVariantsPanel
+              resumeId={selectedResume.id}
+              defaultJobTitle={editData.expected_job_title}
+              topMatches={topMatches}
+              onApplyVariant={handleVariantApplied}
             />
           </div>
         </Col>

@@ -23,7 +23,7 @@ from .resume_parser import extract_text_from_pdf, extract_text_from_docx, parse_
 from .models import ResumeInfo, JobInfo
 from .database import engine, Base, get_db, AsyncSessionLocal
 from .db_schema import ensure_schema
-from .models_db import User, Resume, JobDescription, MatchResult
+from .models_db import User, Resume, JobDescription, MatchResult, ResumeVariant
 from .interview import interview_handler
 from .job_parser import parse_job_with_llm
 from .matching import generate_matches, generate_matches_auto, generate_matches_for_user
@@ -47,6 +47,7 @@ from .evidence_followup import (
     list_unquantified_entries,
     regenerate_evidence_sentence,
 )
+from .resume_variants import generate_resume_variant, list_style_templates
 from .matching_hybrid import full_match_evaluation, extract_breakdown_for_api
 from .auth import get_current_user
 from .auth_routes import router as auth_router
@@ -411,6 +412,15 @@ class EvidenceFollowupRegenerateRequest(BaseModel):
     index: int
     answers: list[EvidenceFollowupAnswer]
 
+
+class GenerateVariantRequest(BaseModel):
+    target_job_title: str
+    style_template: str = "balanced"
+    job_id: Optional[str] = None
+
+
+class ApplyVariantRequest(BaseModel):
+    variant_id: str
 
 
 async def _resolve_target_job(
@@ -844,6 +854,213 @@ async def evidence_followup_regenerate(
         **result,
     }
 
+
+@app.get("/resume-variant-templates")
+async def get_variant_style_templates():
+    """5 种岗位定制风格模板。"""
+    return {"templates": list_style_templates()}
+
+
+@app.get("/resumes/{resume_id}/variants")
+async def list_resume_variants(
+    resume_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    resume = await db.get(Resume, resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="简历不存在")
+    if resume.user_id != str(current_user.id):
+        raise HTTPException(status_code=403, detail="无权访问该简历")
+
+    stmt = (
+        select(ResumeVariant)
+        .where(ResumeVariant.resume_id == resume_id)
+        .order_by(ResumeVariant.created_at.desc())
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+    return {
+        "resume_id": resume_id,
+        "variants": [
+            {
+                "id": str(v.id),
+                "variant_key": v.variant_key,
+                "label": v.label,
+                "target_job_title": v.target_job_title,
+                "style_template": v.style_template,
+                "source": v.source,
+                "job_id": v.job_id,
+                "created_at": v.created_at.isoformat() if v.created_at else None,
+            }
+            for v in rows
+        ],
+    }
+
+
+@app.post("/resumes/{resume_id}/variants/generate")
+async def create_resume_variant(
+    resume_id: str,
+    body: GenerateVariantRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """生成岗位定制版简历副本，如「Java 后端版」。"""
+    resume = await db.get(Resume, resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="简历不存在")
+    if resume.user_id != str(current_user.id):
+        raise HTTPException(status_code=403, detail="无权访问该简历")
+
+    job_json = None
+    job_title = ""
+    if body.job_id:
+        job = await db.get(JobDescription, body.job_id)
+        if job:
+            job_json = job.parsed_json
+            job_title = job.title
+
+    generated = await generate_resume_variant(
+        resume.parsed_json or {},
+        body.target_job_title,
+        body.style_template,
+        job_json,
+        job_title,
+    )
+
+    stmt = select(ResumeVariant).where(
+        ResumeVariant.resume_id == resume_id,
+        ResumeVariant.variant_key == generated["variant_key"],
+    )
+    existing = (await db.execute(stmt)).scalars().first()
+    if existing:
+        existing.label = generated["label"]
+        existing.target_job_title = generated["target_job_title"]
+        existing.style_template = generated["style_template"]
+        existing.parsed_json = generated["parsed_json"]
+        existing.source = generated["source"]
+        existing.job_id = body.job_id
+        variant = existing
+    else:
+        variant = ResumeVariant(
+            resume_id=resume_id,
+            variant_key=generated["variant_key"],
+            label=generated["label"],
+            target_job_title=generated["target_job_title"],
+            style_template=generated["style_template"],
+            parsed_json=generated["parsed_json"],
+            source=generated["source"],
+            job_id=body.job_id,
+        )
+        db.add(variant)
+
+    await db.commit()
+    await db.refresh(variant)
+
+    return {
+        "status": "ok",
+        "variant": {
+            "id": str(variant.id),
+            "variant_key": variant.variant_key,
+            "label": variant.label,
+            "target_job_title": variant.target_job_title,
+            "style_template": variant.style_template,
+            "style_label": generated.get("style_label"),
+            "parsed_json": variant.parsed_json,
+            "source": variant.source,
+            "job_id": variant.job_id,
+            "created_at": variant.created_at.isoformat() if variant.created_at else None,
+        },
+    }
+
+
+@app.get("/resumes/{resume_id}/variants/{variant_id}")
+async def get_resume_variant(
+    resume_id: str,
+    variant_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    resume = await db.get(Resume, resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="简历不存在")
+    if resume.user_id != str(current_user.id):
+        raise HTTPException(status_code=403, detail="无权访问该简历")
+
+    variant = await db.get(ResumeVariant, variant_id)
+    if not variant or variant.resume_id != resume_id:
+        raise HTTPException(status_code=404, detail="定制版不存在")
+
+    return {
+        "id": str(variant.id),
+        "variant_key": variant.variant_key,
+        "label": variant.label,
+        "target_job_title": variant.target_job_title,
+        "style_template": variant.style_template,
+        "parsed_json": variant.parsed_json,
+        "source": variant.source,
+        "job_id": variant.job_id,
+        "created_at": variant.created_at.isoformat() if variant.created_at else None,
+    }
+
+
+@app.post("/resumes/{resume_id}/variants/apply")
+async def apply_resume_variant(
+    resume_id: str,
+    body: ApplyVariantRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """将定制版内容写回主简历。"""
+    resume = await db.get(Resume, resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="简历不存在")
+    if resume.user_id != str(current_user.id):
+        raise HTTPException(status_code=403, detail="无权修改该简历")
+
+    variant = await db.get(ResumeVariant, body.variant_id)
+    if not variant or variant.resume_id != resume_id:
+        raise HTTPException(status_code=404, detail="定制版不存在")
+
+    resume.parsed_json = copy.deepcopy(variant.parsed_json)
+    await db.commit()
+    health = await _run_and_save_health_check(db, resume)
+    await _refresh_resume_matches(db, resume_id, llm_rerank_top=3)
+    top = await _get_top_match_for_resume(db, resume_id)
+    indicators = _build_dashboard_indicators(
+        health,
+        top.get("score") if top else None,
+        top.get("job_title") if top else None,
+    )
+    return {
+        "status": "ok",
+        "resume_id": resume_id,
+        "variant_label": variant.label,
+        "parsed_json": resume.parsed_json,
+        "health_check": health,
+        "dashboard_indicators": indicators,
+    }
+
+
+@app.delete("/resumes/{resume_id}/variants/{variant_id}")
+async def delete_resume_variant(
+    resume_id: str,
+    variant_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    resume = await db.get(Resume, resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="简历不存在")
+    if resume.user_id != str(current_user.id):
+        raise HTTPException(status_code=403, detail="无权修改该简历")
+
+    variant = await db.get(ResumeVariant, variant_id)
+    if not variant or variant.resume_id != resume_id:
+        raise HTTPException(status_code=404, detail="定制版不存在")
+
+    await db.delete(variant)
+    await db.commit()
+    return {"status": "ok"}
 
 
 @app.get("/dashboard/candidate/{user_id}")

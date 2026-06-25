@@ -29,6 +29,27 @@ class Resume(Base):
 
     user = relationship("User", back_populates="resumes")
     suggestions = relationship("ResumeSuggestion", back_populates="resume")
+    variants = relationship("ResumeVariant", back_populates="resume")
+
+
+class ResumeVariant(Base):
+    """岗位定制版简历副本（resume_variants）。"""
+    __tablename__ = "resume_variants"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    resume_id = Column(String(36), ForeignKey("resumes.id"), nullable=False)
+    variant_key = Column(String(100), nullable=False)
+    label = Column(String(255), nullable=False)
+    target_job_title = Column(String(255), nullable=True)
+    style_template = Column(String(32), default="balanced")
+    parsed_json = Column(JSON, nullable=False)
+    source = Column(String(32), default="llm")
+    job_id = Column(String(36), ForeignKey("job_descriptions.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    resume = relationship("Resume", back_populates="variants")
+    job = relationship("JobDescription")
 
 
 class ResumeSuggestion(Base):
