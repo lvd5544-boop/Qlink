@@ -500,7 +500,9 @@ async def run_worker() -> None:
                 for message_id, fields in entries:
                     await _process_message(redis_client, message_id, fields)
     finally:
-        await redis_client.aclose()
+        # redis-py async client exposes close(); types-redis stubs may omit aclose().
+        close = getattr(redis_client, "aclose", None) or redis_client.close
+        await close()
         await engine.dispose()
 
 
