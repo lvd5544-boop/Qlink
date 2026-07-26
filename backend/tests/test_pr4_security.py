@@ -117,6 +117,7 @@ async def test_job_owner_and_admin_boundaries(
     assert admin.json()["job_id"] == "job-sync-1"
     assert admin.json()["status"] == "queued"
 
+
 async def test_match_routes_enforce_resource_ownership(
     client,
     auth_header,

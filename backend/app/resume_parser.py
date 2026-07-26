@@ -69,9 +69,7 @@ def parse_resume_rules_only(text: str) -> ResumeInfo:
         elif line.startswith("技能：") or line.startswith("技能:"):
             raw = line.split("：", 1)[-1].split(":", 1)[-1]
             data["skills"] = [
-                Skill(name=part.strip())
-                for part in re.split(r"[,，、/|]", raw)
-                if part.strip()
+                Skill(name=part.strip()) for part in re.split(r"[,，、/|]", raw) if part.strip()
             ]
         elif line.startswith("工作经历：") or "工程师" in line:
             data["work_experience"].append(

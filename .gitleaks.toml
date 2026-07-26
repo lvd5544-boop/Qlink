@@ -1,0 +1,12 @@
+# Gitleaks config for CI secret scan.
+# Test fixtures intentionally include password-like strings; allowlist them only.
+title = "qlink"
+
+[allowlist]
+description = "Non-production test fixtures and example env placeholders"
+paths = [
+  '''backend/tests/.*''',
+  '''frontend/src/.*/.*\.test\.(js|jsx|ts|tsx)$''',
+  '''frontend/e2e/.*''',
+  '''\.env\.example$''',
+]
