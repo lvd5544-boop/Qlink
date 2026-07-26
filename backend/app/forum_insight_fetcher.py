@@ -4,6 +4,7 @@
 合规：仅访问公开页面/API，不爬登录态内容，不绕过验证码，不采集私人信息。
 后续可接入牛客/脉脉/知乎等需单独评估 robots 与授权；当前以 HN + 本地语料为主。
 """
+
 import json
 import logging
 import os
@@ -45,7 +46,13 @@ def _query_terms(queries: List[str]) -> List[str]:
     for q in queries:
         for part in re.split(r"[\s+]+", q):
             part = part.strip()
-            if len(part) >= 2 and part not in {"面试", "offer", "interview", "experience", "hiring"}:
+            if len(part) >= 2 and part not in {
+                "面试",
+                "offer",
+                "interview",
+                "experience",
+                "hiring",
+            }:
                 terms.add(part.lower())
     return list(terms)[:30]
 
@@ -71,13 +78,15 @@ async def fetch_reddit_posts(client: httpx.AsyncClient, queries: List[str]) -> L
             )
             for child in data.get("data", {}).get("children", []):
                 d = child.get("data", {})
-                posts.append({
-                    "platform": "reddit",
-                    "source_url": f"https://reddit.com{d.get('permalink', '')}",
-                    "title": d.get("title", ""),
-                    "body": d.get("selftext", "") or "",
-                    "search_query": q,
-                })
+                posts.append(
+                    {
+                        "platform": "reddit",
+                        "source_url": f"https://reddit.com{d.get('permalink', '')}",
+                        "title": d.get("title", ""),
+                        "body": d.get("selftext", "") or "",
+                        "search_query": q,
+                    }
+                )
         except Exception as e:
             logger.warning("Reddit 抓取失败 q=%s: %s", q, e)
     return posts
@@ -114,17 +123,18 @@ async def fetch_hackernews_posts(client: httpx.AsyncClient, queries: List[str]) 
     for q in queries[:6]:
         try:
             url = "https://hn.algolia.com/api/v1/search"
-            data = await _get_json(
-                client, url, {"query": q, "tags": "story", "hitsPerPage": 12}
-            )
+            data = await _get_json(client, url, {"query": q, "tags": "story", "hitsPerPage": 12})
             for hit in data.get("hits", []):
-                posts.append({
-                    "platform": "hackernews",
-                    "source_url": hit.get("url") or f"https://news.ycombinator.com/item?id={hit.get('objectID')}",
-                    "title": hit.get("title", ""),
-                    "body": hit.get("story_text", "") or hit.get("title", ""),
-                    "search_query": q,
-                })
+                posts.append(
+                    {
+                        "platform": "hackernews",
+                        "source_url": hit.get("url")
+                        or f"https://news.ycombinator.com/item?id={hit.get('objectID')}",
+                        "title": hit.get("title", ""),
+                        "body": hit.get("story_text", "") or hit.get("title", ""),
+                        "search_query": q,
+                    }
+                )
         except Exception as e:
             logger.warning("HN 抓取失败 q=%s: %s", q, e)
     return posts
@@ -137,25 +147,29 @@ def load_corpus_posts() -> List[Dict]:
         items = json.load(f)
     posts = []
     for item in items:
-        posts.append({
-            "platform": "corpus",
-            "source_url": "",
-            "title": item.get("title", ""),
-            "body": item.get("body", ""),
-            "search_query": "corpus",
-            "corpus_companies": item.get("companies", []),
-        })
+        posts.append(
+            {
+                "platform": "corpus",
+                "source_url": "",
+                "title": item.get("title", ""),
+                "body": item.get("body", ""),
+                "search_query": "corpus",
+                "corpus_companies": item.get("companies", []),
+            }
+        )
     return posts
 
 
 def build_search_queries(companies: List) -> List[str]:
     """基于公司库生成中英搜索词"""
-    queries = set([
-        "offer 录用 面试 经验",
-        "校招 上岸 背景",
-        "hiring interview experience offer",
-        "Apple Google Microsoft interview offer",
-    ])
+    queries = set(
+        [
+            "offer 录用 面试 经验",
+            "校招 上岸 背景",
+            "hiring interview experience offer",
+            "Apple Google Microsoft interview offer",
+        ]
+    )
     for c in companies[:40]:
         queries.add(f"{c.name} 面试 offer")
         for alias in (c.name_aliases or [])[:2]:

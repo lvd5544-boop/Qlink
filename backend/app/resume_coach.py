@@ -8,6 +8,7 @@ from openai import OpenAI
 from .company_registry import infer_role_family, normalize_skill_name
 from .insight_nlp import school_tier_disclaimer
 from .market_analytics import get_company_profile
+from .provider_costs import extract_provider_usage
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,77 @@ def compute_gap_analysis(resume_json: dict, jd_insight: dict, hired_benchmark: d
     }
 
 
+def _build_battle_card(
+    resume_json: dict,
+    company_name: str,
+    role_family: str,
+    target_job_title: Optional[str],
+    gaps: dict,
+    jd_insight: dict,
+    hired_benchmark: dict,
+    coach: dict,
+) -> dict:
+    """构建投递作战卡。"""
+    jd_skills = list((jd_insight.get("skill_freq") or {}).keys())[:8]
+    matched = gaps.get("skills_matched") or []
+    missing = gaps.get("skills_missing") or []
+
+    experience_to_strengthen = []
+    for sug in (coach.get("suggestions") or [])[:4]:
+        if sug.get("advice"):
+            experience_to_strengthen.append(sug["advice"])
+
+    do_not_fake = list(missing[:5])
+    if gaps.get("soft_skills_missing"):
+        do_not_fake.append(
+            f"软实力「{'、'.join(gaps['soft_skills_missing'][:3])}」：如果没有真实经历，不建议硬写"
+        )
+
+    interview_questions = []
+    for sug in (coach.get("suggestions") or [])[:3]:
+        if sug.get("issue"):
+            interview_questions.append(f"关于「{sug['issue']}」，请具体说明您的角色与可验证结果。")
+    stat_conclusions = (hired_benchmark.get("statistical_summary") or {}).get("conclusions") or []
+    for line in stat_conclusions[:2]:
+        interview_questions.append(f"结合目标企业特点：{line}")
+
+    evidence_to_prepare = [
+        "项目复盘截图或文档",
+        "可量化的业务/性能指标",
+        "跨部门协作或推动成果的具体案例",
+    ]
+    if missing:
+        evidence_to_prepare.append(f"与 {missing[0]} 相关的项目代码/方案文档")
+
+    positioning = (
+        f"面向 {company_name} {target_job_title or role_family} 方向，"
+        f"已匹配 {len(matched)} 项核心能力，建议重点补强 {len(missing)} 项差距信号。"
+    )
+
+    resume_focus = (coach.get("priority_actions") or [])[:5]
+    if not resume_focus:
+        resume_focus = ["在已有项目中补充量化结果与角色边界", "用证据句替代空泛软实力表述"]
+
+    return {
+        "positioning": positioning,
+        "resume_focus": resume_focus,
+        "matched_signals": matched,
+        "missing_signals": missing,
+        "experience_to_strengthen": experience_to_strengthen
+        or [
+            "将模糊职责改为「动作 + 范围 + 结果」结构",
+            "补充协调人数、影响范围、指标变化",
+        ],
+        "do_not_fake": do_not_fake or ["如果没有真实经历，不建议硬写"],
+        "interview_questions": interview_questions[:6]
+        or [
+            "请具体说明您在项目中的角色边界与个人贡献。",
+            "关键指标的基线和统计周期是什么？",
+        ],
+        "evidence_to_prepare": evidence_to_prepare,
+    }
+
+
 async def generate_resume_coach(
     db,
     resume_json: dict,
@@ -137,21 +209,21 @@ async def generate_resume_coach(
 
 目标公司：{company_name}
 目标岗位方向：{role_family}
-意向职位：{target_job_title or resume_json.get('expected_job_title') or '未指定'}
+意向职位：{target_job_title or resume_json.get("expected_job_title") or "未指定"}
 
 【公开招聘偏好（JD 聚合）】
-技能词频：{json.dumps(jd_insight.get('skill_freq', {}), ensure_ascii=False)}
-学历要求分布：{json.dumps(jd_insight.get('education_freq', {}), ensure_ascii=False)}
-软实力词频：{json.dumps(jd_insight.get('soft_skill_freq', {}), ensure_ascii=False)}
+技能词频：{json.dumps(jd_insight.get("skill_freq", {}), ensure_ascii=False)}
+学历要求分布：{json.dumps(jd_insight.get("education_freq", {}), ensure_ascii=False)}
+软实力词频：{json.dumps(jd_insight.get("soft_skill_freq", {}), ensure_ascii=False)}
 
-【录用画像（统计模型，来源：{benchmark_source}，样本等级：{sample_tier}，置信度：{confidence}，网络帖样本：{hired_benchmark.get('n_samples', 0)}）】
+【录用画像（统计模型，来源：{benchmark_source}，样本等级：{sample_tier}，置信度：{confidence}，网络帖样本：{hired_benchmark.get("n_samples", 0)}）】
 {methodology}
 统计结论：{json.dumps(stat_conclusions, ensure_ascii=False)}
 {benchmark_note}
-学校层次分布（仅供参考，非官方标准）：{json.dumps(hired_benchmark.get('school_tier_dist', {}), ensure_ascii=False)}
-录用技能词频：{json.dumps(hired_benchmark.get('skill_freq', {}), ensure_ascii=False)}
-录用软实力：{json.dumps(hired_benchmark.get('soft_skill_freq', {}), ensure_ascii=False)}
-领导力相关：{json.dumps(hired_benchmark.get('leadership_freq', {}), ensure_ascii=False)}
+学校层次分布（仅供参考，非官方标准）：{json.dumps(hired_benchmark.get("school_tier_dist", {}), ensure_ascii=False)}
+录用技能词频：{json.dumps(hired_benchmark.get("skill_freq", {}), ensure_ascii=False)}
+录用软实力：{json.dumps(hired_benchmark.get("soft_skill_freq", {}), ensure_ascii=False)}
+领导力相关：{json.dumps(hired_benchmark.get("leadership_freq", {}), ensure_ascii=False)}
 
 【求职者当前简历摘要】
 {json.dumps(resume_json, ensure_ascii=False)[:6000]}
@@ -179,51 +251,75 @@ async def generate_resume_coach(
 }}
 """
 
-    client = get_openai_client()
     model = get_model()
-    try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "你只输出合法 JSON，不要 markdown 代码块。",
-                },
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.3,
-        )
-        content = response.choices[0].message.content or "{}"
-        content = content.strip()
-        if content.startswith("```"):
-            content = content.split("```")[1]
-            if content.startswith("json"):
-                content = content[4:]
-        coach = json.loads(content)
-    except Exception as e:
-        logger.warning("LLM resume coach failed: %s", e)
+    metering = {
+        "model_called": False,
+        "provider_status": None,
+        "provider_usage": None,
+        "model_output_used": False,
+    }
+    coach = None
+    from .llm_client import async_chat_completion, model_api_key
+
+    if model_api_key():
+        try:
+            metering["model_called"] = True
+            response = await async_chat_completion(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "你只输出合法 JSON，不要 markdown 代码块。",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                model=model,
+                temperature=0.3,
+            )
+            metering["provider_status"] = "succeeded"
+            metering["provider_usage"] = extract_provider_usage(
+                response,
+                provider="deepseek",
+                requested_model=model,
+            )
+            content = response.choices[0].message.content or "{}"
+            content = content.strip()
+            if content.startswith("```"):
+                content = content.split("```")[1]
+                if content.startswith("json"):
+                    content = content[4:]
+            parsed = json.loads(content)
+            if isinstance(parsed, dict):
+                coach = parsed
+                metering["model_output_used"] = True
+        except Exception as e:
+            metering["provider_status"] = "failed"
+            logger.warning("LLM resume coach failed: %s", e)
+
+    if coach is None:
+        # 规则降级只给行动提示，不生成可采纳 patch，更不能展示虚构数字。
         coach = {
             "summary": "已根据岗位与录用画像完成规则分析，AI 详细建议暂时不可用，请稍后重试。",
             "priority_actions": [
                 "在项目中补充协调范围、推动结果与量化指标",
                 "将目标岗位高频技能用项目经历佐证",
             ][:2],
-            "suggestions": [
-                {
-                    "section": "工作经历",
-                    "field_path": "work_experience[0].description",
-                    "priority": "高",
-                    "issue": "经历描述偏笼统，缺少可验证的结果",
-                    "advice": "为每个项目补充：你推动了什么、协调了谁、最终指标变化多少",
-                    "example_before": "负责后端开发与维护",
-                    "example_after": "负责订单模块开发，通过缓存优化将接口 P99 延迟降低 35%，日订单处理量达 8 万+",
-                }
-            ],
+            "suggestions": [],
             "school_advice": gaps.get("education_gap"),
             "soft_skill_advice": (
-                "不要空写「沟通能力强」；改为「跨 3 部门推进 XX，周期缩短 20%」等证据句。"
+                "不要空写「沟通能力强」；请先补充真实的协作对象、范围和结果证据。"
             ),
         }
+
+    battle_card = _build_battle_card(
+        resume_json,
+        company_name,
+        role_family,
+        target_job_title,
+        gaps,
+        jd_insight,
+        hired_benchmark,
+        coach,
+    )
 
     return {
         "company": profile["company"],
@@ -244,4 +340,6 @@ async def generate_resume_coach(
             "leadership_freq": hired_benchmark.get("leadership_freq", {}),
         },
         "coach": coach,
+        "battle_card": battle_card,
+        "_metering": metering,
     }

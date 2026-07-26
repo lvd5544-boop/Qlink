@@ -1,6 +1,7 @@
 import { Layout, Menu, Button, Typography, Space } from 'antd';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { LogoutOutlined, UserOutlined } from '@ant-design/icons';
+import api from '../api';
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
@@ -14,9 +15,13 @@ export default function AppLayout({ brandTitle, brandSubtitle, menuItems, role }
   const navigate = useNavigate();
   const location = useLocation();
 
-  const handleLogout = () => {
-    localStorage.clear();
-    navigate('/login');
+  const handleLogout = async () => {
+    try {
+      await api.post('/auth/logout');
+    } finally {
+      localStorage.clear();
+      navigate('/login');
+    }
   };
 
   const currentPage = menuItems.find((item) => item.key === location.pathname);

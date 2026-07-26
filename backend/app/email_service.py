@@ -14,6 +14,14 @@ SMTP_CONFIG = {
     "use_tls": True,
 }
 
+
+def _mask_email(value: str) -> str:
+    local, separator, domain = (value or "").partition("@")
+    if not separator:
+        return "***"
+    return f"{local[:2]}***@{domain}"
+
+
 async def send_email(to: str, subject: str, html_content: str, bcc: list = None):
     """异步发送HTML邮件"""
     msg = MIMEMultipart("alternative")
@@ -34,7 +42,11 @@ async def send_email(to: str, subject: str, html_content: str, bcc: list = None)
             password=SMTP_CONFIG["password"],
             start_tls=SMTP_CONFIG["use_tls"],
         )
-        logger.info(f"邮件发送成功: {to}")
+        logger.info("邮件发送成功 recipient=%s", _mask_email(to))
     except Exception as e:
-        logger.error(f"邮件发送失败 {to}: {e}")
+        logger.error(
+            "邮件发送失败 recipient=%s error_type=%s",
+            _mask_email(to),
+            type(e).__name__,
+        )
         raise

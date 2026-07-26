@@ -1,4 +1,5 @@
 """从经验帖文本中提取结构化录用信号（规则 + 句子级校验，可复现）"""
+
 import logging
 from typing import List, Dict
 
@@ -17,10 +18,32 @@ from .company_registry import SOFT_SKILL_KEYWORDS, LEADERSHIP_KEYWORDS
 logger = logging.getLogger(__name__)
 
 TECH_SKILL_PATTERNS = [
-    "java", "python", "go", "golang", "c++", "react", "vue", "spring",
-    "mysql", "redis", "kafka", "kubernetes", "k8s", "docker", "aws",
-    "机器学习", "深度学习", "算法", "数据分析", "sql", "linux",
-    "分布式", "微服务", "android", "ios", "flutter",
+    "java",
+    "python",
+    "go",
+    "golang",
+    "c++",
+    "react",
+    "vue",
+    "spring",
+    "mysql",
+    "redis",
+    "kafka",
+    "kubernetes",
+    "k8s",
+    "docker",
+    "aws",
+    "机器学习",
+    "深度学习",
+    "算法",
+    "数据分析",
+    "sql",
+    "linux",
+    "分布式",
+    "微服务",
+    "android",
+    "ios",
+    "flutter",
 ]
 
 
@@ -88,22 +111,24 @@ def extract_insights_from_post(
 
         weight = split_company_weight(base_weight * confidence, n_co)
 
-        extractions.append({
-            "company_id": c.id,
-            "company_name_raw": c.name,
-            "role_family": role_family,
-            "school_tier": school_tier,
-            "degree": degree,
-            "skills": skills,
-            "soft_skills": soft_skills,
-            "leadership_signals": leadership,
-            "platform": platform,
-            "extraction_confidence": round(confidence, 3),
-            "weight": round(weight, 3),
-            "is_offer_story": post_type == "offer",
-            "post_type": post_type,
-            "recruitment_type": recruitment_type,
-            "company_match_confidence": match_conf,
-            "post_id": post.get("db_id"),
-        })
+        extractions.append(
+            {
+                "company_id": c.id,
+                "company_name_raw": c.name,
+                "role_family": role_family,
+                "school_tier": school_tier,
+                "degree": degree,
+                "skills": skills,
+                "soft_skills": soft_skills,
+                "leadership_signals": leadership,
+                "platform": platform,
+                "extraction_confidence": round(confidence, 3),
+                "weight": round(weight, 3),
+                "is_offer_story": post_type == "offer",
+                "post_type": post_type,
+                "recruitment_type": recruitment_type,
+                "company_match_confidence": match_conf,
+                "post_id": post.get("db_id"),
+            }
+        )
     return extractions

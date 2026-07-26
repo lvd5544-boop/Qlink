@@ -1,6 +1,6 @@
 import logging
 from collections import defaultdict
-from typing import Dict, List, Optional, Any
+from typing import Dict, Optional, Any
 
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -91,15 +91,17 @@ async def rebuild_market_insights(db: AsyncSession) -> int:
 
     jobs = (await db.execute(select(JobDescription))).scalars().all()
 
-    buckets: Dict[tuple, dict] = defaultdict(lambda: {
-        "jd_sample_size": 0,
-        "skill_freq": {},
-        "education_freq": {},
-        "school_tier_freq": {},
-        "soft_skill_freq": {},
-        "leadership_freq": {},
-        "communication_freq": {},
-    })
+    buckets: Dict[tuple, dict] = defaultdict(
+        lambda: {
+            "jd_sample_size": 0,
+            "skill_freq": {},
+            "education_freq": {},
+            "school_tier_freq": {},
+            "soft_skill_freq": {},
+            "leadership_freq": {},
+            "communication_freq": {},
+        }
+    )
 
     for job in jobs:
         parsed = job.parsed_json or {}
@@ -182,9 +184,9 @@ def _blend_user_submissions(
     cap = forum_eff * max_share / max(len(submissions), 1)
     for key in user_items:
         bucket[key].extend([(a, min(w, cap)) for a, w in user_items[key]])
-    bucket["source_breakdown"]["user_submission"] = bucket["source_breakdown"].get(
-        "user_submission", 0
-    ) + len(submissions) * cap
+    bucket["source_breakdown"]["user_submission"] = (
+        bucket["source_breakdown"].get("user_submission", 0) + len(submissions) * cap
+    )
     return bucket
 
 
@@ -192,10 +194,14 @@ async def rebuild_hired_benchmarks_statistical(db: AsyncSession) -> int:
     """基于网络论坛经验帖的统计模型构建录用画像（不以用户提交/JD 替代）"""
     grouped = await load_extractions_grouped(db)
     submissions_all = (
-        await db.execute(
-            select(HiredProfileSubmission).where(HiredProfileSubmission.status == "approved")
+        (
+            await db.execute(
+                select(HiredProfileSubmission).where(HiredProfileSubmission.status == "approved")
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     sub_by_key = defaultdict(list)
     for s in submissions_all:
         sub_by_key[(s.company_id, s.role_family or "general")].append(s)
@@ -244,7 +250,7 @@ async def rebuild_hired_benchmarks_statistical(db: AsyncSession) -> int:
             leadership_freq=payload["leadership_freq"],
             degree_freq=payload["degree_freq"],
             source=source,
-            n_samples=n_posts,
+            n_samples=payload["n_samples"],
             notes=notes,
             confidence_score=payload["confidence_score"],
             source_breakdown=payload["source_breakdown"],

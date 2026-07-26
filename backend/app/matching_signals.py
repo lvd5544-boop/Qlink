@@ -5,6 +5,7 @@
   - 计入总分：impact, industry_match, growth_potential
   - 仅展示：education_prestige, stability, upskill_difficulty, interview/offer 概率
 """
+
 from __future__ import annotations
 
 import re
@@ -24,14 +25,34 @@ INDUSTRY_CLUSTERS: Dict[str, Set[str]] = {
 
 # 名校（仅展示，不计入总分）
 PRESTIGE_SCHOOLS = {
-    "cmu", "mit", "stanford", "berkeley", "caltech", "harvard",
-    "清华", "北大", "复旦", "上交", "浙大", "中科大",
+    "cmu",
+    "mit",
+    "stanford",
+    "berkeley",
+    "caltech",
+    "harvard",
+    "清华",
+    "北大",
+    "复旦",
+    "上交",
+    "浙大",
+    "中科大",
 }
 
 # 知名公司（行业匹配加分用）
 PRESTIGE_COMPANIES = {
-    "google", "meta", "amazon", "microsoft", "apple", "netflix",
-    "腾讯", "阿里", "字节", "华为", "美团", "京东",
+    "google",
+    "meta",
+    "amazon",
+    "microsoft",
+    "apple",
+    "netflix",
+    "腾讯",
+    "阿里",
+    "字节",
+    "华为",
+    "美团",
+    "京东",
 }
 
 IMPACT_PATTERNS = [
@@ -47,16 +68,37 @@ IMPACT_PATTERNS = [
 ]
 
 LEARNING_SIGNALS = [
-    "开源", "github", "博客", "blog", "自学", "证书", "certification",
-    "promotion", "晋升", "升职", "lead", "tech lead",
+    "开源",
+    "github",
+    "博客",
+    "blog",
+    "自学",
+    "证书",
+    "certification",
+    "promotion",
+    "晋升",
+    "升职",
+    "lead",
+    "tech lead",
 ]
 
 LEADERSHIP_SIGNALS = [
-    "led a team", "managed", "mentored", "带领", "主导", "负责团队", "带团队",
+    "led a team",
+    "managed",
+    "mentored",
+    "带领",
+    "主导",
+    "负责团队",
+    "带团队",
 ]
 
 COMMUNICATION_SIGNALS = [
-    "cross-functional", "stakeholder", "client-facing", "跨部门", "协调", "汇报",
+    "cross-functional",
+    "stakeholder",
+    "client-facing",
+    "跨部门",
+    "协调",
+    "汇报",
 ]
 
 TREND_SKILLS_BY_ROLE: Dict[str, Set[str]] = {
@@ -86,11 +128,13 @@ def _resume_full_text(resume_json: dict) -> str:
     ]
     for exp in resume_json.get("work_experience") or []:
         if isinstance(exp, dict):
-            parts.extend([
-                exp.get("company") or "",
-                exp.get("position") or "",
-                exp.get("description") or "",
-            ])
+            parts.extend(
+                [
+                    exp.get("company") or "",
+                    exp.get("position") or "",
+                    exp.get("description") or "",
+                ]
+            )
     return " ".join(parts).lower()
 
 
@@ -110,17 +154,21 @@ def _infer_job_industry(job_json: dict, job_title: str = "") -> Set[str]:
             skill_names.append(s.get("name") or "")
         else:
             skill_names.append(str(s))
-    blob = " ".join([
-        job_title,
-        job_json.get("title") or "",
-        job_json.get("company_name") or "",
-        " ".join(str(r) for r in job_json.get("responsibilities") or []),
-        " ".join(skill_names),
-    ]).lower()
+    blob = " ".join(
+        [
+            job_title,
+            job_json.get("title") or "",
+            job_json.get("company_name") or "",
+            " ".join(str(r) for r in job_json.get("responsibilities") or []),
+            " ".join(skill_names),
+        ]
+    ).lower()
     return _infer_industries(blob)
 
 
-def score_industry_match(resume_json: dict, job_json: dict, job_title: str = "") -> Tuple[float, dict]:
+def score_industry_match(
+    resume_json: dict, job_json: dict, job_title: str = ""
+) -> Tuple[float, dict]:
     """业务/行业匹配 0~1。"""
     resume_ind = _infer_industries(_resume_full_text(resume_json))
     job_ind = _infer_job_industry(job_json, job_title)
@@ -180,7 +228,9 @@ def score_impact(resume_json: dict) -> Tuple[float, dict]:
     }
 
 
-def score_growth_potential(resume_json: dict, job_json: dict, job_title: str = "") -> Tuple[float, dict]:
+def score_growth_potential(
+    resume_json: dict, job_json: dict, job_title: str = ""
+) -> Tuple[float, dict]:
     """成长潜力 0~1：学习能力 + 成长速度 + 技术趋势。"""
     text = _resume_full_text(resume_json)
 
@@ -341,7 +391,9 @@ def compute_supplementary_signals(
         missing_skills or [],
         known_skills or set(),
     )
-    probs = estimate_probabilities(match_score=0, stability_ratio=stability_ratio, impact_ratio=impact_ratio)
+    probs = estimate_probabilities(
+        match_score=0, stability_ratio=stability_ratio, impact_ratio=impact_ratio
+    )
 
     return {
         "industry_match": {"ratio": ind_ratio, **ind_detail},

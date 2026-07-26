@@ -1,11 +1,14 @@
 """
 简历体检：完整度 + 经历量化检测（规则层，无 LLM）。
 """
+
 from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+
+from .resume_consistency import diagnose_resume_consistency
 
 # 完整度检测字段：(字段路径, 权重, 中文标签)
 _COMPLETENESS_CHECKS: List[tuple[str, int, str]] = [
@@ -48,17 +51,15 @@ def _field_value(parsed_json: dict, field: str) -> Any:
     if field == "work_experience":
         exps = parsed_json.get("work_experience") or []
         return [
-            e for e in exps
+            e
+            for e in exps
             if isinstance(e, dict)
             and (e.get("company") or "").strip()
             and (e.get("position") or "").strip()
         ]
     if field == "projects":
         projs = parsed_json.get("projects") or []
-        return [
-            p for p in projs
-            if isinstance(p, dict) and (p.get("name") or "").strip()
-        ]
+        return [p for p in projs if isinstance(p, dict) and (p.get("name") or "").strip()]
     return parsed_json.get(field)
 
 
@@ -79,10 +80,7 @@ def _check_completeness(parsed_json: dict) -> dict:
 
     # 工作经历描述完整度（附加项，不计入 missing 列表主字段）
     exps = parsed_json.get("work_experience") or []
-    described = sum(
-        1 for e in exps
-        if isinstance(e, dict) and (e.get("description") or "").strip()
-    )
+    described = sum(1 for e in exps if isinstance(e, dict) and (e.get("description") or "").strip())
     exp_count = len(exps)
     description_ratio = (described / exp_count) if exp_count else 0.0
 
@@ -117,15 +115,17 @@ def _check_quantification(parsed_json: dict) -> dict:
         has_quant = _description_has_quantification(desc)
         if has_quant:
             quantified_count += 1
-        details.append({
-            "id": f"work_{idx}",
-            "index": idx,
-            "entry_type": "work",
-            "company": exp.get("company") or "",
-            "position": exp.get("position") or "",
-            "has_quantification": has_quant,
-            "description_preview": desc[:120] if desc else "",
-        })
+        details.append(
+            {
+                "id": f"work_{idx}",
+                "index": idx,
+                "entry_type": "work",
+                "company": exp.get("company") or "",
+                "position": exp.get("position") or "",
+                "has_quantification": has_quant,
+                "description_preview": desc[:120] if desc else "",
+            }
+        )
 
     for idx, proj in enumerate(parsed_json.get("projects") or []):
         if not isinstance(proj, dict):
@@ -134,21 +134,24 @@ def _check_quantification(parsed_json: dict) -> dict:
         has_quant = _description_has_quantification(desc)
         if has_quant:
             quantified_count += 1
-        details.append({
-            "id": f"project_{idx}",
-            "index": idx,
-            "entry_type": "project",
-            "company": proj.get("name") or "",
-            "position": proj.get("role") or "项目",
-            "has_quantification": has_quant,
-            "description_preview": desc[:120] if desc else "",
-        })
+        details.append(
+            {
+                "id": f"project_{idx}",
+                "index": idx,
+                "entry_type": "project",
+                "company": proj.get("name") or "",
+                "position": proj.get("role") or "项目",
+                "has_quantification": has_quant,
+                "description_preview": desc[:120] if desc else "",
+            }
+        )
 
     total = len(details)
     score = round(quantified_count / total * 100) if total else 0
     unquantified_entries = [
         {"id": d["id"], "entry_type": d["entry_type"], "index": d["index"]}
-        for d in details if not d["has_quantification"]
+        for d in details
+        if not d["has_quantification"]
     ]
 
     return {
@@ -169,39 +172,43 @@ def _build_completeness_detail(completeness: dict) -> dict:
     for info in completeness.get("fields", {}).values():
         label = info.get("label", "")
         if info.get("filled"):
-            strengths.append({
-                "title": label,
-                "detail": "已填写，计入完整度",
-            })
+            strengths.append(
+                {
+                    "title": label,
+                    "detail": "已填写，计入完整度",
+                }
+            )
         else:
-            weaknesses.append({
-                "title": label,
-                "detail": "未填写，建议补充",
-            })
+            weaknesses.append(
+                {
+                    "title": label,
+                    "detail": "未填写，建议补充",
+                }
+            )
 
     exp_count = completeness.get("work_experience_count", 0)
     described = completeness.get("work_experience_with_description", 0)
     if exp_count > 0:
         if described == exp_count:
-            strengths.append({
-                "title": "工作经历描述",
-                "detail": f"全部 {exp_count} 段经历均有职责/成果描述",
-            })
+            strengths.append(
+                {
+                    "title": "工作经历描述",
+                    "detail": f"全部 {exp_count} 段经历均有职责/成果描述",
+                }
+            )
         else:
-            weaknesses.append({
-                "title": "工作经历描述",
-                "detail": f"仅 {described}/{exp_count} 段经历有描述，其余偏空",
-            })
+            weaknesses.append(
+                {
+                    "title": "工作经历描述",
+                    "detail": f"仅 {described}/{exp_count} 段经历有描述，其余偏空",
+                }
+            )
 
     return {
         "score": completeness.get("score", 0),
         "strengths": strengths,
         "weaknesses": weaknesses,
-        "summary": (
-            f"已覆盖 {len(strengths)} 项关键字段"
-            if strengths
-            else "关键字段大多未填写"
-        ),
+        "summary": (f"已覆盖 {len(strengths)} 项关键字段" if strengths else "关键字段大多未填写"),
     }
 
 
@@ -218,69 +225,87 @@ def _build_overall_detail(
     quant_score = quantification.get("score", 0)
 
     if comp_score >= 70:
-        strengths.append({
-            "title": "结构覆盖较好",
-            "detail": f"完整度 {comp_score}%，主要模块填写齐全",
-        })
+        strengths.append(
+            {
+                "title": "结构覆盖较好",
+                "detail": f"完整度 {comp_score}%，主要模块填写齐全",
+            }
+        )
     elif comp_score >= 40:
-        weaknesses.append({
-            "title": "结构覆盖一般",
-            "detail": f"完整度 {comp_score}%，仍有较多字段待补充",
-        })
+        weaknesses.append(
+            {
+                "title": "结构覆盖一般",
+                "detail": f"完整度 {comp_score}%，仍有较多字段待补充",
+            }
+        )
     else:
-        weaknesses.append({
-            "title": "结构覆盖不足",
-            "detail": f"完整度仅 {comp_score}%，是综合分主要短板",
-        })
+        weaknesses.append(
+            {
+                "title": "结构覆盖不足",
+                "detail": f"完整度仅 {comp_score}%，是综合分主要短板",
+            }
+        )
 
     quant_total = quantification.get("total_experiences", 0)
     quant_ok = quantification.get("quantified_count", 0)
     if quant_score >= 60:
-        strengths.append({
-            "title": "成果量化到位",
-            "detail": f"{quant_ok}/{quant_total} 段经历含数字、比例等可验证成果",
-        })
+        strengths.append(
+            {
+                "title": "成果量化到位",
+                "detail": f"{quant_ok}/{quant_total} 段经历含数字、比例等可验证成果",
+            }
+        )
     elif quant_total == 0:
-        weaknesses.append({
-            "title": "缺少工作经历",
-            "detail": "无经历则量化分为 0，建议补充并写上量化指标",
-        })
+        weaknesses.append(
+            {
+                "title": "缺少工作经历",
+                "detail": "无经历则量化分为 0，建议补充并写上量化指标",
+            }
+        )
     else:
-        weaknesses.append({
-            "title": "成果量化不足",
-            "detail": f"仅 {quant_ok}/{quant_total} 段经历有量化描述，拉低综合分",
-        })
+        weaknesses.append(
+            {
+                "title": "成果量化不足",
+                "detail": f"仅 {quant_ok}/{quant_total} 段经历有量化描述，拉低综合分",
+            }
+        )
 
     for item in quantification.get("details") or []:
         company = item.get("company") or f"经历 {item.get('index', 0) + 1}"
         if item.get("has_quantification"):
-            strengths.append({
-                "title": company,
-                "detail": "描述含量化成果，有助于提升匹配说服力",
-            })
+            strengths.append(
+                {
+                    "title": company,
+                    "detail": "描述含量化成果，有助于提升匹配说服力",
+                }
+            )
         elif (item.get("description_preview") or "").strip():
-            weaknesses.append({
-                "title": company,
-                "detail": "描述偏笼统，建议补充指标、规模或提升比例",
-            })
+            weaknesses.append(
+                {
+                    "title": company,
+                    "detail": "描述偏笼统，建议补充指标、规模或提升比例",
+                }
+            )
 
     filled_labels = [
-        info.get("label")
-        for info in completeness.get("fields", {}).values()
-        if info.get("filled")
+        info.get("label") for info in completeness.get("fields", {}).values() if info.get("filled")
     ]
     if len(filled_labels) >= 6:
-        strengths.append({
-            "title": "基础信息较完整",
-            "detail": f"已填写：{'、'.join(filled_labels[:6])}{' 等' if len(filled_labels) > 6 else ''}",
-        })
+        strengths.append(
+            {
+                "title": "基础信息较完整",
+                "detail": f"已填写：{'、'.join(filled_labels[:6])}{' 等' if len(filled_labels) > 6 else ''}",
+            }
+        )
 
     missing = completeness.get("missing") or []
     if missing:
-        weaknesses.append({
-            "title": "待补关键字段",
-            "detail": "、".join(missing[:6]) + (" 等" if len(missing) > 6 else ""),
-        })
+        weaknesses.append(
+            {
+                "title": "待补关键字段",
+                "detail": "、".join(missing[:6]) + (" 等" if len(missing) > 6 else ""),
+            }
+        )
 
     return {
         "score": overall_score,
@@ -323,6 +348,7 @@ def compute_resume_health(parsed_json: Optional[dict]) -> dict:
     data = parsed_json or {}
     completeness = _check_completeness(data)
     quantification = _check_quantification(data)
+    consistency = diagnose_resume_consistency(data)
 
     overall = round(completeness["score"] * 0.6 + quantification["score"] * 0.4)
 
@@ -330,6 +356,7 @@ def compute_resume_health(parsed_json: Optional[dict]) -> dict:
         "overall_score": overall,
         "completeness": completeness,
         "quantification": quantification,
+        "consistency_diagnosis": consistency,
         "overall_detail": _build_overall_detail(completeness, quantification, overall),
         "completeness_detail": _build_completeness_detail(completeness),
         "suggestions": _build_suggestions(completeness, quantification),

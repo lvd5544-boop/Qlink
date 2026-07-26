@@ -12,9 +12,10 @@ aioredis
 python-dotenv
 aiosmtplib
 jinja2
-python-jose[cryptography]
+PyJWT[crypto]>=2.10,<3
 bcrypt==4.0.1
 websockets
 tqdm
 apscheduler
 httpx
+alembic>=1.13,<2

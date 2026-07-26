@@ -1,4 +1,5 @@
 """论坛经验帖：抓取 → 清洗 → 抽取 → 入库"""
+
 import logging
 from collections import defaultdict
 
@@ -76,22 +77,23 @@ async def load_extractions_grouped(db: AsyncSession) -> dict:
     rows = (await db.execute(select(ForumInsightExtracted))).scalars().all()
     grouped = defaultdict(list)
     for r in rows:
-        grouped[(r.company_id, r.role_family or "general")].append({
-            "post_id": r.post_id,
-            "company_id": r.company_id,
-            "role_family": r.role_family,
-            "school_tier": r.school_tier,
-            "degree": r.degree,
-            "skills": r.skills or [],
-            "soft_skills": r.soft_skills or [],
-            "leadership_signals": r.leadership_signals or [],
-            "platform": r.platform,
-            "weight": r.weight,
-            "extraction_confidence": r.extraction_confidence,
-            "is_offer_story": bool(r.is_offer_story),
-            "post_type": getattr(r, "post_type", None) or (
-                "offer" if r.is_offer_story else "discussion"
-            ),
-            "recruitment_type": getattr(r, "recruitment_type", None) or "unknown",
-        })
+        grouped[(r.company_id, r.role_family or "general")].append(
+            {
+                "post_id": r.post_id,
+                "company_id": r.company_id,
+                "role_family": r.role_family,
+                "school_tier": r.school_tier,
+                "degree": r.degree,
+                "skills": r.skills or [],
+                "soft_skills": r.soft_skills or [],
+                "leadership_signals": r.leadership_signals or [],
+                "platform": r.platform,
+                "weight": r.weight,
+                "extraction_confidence": r.extraction_confidence,
+                "is_offer_story": bool(r.is_offer_story),
+                "post_type": getattr(r, "post_type", None)
+                or ("offer" if r.is_offer_story else "discussion"),
+                "recruitment_type": getattr(r, "recruitment_type", None) or "unknown",
+            }
+        )
     return grouped

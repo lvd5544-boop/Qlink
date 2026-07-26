@@ -1,8 +1,7 @@
-import os
 import logging
 import httpx
 import re
-from sqlalchemy import select, delete
+from sqlalchemy import delete
 from .database import AsyncSessionLocal
 from .models_db import JobDescription, User
 
@@ -16,25 +15,48 @@ HEADERS = {
     "Device": "pc",
     "Subsite": "cujiuye",
     "Version": "5.0.0",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
 }
+
 
 def clean_html(raw_html):
     """去除 HTML 标签"""
     if not raw_html:
         return ""
-    clean = re.sub(r'<[^>]+>', '', raw_html)
-    clean = re.sub(r'\s+', ' ', clean).strip()
+    clean = re.sub(r"<[^>]+>", "", raw_html)
+    clean = re.sub(r"\s+", " ", clean).strip()
     return clean
+
 
 async def fetch_guoqi_jobs(keywords: list = None):
     """从国资央企招聘平台获取岗位信息"""
     if keywords is None:
         keywords = [
-            "计算机", "信息技术", "软件", "网络安全", "人工智能", "大数据",
-            "金融", "财务", "会计", "审计", "法务", "人力资源", "市场营销",
-            "机械", "电气", "土木", "工程", "管理培训生", "英语", "研发",
-            "通信", "电子", "化工", "能源", "建筑",
+            "计算机",
+            "信息技术",
+            "软件",
+            "网络安全",
+            "人工智能",
+            "大数据",
+            "金融",
+            "财务",
+            "会计",
+            "审计",
+            "法务",
+            "人力资源",
+            "市场营销",
+            "机械",
+            "电气",
+            "土木",
+            "工程",
+            "管理培训生",
+            "英语",
+            "研发",
+            "通信",
+            "电子",
+            "化工",
+            "能源",
+            "建筑",
         ]
 
     all_jobs = []
@@ -46,7 +68,7 @@ async def fetch_guoqi_jobs(keywords: list = None):
                         "page": page,
                         "page_size": 100,
                         "keyword": keyword,
-                        "nature": ["115xW5oQ"]
+                        "nature": ["115xW5oQ"],
                     }
                     resp = await client.post(API_URL, json=data, headers=HEADERS, timeout=30.0)
                     resp.raise_for_status()
@@ -80,37 +102,46 @@ async def fetch_guoqi_jobs(keywords: list = None):
             db.add(system_employer)
             await db.flush()
 
-        await db.execute(
-            delete(JobDescription).where(JobDescription.employer_id == "guoqi")
-        )
+        await db.execute(delete(JobDescription).where(JobDescription.employer_id == "guoqi"))
 
         count = 0
         for job in unique_jobs:
             try:
                 title = job.get("job_name", "未知岗位")
                 company_name = job.get("company_name", "")
-                area = job.get("district_list", [{}])[0].get("area_cn", "") if job.get("district_list") else ""
-                salary = f"{job.get('min_wage', '')}-{job.get('max_wage', '')}" if job.get("min_wage") else ""
+                area = (
+                    job.get("district_list", [{}])[0].get("area_cn", "")
+                    if job.get("district_list")
+                    else ""
+                )
+                salary = (
+                    f"{job.get('min_wage', '')}-{job.get('max_wage', '')}"
+                    if job.get("min_wage")
+                    else ""
+                )
                 education = job.get("education_cn", "")
-                nature_cn = job.get("company_info", {}).get("nature_cn", "") if job.get("company_info") else ""
+                nature_cn = (
+                    job.get("company_info", {}).get("nature_cn", "")
+                    if job.get("company_info")
+                    else ""
+                )
                 contents = clean_html(job.get("contents", ""))
                 contents_text = clean_html(job.get("contents", ""))
                 contact_person = ""
                 contact_info = ""
                 # 简单正则提取（可根据实际数据优化）
-                phone_match = re.search(r'联系电话[：:]\s*(\S+)', contents_text)
+                phone_match = re.search(r"联系电话[：:]\s*(\S+)", contents_text)
                 if phone_match:
                     contact_info = phone_match.group(1)
-                email_match = re.search(r'电子邮箱[：:]\s*(\S+@\S+)', contents_text)
+                email_match = re.search(r"电子邮箱[：:]\s*(\S+@\S+)", contents_text)
                 if email_match:
                     if contact_info:
                         contact_info += f" / {email_match.group(1)}"
                     else:
                         contact_info = email_match.group(1)
-                person_match = re.search(r'联系人[：:]\s*(\S+)', contents_text)
+                person_match = re.search(r"联系人[：:]\s*(\S+)", contents_text)
                 if person_match:
                     contact_person = person_match.group(1)
-
 
                 job_info = {
                     "title": title,
@@ -131,7 +162,7 @@ async def fetch_guoqi_jobs(keywords: list = None):
                     employer_id="guoqi",
                     title=job_info["title"],
                     raw_text=contents,
-                    parsed_json=job_info
+                    parsed_json=job_info,
                 )
                 db.add(jd)
                 count += 1

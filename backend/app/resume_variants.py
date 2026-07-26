@@ -1,6 +1,7 @@
 """
 岗位定制版简历：resume_variants + 5 种风格模板。
 """
+
 from __future__ import annotations
 
 import copy
@@ -8,7 +9,7 @@ import json
 import logging
 import os
 import re
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -110,10 +111,14 @@ def _fallback_variant(
 
     if style_id == "project_focus":
         projects = data.get("projects") or []
-        if projects and not any((p.get("description") or "").strip() for p in projects if isinstance(p, dict)):
+        if projects and not any(
+            (p.get("description") or "").strip() for p in projects if isinstance(p, dict)
+        ):
             for p in projects:
                 if isinstance(p, dict) and not (p.get("description") or "").strip():
-                    p["description"] = f"负责{p.get('name', '核心模块')}开发与优化，交付关键功能并达成可量化成果"
+                    p["description"] = (
+                        f"负责{p.get('name', '核心模块')}开发与优化，交付关键功能并达成可量化成果"
+                    )
 
     if style_id == "concise":
         for exp in data.get("work_experience") or []:
@@ -137,7 +142,9 @@ async def generate_resume_variant(
     """
     style_id = style_template if style_template in STYLE_TEMPLATES else "balanced"
     style = STYLE_TEMPLATES[style_id]
-    title = (target_job_title or job_title or resume_json.get("expected_job_title") or "通用岗位").strip()
+    title = (
+        target_job_title or job_title or resume_json.get("expected_job_title") or "通用岗位"
+    ).strip()
     label = _variant_label(title, style_id)
     variant_key = _slugify(f"{title}_{style_id}")
 
@@ -158,14 +165,14 @@ async def generate_resume_variant(
         job_context = f"""
 【目标岗位 JD】
 职位：{job_title or title}
-技能要求：{json.dumps([s.get('name') if isinstance(s, dict) else s for s in job_json.get('required_skills', [])], ensure_ascii=False)}
-职责：{json.dumps(job_json.get('responsibilities', [])[:6], ensure_ascii=False)}
+技能要求：{json.dumps([s.get("name") if isinstance(s, dict) else s for s in job_json.get("required_skills", [])], ensure_ascii=False)}
+职责：{json.dumps(job_json.get("responsibilities", [])[:6], ensure_ascii=False)}
 """
 
     prompt = f"""你是资深简历顾问。请基于原始简历，生成一份针对「{title}」的定制版简历 JSON。
 
-【风格模板：{style['label']}】
-{style['prompt_hint']}
+【风格模板：{style["label"]}】
+{style["prompt_hint"]}
 
 【原则】
 1. 不编造用户没有的经历或公司
@@ -182,9 +189,11 @@ async def generate_resume_variant(
 """
 
     try:
-        client = _get_openai_client()
-        response = client.chat.completions.create(
-            model=_get_model(),
+        from .llm_client import async_chat_completion, model_api_key
+
+        if not model_api_key():
+            raise RuntimeError("no_api_key")
+        response = await async_chat_completion(
             messages=[
                 {"role": "system", "content": "你只输出合法 JSON 对象，字段名英文。"},
                 {"role": "user", "content": prompt},

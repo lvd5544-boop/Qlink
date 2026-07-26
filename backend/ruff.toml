@@ -1,0 +1,15 @@
+target-version = "py311"
+line-length = 100
+exclude = [
+  ".venv",
+  "venv",
+  "uploads",
+  "alembic/versions",
+]
+
+[lint]
+# CI gate focuses on definite bugs; style debt is tracked separately.
+select = ["E9", "F63", "F7", "F82", "F401", "F811"]
+
+[lint.per-file-ignores]
+"alembic/env.py" = ["F401"]

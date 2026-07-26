@@ -1,4 +1,5 @@
 """外企 / 国际岗位抓取（Remotive、Arbeitnow 等公开 API）"""
+
 import logging
 import re
 import httpx
@@ -127,16 +128,16 @@ async def fetch_foreign_jobs():
 
     async with AsyncSessionLocal() as db:
         await _ensure_foreign_employer(db)
-        await db.execute(
-            delete(JobDescription).where(JobDescription.employer_id == EMPLOYER_ID)
-        )
+        await db.execute(delete(JobDescription).where(JobDescription.employer_id == EMPLOYER_ID))
         count = 0
         for job_info in unique:
             try:
                 jd = JobDescription(
                     employer_id=EMPLOYER_ID,
                     title=job_info["title"],
-                    raw_text=job_info["responsibilities"][0] if job_info["responsibilities"] else "",
+                    raw_text=job_info["responsibilities"][0]
+                    if job_info["responsibilities"]
+                    else "",
                     parsed_json=job_info,
                 )
                 db.add(jd)

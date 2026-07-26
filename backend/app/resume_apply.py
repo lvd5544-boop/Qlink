@@ -8,9 +8,9 @@ field_path 示例：
   work_experience[0].description
   projects[1].description
 """
+
 from __future__ import annotations
 
-import copy
 import re
 from typing import Any, Dict, Optional, Tuple
 

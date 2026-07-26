@@ -1,0 +1,18 @@
+{
+  "name": "快连 QLink · AI 招聘平台",
+  "short_name": "QLink",
+  "description": "候选人与招聘方协作的 AI 招聘平台",
+  "lang": "zh-CN",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#4f46e5",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,6 +1,7 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
-  Card, List, Button, Modal, Tag, Space, message, Spin, Row, Col, Typography, Divider,
+  Card, List, Button, Modal, Tag, Space, message, Spin, Row, Col, Typography, Divider, Alert,
 } from 'antd';
 import {
   EditOutlined, DeleteOutlined, MedicineBoxOutlined, StarOutlined, ArrowLeftOutlined,
@@ -25,6 +26,8 @@ function initEditData(resume) {
 }
 
 export default function MyResumes() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkHandled = useRef(false);
   const [resumes, setResumes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState(null);
@@ -36,11 +39,12 @@ export default function MyResumes() {
   const [applyingId, setApplyingId] = useState(null);
   const [pendingSuggestions, setPendingSuggestions] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [claimHint, setClaimHint] = useState('');
 
   const userId = localStorage.getItem('user_id');
   const selectedResume = resumes.find((r) => r.id === selectedId) || null;
 
-  const fetchResumes = async () => {
+  const fetchResumes = useCallback(async () => {
     setLoading(true);
     try {
       const res = await api.get(`/resumes/${userId}`);
@@ -50,9 +54,19 @@ export default function MyResumes() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId]);
 
-  useEffect(() => { fetchResumes(); }, []);
+  useEffect(() => {
+    const timer = setTimeout(fetchResumes, 0);
+    return () => clearTimeout(timer);
+  }, [fetchResumes]);
+
+  useEffect(() => {
+    const hint = searchParams.get('claimHint');
+    if (!hint) return undefined;
+    const timer = setTimeout(() => setClaimHint(hint), 0);
+    return () => clearTimeout(timer);
+  }, [searchParams]);
 
   const fetchTopMatches = useCallback(async (resumeId) => {
     setMatchesLoading(true);
@@ -75,7 +89,24 @@ export default function MyResumes() {
     }
   }, []);
 
-  const openWorkbench = async (resume) => {
+  const handleRefreshHealth = useCallback(async (resumeId, showMsg = true) => {
+    setHealthLoadingId(resumeId);
+    try {
+      const res = await api.post(`/resumes/${resumeId}/health-check`);
+      const updated = res.data.health_check;
+      setResumes((prev) => prev.map((r) => (
+        r.id === resumeId ? { ...r, health_check: updated } : r
+      )));
+      await fetchPendingSuggestions(resumeId);
+      if (showMsg) message.success('体检已更新');
+    } catch {
+      message.error('体检失败');
+    } finally {
+      setHealthLoadingId(null);
+    }
+  }, [fetchPendingSuggestions]);
+
+  const openWorkbench = useCallback(async (resume) => {
     setSelectedId(resume.id);
     setEditData(initEditData(resume));
     setPendingSuggestions([]);
@@ -87,8 +118,9 @@ export default function MyResumes() {
       setResumes((prev) => prev.map((r) => (r.id === resume.id ? merged : r)));
       setEditData(initEditData(merged));
       setRawText(detail.data.raw_text || '');
-      if (!merged.health_check) {
-        await handleRefreshHealth(resume.id, false);
+      const needsConsistencyRefresh = !merged.health_check?.consistency_diagnosis;
+      if (!merged.health_check || needsConsistencyRefresh) {
+        await handleRefreshHealth(resume.id, needsConsistencyRefresh);
       } else {
         await fetchPendingSuggestions(resume.id);
       }
@@ -96,7 +128,38 @@ export default function MyResumes() {
       message.warning('未能加载简历详情');
     }
     await fetchTopMatches(resume.id);
-  };
+  }, [fetchPendingSuggestions, fetchTopMatches, handleRefreshHealth]);
+
+  useEffect(() => {
+    if (loading || deepLinkHandled.current || selectedId) return undefined;
+    const timer = setTimeout(() => {
+      const resumeId = searchParams.get('resumeId');
+      if (!resumeId) return;
+
+      deepLinkHandled.current = true;
+      setSearchParams({}, { replace: true });
+
+      if (!resumes.length) {
+        message.warning('暂无简历，请先上传');
+        return;
+      }
+
+      const target = resumes.find((r) => r.id === resumeId);
+      if (target) {
+        openWorkbench(target);
+        const hint = searchParams.get('claimHint');
+        if (hint) {
+          setClaimHint(hint);
+          message.info(`已打开简历。请在右侧「③ 诊断与采纳」查看表述一致性提醒：${hint.slice(0, 40)}…`);
+        } else {
+          message.info('已打开申请关联简历。在右侧「③ 诊断与采纳」可查看表述一致性提醒与 AI 追问。');
+        }
+      } else {
+        message.warning('未找到对应简历，请从列表中选择');
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [loading, resumes, searchParams, selectedId, setSearchParams, openWorkbench]);
 
   const closeWorkbench = () => {
     setSelectedId(null);
@@ -128,23 +191,6 @@ export default function MyResumes() {
       message.error('保存失败');
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleRefreshHealth = async (resumeId, showMsg = true) => {
-    setHealthLoadingId(resumeId);
-    try {
-      const res = await api.post(`/resumes/${resumeId}/health-check`);
-      const updated = res.data.health_check;
-      setResumes((prev) => prev.map((r) => (
-        r.id === resumeId ? { ...r, health_check: updated } : r
-      )));
-      await fetchPendingSuggestions(resumeId);
-      if (showMsg) message.success('体检已更新');
-    } catch {
-      message.error('体检失败');
-    } finally {
-      setHealthLoadingId(null);
     }
   };
 
@@ -191,15 +237,6 @@ export default function MyResumes() {
     } finally {
       setApplyingId(null);
     }
-  };
-
-  const handleFollowupApplied = async (regenerated) => {
-    if (!selectedId || !regenerated?.patch) return;
-    await handleApplySuggestion(selectedId, {
-      id: `followup_${regenerated.field_path}`,
-      patch: regenerated.patch,
-      suggested_text: regenerated.example_after,
-    });
   };
 
   const handleVariantApplied = async (data) => {
@@ -328,13 +365,30 @@ export default function MyResumes() {
         <Col xs={24} lg={9}>
           <div style={{ maxHeight: '75vh', overflowY: 'auto' }}>
             <Card size="small" title="③ 诊断与采纳" style={{ marginBottom: 12 }}>
+              {claimHint && (
+                <Alert
+                  type="info"
+                  showIcon
+                  style={{ marginBottom: 12 }}
+                  message="招聘方澄清相关 claim"
+                  description={(
+                    <>
+                      <div style={{ marginBottom: 8 }}>{claimHint}</div>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        建议：先查看「表述一致性提醒」，再使用 AI 追问 / 忠实改写，把澄清内容沉淀进对应经历描述。
+                      </Text>
+                    </>
+                  )}
+                  closable
+                  onClose={() => setClaimHint('')}
+                />
+              )}
               <ResumeHealthPanel
                 healthCheck={selectedResume.health_check}
                 actionableSuggestions={pendingSuggestions}
                 resumeId={selectedResume.id}
                 onApplySuggestion={(s) => handleApplySuggestion(selectedResume.id, s)}
                 onDismissSuggestion={(s) => handleDismissSuggestion(selectedResume.id, s)}
-                onFollowupApplied={handleFollowupApplied}
                 applyingId={applyingId}
               />
             </Card>

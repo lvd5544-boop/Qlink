@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Card, List, Tag, Button, message, Empty } from 'antd';
 import { CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import api from '../../api';
@@ -7,7 +7,7 @@ export default function Invitations() {
   const [invitations, setInvitations] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchInvitations = async () => {
+  const fetchInvitations = useCallback(async () => {
     try {
       const res = await api.get('/invitations/received');
       setInvitations(res.data);
@@ -16,9 +16,12 @@ export default function Invitations() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { fetchInvitations(); }, []);
+  useEffect(() => {
+    const timer = setTimeout(fetchInvitations, 0);
+    return () => clearTimeout(timer);
+  }, [fetchInvitations]);
 
   const handleAccept = async (id) => {
     try {

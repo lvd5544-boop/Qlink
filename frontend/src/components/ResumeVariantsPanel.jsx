@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Alert, Button, Card, Input, List, Modal, Select, Space, Spin, Tag, Typography, message,
 } from 'antd';
@@ -6,6 +6,7 @@ import {
   CopyOutlined, DeleteOutlined, EyeOutlined, SwapOutlined,
 } from '@ant-design/icons';
 import api from '../api';
+import { getApiErrorMessage } from '../utils/apiError';
 import ResumeDocumentView from './ResumeDocumentView';
 
 const { Text, Paragraph } = Typography;
@@ -25,7 +26,7 @@ export default function ResumeVariantsPanel({
   const [generating, setGenerating] = useState(false);
   const [previewVariant, setPreviewVariant] = useState(null);
 
-  const fetchVariants = async () => {
+  const fetchVariants = useCallback(async () => {
     if (!resumeId) return;
     setLoading(true);
     try {
@@ -36,7 +37,7 @@ export default function ResumeVariantsPanel({
     } finally {
       setLoading(false);
     }
-  };
+  }, [resumeId]);
 
   useEffect(() => {
     api.get('/resume-variant-templates')
@@ -45,10 +46,13 @@ export default function ResumeVariantsPanel({
   }, []);
 
   useEffect(() => {
-    setTargetJobTitle(defaultJobTitle || '');
-    setVariants([]);
-    if (resumeId) fetchVariants();
-  }, [resumeId, defaultJobTitle]);
+    const timer = setTimeout(() => {
+      setTargetJobTitle(defaultJobTitle || '');
+      setVariants([]);
+      if (resumeId) fetchVariants();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [resumeId, defaultJobTitle, fetchVariants]);
 
   const handleGenerate = async () => {
     if (!targetJobTitle.trim()) {
@@ -66,7 +70,7 @@ export default function ResumeVariantsPanel({
       await fetchVariants();
       setPreviewVariant(res.data.variant);
     } catch (err) {
-      message.error(err.response?.data?.detail || '生成失败');
+      message.error(getApiErrorMessage(err, '生成失败'));
     } finally {
       setGenerating(false);
     }

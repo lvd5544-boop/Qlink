@@ -7,6 +7,7 @@ Hybrid Match v2 — Layer 2 可解释六维评分。
 对外主入口：hybrid_score(resume_json, job_json, job_title=None)
 返回：(total_score, breakdown, potential_score, match_tier)
 """
+
 from __future__ import annotations
 
 import re
@@ -48,10 +49,37 @@ V2_WEIGHTS = {
 
 # 岗位描述里的通用噪声词，不能当作软实力差距
 SOFT_SKILL_NOISE = {
-    "任职要求", "岗位职责", "其他任务", "相关专业", "专业知识", "以上学历",
-    "工作经验", "能力要求", "任职", "要求", "负责", "完成", "进行", "开展",
-    "以及", "相关", "工作", "岗位", "人员", "条件", "优先", "熟悉", "具有",
-    "具备", "良好", "以上", "以下", "本科", "硕士", "博士", "学历",
+    "任职要求",
+    "岗位职责",
+    "其他任务",
+    "相关专业",
+    "专业知识",
+    "以上学历",
+    "工作经验",
+    "能力要求",
+    "任职",
+    "要求",
+    "负责",
+    "完成",
+    "进行",
+    "开展",
+    "以及",
+    "相关",
+    "工作",
+    "岗位",
+    "人员",
+    "条件",
+    "优先",
+    "熟悉",
+    "具有",
+    "具备",
+    "良好",
+    "以上",
+    "以下",
+    "本科",
+    "硕士",
+    "博士",
+    "学历",
 }
 
 # 可视为同一大类的职位方向（其余组合会触发降分）
@@ -100,7 +128,9 @@ def _extract_skill_names(skill_list) -> Set[str]:
     return skills
 
 
-def _skill_match_score(resume_skills: Set[str], required_skills: Set[str]) -> Tuple[float, List[str], List[str]]:
+def _skill_match_score(
+    resume_skills: Set[str], required_skills: Set[str]
+) -> Tuple[float, List[str], List[str]]:
     """技能命中 0~1，支持部分包含（如 spring boot ⊃ spring）。"""
     if not required_skills:
         return 1.0, [], []
@@ -181,7 +211,9 @@ def _score_title(resume_title: str, job_title: str) -> float:
     return base
 
 
-def _role_direction_penalty(resume_title: str, job_title: str, title_ratio: float) -> Tuple[float, dict]:
+def _role_direction_penalty(
+    resume_title: str, job_title: str, title_ratio: float
+) -> Tuple[float, dict]:
     """职位方向明显不符时额外扣分（防止技能分拉高总分）。"""
     resume_family = infer_role_family(resume_title or "")
     job_family = infer_role_family(job_title or "")
@@ -305,11 +337,7 @@ def _parse_education_rank(text: str) -> int:
 def _score_education(resume_json: dict, job_json: dict) -> float:
     """学历 0~1。"""
     req_text = job_json.get("education_requirement") or job_json.get("education") or ""
-    resume_text = (
-        resume_json.get("education")
-        or resume_json.get("degree")
-        or ""
-    )
+    resume_text = resume_json.get("education") or resume_json.get("degree") or ""
 
     req_rank = _parse_education_rank(req_text)
     resume_rank = _parse_education_rank(resume_text)
@@ -486,9 +514,21 @@ def _compute_weighted_total(
             "years": years,
             "required": req_years,
         },
-        "location": {"score": weighted["location"], "ratio": round(loc_ratio, 3), "weight": WEIGHTS["location"]},
-        "salary": {"score": weighted["salary"], "ratio": round(sal_ratio, 3), "weight": WEIGHTS["salary"]},
-        "education": {"score": weighted["education"], "ratio": round(edu_ratio, 3), "weight": WEIGHTS["education"]},
+        "location": {
+            "score": weighted["location"],
+            "ratio": round(loc_ratio, 3),
+            "weight": WEIGHTS["location"],
+        },
+        "salary": {
+            "score": weighted["salary"],
+            "ratio": round(sal_ratio, 3),
+            "weight": WEIGHTS["salary"],
+        },
+        "education": {
+            "score": weighted["education"],
+            "ratio": round(edu_ratio, 3),
+            "weight": WEIGHTS["education"],
+        },
         "soft_skills": {
             "score": weighted["soft_skills"],
             "ratio": round(soft_ratio, 3),
@@ -645,9 +685,21 @@ def _compute_v2_total(
             "weight": V2_WEIGHTS["industry_match"],
             **{k: v for k, v in ind_detail.items() if k != "ratio"},
         },
-        "education": {"score": weighted["education"], "ratio": round(edu_ratio, 3), "weight": V2_WEIGHTS["education"]},
-        "location": {"score": weighted["location"], "ratio": round(loc_ratio, 3), "weight": V2_WEIGHTS["location"]},
-        "salary": {"score": weighted["salary"], "ratio": round(sal_ratio, 3), "weight": V2_WEIGHTS["salary"]},
+        "education": {
+            "score": weighted["education"],
+            "ratio": round(edu_ratio, 3),
+            "weight": V2_WEIGHTS["education"],
+        },
+        "location": {
+            "score": weighted["location"],
+            "ratio": round(loc_ratio, 3),
+            "weight": V2_WEIGHTS["location"],
+        },
+        "salary": {
+            "score": weighted["salary"],
+            "ratio": round(sal_ratio, 3),
+            "weight": V2_WEIGHTS["salary"],
+        },
         "impact": {
             "score": weighted["impact"],
             "ratio": round(impact_ratio, 3),
@@ -739,12 +791,15 @@ def full_match_evaluation(
     known_skills = set(breakdown.get("skills", {}).get("matched") or [])
 
     signals = compute_supplementary_signals(
-        resume_json, job_json, job_title or "",
+        resume_json,
+        job_json,
+        job_title or "",
         missing_skills=missing_skills,
         known_skills=known_skills,
     )
     # 用实际 match_score 更新概率
     from .matching_signals import estimate_probabilities
+
     signals["probabilities"] = estimate_probabilities(
         match_score=total,
         stability_ratio=signals["stability"]["ratio"],
@@ -851,17 +906,23 @@ def extract_breakdown_for_api(score_breakdown: Optional[dict]) -> Optional[dict]
         if not dim or not isinstance(dim, dict) or "weight" not in dim:
             continue
         weight = float(dim.get("weight") or 0)
-        dimensions.append({
-            "key": key,
-            "label": label,
-            "score": dim.get("score"),
-            "ratio": dim.get("ratio"),
-            "weight": weight,
-            "weight_pct": round(weight / 10.0 * 100),
-        })
+        dimensions.append(
+            {
+                "key": key,
+                "label": label,
+                "score": dim.get("score"),
+                "ratio": dim.get("ratio"),
+                "weight": weight,
+                "weight_pct": round(weight / 10.0 * 100),
+            }
+        )
 
     skills = score_breakdown.get("skills") or {}
     soft = score_breakdown.get("soft_skills") or {}
+    if not isinstance(skills, dict):
+        skills = {}
+    if not isinstance(soft, dict):
+        soft = {}
     return {
         "version": version,
         "dimensions": dimensions,
@@ -869,4 +930,3 @@ def extract_breakdown_for_api(score_breakdown: Optional[dict]) -> Optional[dict]
         "matched_skills": skills.get("matched") or [],
         "soft_skills_missing": soft.get("missing") or [],
     }
-

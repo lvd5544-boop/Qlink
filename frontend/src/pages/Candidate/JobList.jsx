@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Card, List, Tag, message, Spin, Button, Modal, Descriptions, Space, Typography } from 'antd';
 import { ReloadOutlined, EnvironmentOutlined, DollarOutlined, RobotOutlined } from '@ant-design/icons';
 import api from '../../api';
@@ -34,7 +34,7 @@ export default function JobList() {
 
   const userId = localStorage.getItem('user_id');
 
-  const fetchMatches = async (isRefresh = false) => {
+  const fetchMatches = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
 
@@ -49,14 +49,16 @@ export default function JobList() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [userId]);
 
   useEffect(() => {
     if (!hasAutoFetched.current) {
       hasAutoFetched.current = true;
-      fetchMatches(true);
+      const timer = setTimeout(() => fetchMatches(true), 0);
+      return () => clearTimeout(timer);
     }
-  }, []);
+    return undefined;
+  }, [fetchMatches]);
 
   const showJobDetail = async (jobId) => {
     setDetailLoading(true);

@@ -1,158 +1,180 @@
 import re
 import os
 import copy
-import shutil
 import logging
+import time
+import uuid
+from datetime import datetime, timezone
+
 logger = logging.getLogger(__name__)
 
 
 from contextlib import asynccontextmanager
-import asyncio
 from typing import Optional, Dict, Any
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, WebSocket
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, WebSocket, Header
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text, delete as sql_delete 
+from sqlalchemy import select
 from pydantic import BaseModel
 import redis.asyncio as aioredis
 from dotenv import load_dotenv
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-
-from .foreign_job_fetcher import fetch_foreign_jobs
 from .resume_parser import extract_text_from_pdf, extract_text_from_docx, parse_with_llm
 from .models import ResumeInfo, JobInfo
-from .database import engine, Base, get_db, AsyncSessionLocal
-from .db_schema import ensure_schema
-from .models_db import User, Resume, JobDescription, MatchResult, ResumeVariant
-from .interview import interview_handler
+from .database import engine, get_db, AsyncSessionLocal
+from .models_db import (
+    JobApplication,
+    User,
+    Resume,
+    JobDescription,
+    MatchResult,
+    ResumeVariant,
+)
+from .interview import interview_handler, claim_followup_handler
+from .interview_fair_use import (
+    close_interview_session,
+    send_fair_use_error,
+    start_interview_session,
+)
 from .job_parser import parse_job_with_llm
-from .matching import generate_matches, generate_matches_auto, generate_matches_for_user
 from .resume_health import compute_resume_health
 from .resume_suggestions import (
     apply_suggestion_patch,
     build_actionable_suggestions,
-    build_coach_actionable_suggestions,
     compute_suggestion_impact,
+    validate_client_patch_against_stored,
 )
 from .resume_suggestion_store import (
+    get_suggestion_by_id,
+    get_suggestion_by_key,
     list_pending_suggestions,
     mark_suggestion_by_key,
     mark_suggestion_status,
     sync_suggestions_for_source,
 )
-from .resume_coach import generate_resume_coach
+from .resume_coach_service import run_resume_coach
+from .claim_reasoning import generate_claim_followup_pack, reason_about_claims
 from .evidence_followup import (
+    analyze_followup_answers,
     generate_followup_questions,
     get_entry_context,
     list_unquantified_entries,
+    match_claim_followup_answers,
+    match_clarification_answers,
     regenerate_evidence_sentence,
 )
 from .resume_variants import generate_resume_variant, list_style_templates
 from .matching_hybrid import full_match_evaluation, extract_breakdown_for_api
-from .auth import get_current_user
+from .auth import get_current_user, validate_auth_configuration
 from .auth_routes import router as auth_router
-from .guoqi_job_fetcher import fetch_guoqi_jobs
 from .invitation_routes import router as invitation_router
 from .application_routes import router as application_router
 from .analytics_routes import router as analytics_router
-from .market_analytics import run_full_analytics_rebuild
+from .billing_routes import router as billing_router
+from .interview_routes import router as interview_router
+from .billing_accounts import reserve_feature_entitlement
 from .job_sources import job_source_label, job_source_type
+from .usage_metering import (
+    finalize_quota,
+    get_usage_summary,
+)
+from .privacy import delete_job_graph, delete_resume_graph
+from .safe_upload import call_parser_bounded, extract_text_bounded, save_upload_safely
+from .security import (
+    owned_job_or_404,
+    owned_resume_or_404,
+    require_admin,
+    require_candidate,
+    require_employer,
+)
+from .application_authz import application_has_candidate_authorization
+from .application_events import event_bus
+from .websocket_auth import authenticate_websocket
+from .fidelity_proof import (
+    create_fidelity_proof,
+    validate_fidelity_proof_configuration,
+    verify_fidelity_proof,
+)
+from .provider_costs import (
+    record_provider_cost_event,
+)
+from .api_errors import (
+    attach_request_context,
+    http_exception_handler,
+    validation_exception_handler,
+)
+from .readiness import collect_readiness, model_runtime_mode
+from .schema_version import require_current_schema
+from .background_jobs import bind_redis, enqueue_job, enqueue_resume_match, get_job_status
+from .llm_client import run_in_thread
 
 load_dotenv()
 
-# 全局 Redis 客户端
-redis_client = aioredis.from_url(
-    os.getenv("REDIS_URL", "redis://localhost:6379/0"),
-    decode_responses=True
-)
+validate_auth_configuration()
+validate_fidelity_proof_configuration()
+
+# 全局 Redis 客户端（面试可选依赖）
+try:
+    redis_client = aioredis.from_url(
+        os.getenv("REDIS_URL", "redis://localhost:6379/0"),
+        decode_responses=True,
+    )
+except Exception as _redis_err:
+    logger.warning("Redis 初始化失败，面试将使用内存会话: %s", _redis_err)
+    redis_client = None
+
+bind_redis(redis_client)
 
 import app.interview as interview_mod
+
 interview_mod.redis_client = redis_client
+
+
+def _is_testing() -> bool:
+    return os.getenv("TESTING", "").strip().lower() in {"1", "true", "yes"}
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 创建表等原有逻辑...
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    await ensure_schema(engine)
+    # Schema changes belong exclusively to ``python -m scripts.migrate``.
+    # Workers only validate migration state and can therefore scale safely.
+    if not _is_testing():
+        await require_current_schema(engine)
+    event_bus.configure(redis_client)
+    try:
+        yield
+    finally:
+        await engine.dispose()
+        if redis_client is not None:
+            await redis_client.aclose()
 
-    async def _startup_analytics():
-        try:
-            await run_full_analytics_rebuild()
-            logger.info("市场洞察与录用画像初始化完成")
-        except Exception as e:
-            logger.warning("分析数据初始化失败（可稍后手动 /analytics/rebuild）: %s", e)
 
-    # 后台跑分析重建，避免阻塞登录/API（论坛抓取可能很慢）
-    asyncio.create_task(_startup_analytics())
+app = FastAPI(
+    title="AI Job Platform",
+    lifespan=lifespan,
+    root_path=os.getenv("API_ROOT_PATH", ""),
+)
+app.middleware("http")(attach_request_context)
+app.add_exception_handler(HTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
-    # 启动定时任务（每周一凌晨 2:00）
-    scheduler = AsyncIOScheduler()
-    scheduler.add_job(
-        fetch_foreign_jobs,
-        trigger="cron",
-        day_of_week="mon",
-        hour=2,
-        minute=0,
-        id="weekly_foreign_job_fetch"
-    )
-    scheduler.add_job(
-        fetch_guoqi_jobs,
-        trigger="cron",
-        day_of_week="mon",
-        hour=4,
-        minute=0,
-        id="weekly_guoqi_job_fetch"
-    )
-    scheduler.add_job(
-        generate_matches_auto,
-        kwargs={"llm_rerank_top": 20},
-        trigger="cron",
-        day_of_week="sun",
-        hour=3,
-        minute=0,
-        id="nightly_llm_match"
-    )
-    scheduler.add_job(
-        run_full_analytics_rebuild,
-        trigger="cron",
-        day_of_week="sun",
-        hour=5,
-        minute=0,
-        id="weekly_analytics_rebuild"
-    )
-    from .forum_insight_pipeline import sync_forum_insights_to_db
-    from .market_analytics import rebuild_hired_benchmarks_statistical
 
-    async def _weekly_forum_sync():
-        async with AsyncSessionLocal() as db:
-            await sync_forum_insights_to_db(db)
-            await rebuild_hired_benchmarks_statistical(db)
+def resolve_cors_origins() -> list[str]:
+    environment = os.getenv("ENV", "development").strip().lower()
+    configured = os.getenv("CORS_ORIGINS", "").strip()
+    if environment == "production":
+        origins = [item.strip() for item in configured.split(",") if item.strip()]
+        if not origins or "*" in origins:
+            raise RuntimeError("生产环境必须配置明确的 CORS_ORIGINS 白名单")
+        return origins
+    return [item.strip() for item in (configured or "*").split(",") if item.strip()]
 
-    scheduler.add_job(
-        _weekly_forum_sync,
-        trigger="cron",
-        day_of_week="wed",
-        hour=3,
-        minute=0,
-        id="weekly_forum_insight_sync",
-    )
-    scheduler.start()
-    logger.info("岗位抓取定时任务已启动（外企周一02:00 / 国企周一04:00）")
 
-    yield
-
-    scheduler.shutdown()
-    await engine.dispose()
-    await redis_client.close()
-
-app = FastAPI(title="AI Job Platform", lifespan=lifespan)
-
-# CORS 中间件
+_cors_origins = resolve_cors_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_cors_origins,
+    allow_credentials="*" not in _cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -162,13 +184,21 @@ app.include_router(auth_router)
 app.include_router(invitation_router)
 app.include_router(application_router)
 app.include_router(analytics_router)
+app.include_router(billing_router)
+app.include_router(interview_router)
 
-UPLOAD_DIR = "uploads"
+UPLOAD_DIR = os.getenv("UPLOAD_DIR") or (
+    "/data/uploads"
+    if os.getenv("ENV", "development").strip().lower() == "production"
+    else "uploads"
+)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # 注入 redis 给 interview 模块
 import app.interview as interview_mod
+
 interview_mod.redis_client = redis_client
+
 
 # ------------- 简历体检 ---------------
 class ResumeHealthResponse(BaseModel):
@@ -182,9 +212,7 @@ async def _run_and_save_health_check(db: AsyncSession, resume: Resume) -> dict:
     result["actionable_suggestions"] = actionable
     resume.health_check = result
     await db.commit()
-    pending = await sync_suggestions_for_source(
-        db, str(resume.id), "health_check", actionable
-    )
+    pending = await sync_suggestions_for_source(db, str(resume.id), "health_check", actionable)
     result["pending_suggestions"] = pending
     return result
 
@@ -194,19 +222,35 @@ async def _refresh_resume_matches(
     resume_id: str,
     *,
     llm_rerank_top: int = 3,
-) -> None:
-    await generate_matches(
-        db,
-        resume_id=resume_id,
-        force_refresh=True,
-        llm_rerank_top=llm_rerank_top,
+) -> dict:
+    """Queue match refresh off the web worker; tests run inline via TESTING."""
+    return await enqueue_job(
+        redis_client,
+        job_type="match_generate",
+        payload={
+            "resume_id": str(resume_id),
+            "force_refresh": True,
+            "llm_rerank_top": llm_rerank_top,
+        },
+        idempotency_key=f"match_generate:resume:{resume_id}:{llm_rerank_top}",
     )
+
+
+@app.get("/background-jobs/{job_id}")
+async def background_job_status(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    status = await get_job_status(redis_client, job_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="任务不存在或已过期")
+    return status
 
 
 @app.post("/resumes/{resume_id}/health-check", response_model=ResumeHealthResponse)
 async def resume_health_check(
     resume_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_candidate),
     db: AsyncSession = Depends(get_db),
 ):
     resume = await db.get(Resume, resume_id)
@@ -223,40 +267,35 @@ async def resume_health_check(
 class ParseResumeResponse(ResumeInfo):
     resume_id: str
     health_check: Optional[Dict[str, Any]] = None
+    match_job_id: Optional[str] = None
 
 
 @app.post("/parse-resume", response_model=ParseResumeResponse)
 async def parse_resume(
     file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    current_user: User = Depends(require_candidate),
+    db: AsyncSession = Depends(get_db),
 ):
-    file_path = os.path.join(UPLOAD_DIR, file.filename)
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    ext = os.path.splitext(file.filename)[-1].lower()
+    file_path = None
     try:
-        if ext == ".pdf":
-            text = extract_text_from_pdf(file_path)
-        elif ext in [".docx", ".doc"]:
-            text = extract_text_from_docx(file_path)
-        elif ext == ".txt":
-            with open(file_path, "r", encoding="utf-8") as f:
-                text = f.read()
-        else:
-            raise HTTPException(status_code=400, detail="仅支持 PDF, DOCX, TXT 格式")
+        file_path, ext = await save_upload_safely(file, UPLOAD_DIR)
+        text = await extract_text_bounded(
+            file_path,
+            ext,
+            extract_text_from_pdf,
+            extract_text_from_docx,
+        )
     finally:
-        os.remove(file_path)
-    resume_data = parse_with_llm(text)
+        if file_path is not None:
+            file_path.unlink(missing_ok=True)
+    resume_data = await call_parser_bounded(parse_with_llm, text)
     if resume_data is None:
         raise HTTPException(status_code=500, detail="AI 解析返回了空结果")
     user = await db.get(User, str(current_user.id))
     if not user:
         raise HTTPException(status_code=401, detail="用户不存在")
     resume_record = Resume(
-        user_id=str(current_user.id),
-        raw_text=text,
-        parsed_json=resume_data.model_dump()
+        user_id=str(current_user.id), raw_text=text, parsed_json=resume_data.model_dump()
     )
     db.add(resume_record)
     await db.commit()
@@ -264,22 +303,27 @@ async def parse_resume(
 
     health = await _run_and_save_health_check(db, resume_record)
 
-    asyncio.create_task(_background_match_after_upload(str(resume_record.id)))
+    match_job_id = None
+    if not _is_testing():
+        try:
+            match_job_id = await enqueue_resume_match(
+                redis_client,
+                str(resume_record.id),
+            )
+        except Exception as exc:
+            logger.error(
+                "上传后匹配任务入队失败 resume_id=%s error=%s",
+                resume_record.id,
+                type(exc).__name__,
+            )
 
     return {
         **resume_data.model_dump(),
         "resume_id": str(resume_record.id),
         "health_check": health,
+        "match_job_id": match_job_id,
     }
 
-
-async def _background_match_after_upload(resume_id: str) -> None:
-    try:
-        async with AsyncSessionLocal() as db:
-            await _refresh_resume_matches(db, resume_id, llm_rerank_top=3)
-            logger.info("上传后匹配完成 resume_id=%s", resume_id)
-    except Exception as e:
-        logger.warning("上传后匹配失败 resume_id=%s: %s", resume_id, e)
 
 # ------------- 简历查询 ---------------
 @app.get("/resumes/{user_id}")
@@ -300,10 +344,11 @@ async def get_user_resumes(
             "health_check": r.health_check,
             "raw_text_preview": (r.raw_text or "")[:500] if r.raw_text else None,
             "has_raw_text": bool(r.raw_text),
-            "uploaded_at": r.uploaded_at.isoformat()
+            "uploaded_at": r.uploaded_at.isoformat(),
         }
         for r in resumes
     ]
+
 
 @app.get("/resume/{resume_id}")
 async def get_resume_by_id(
@@ -319,27 +364,28 @@ async def get_resume_by_id(
     if resume.user_id != user_id:
         if current_user.role != "employer":
             raise HTTPException(status_code=403, detail="无权查看该简历")
-        match_stmt = select(MatchResult).where(MatchResult.resume_id == resume_id)
-        match_result = await db.execute(match_stmt)
-        matches = match_result.scalars().all()
-        if not matches:
-            raise HTTPException(status_code=403, detail="无权查看该简历")
-        job_ids = [m.job_id for m in matches]
-        job_stmt = select(JobDescription).where(
-            JobDescription.id.in_(job_ids),
-            JobDescription.employer_id == user_id,
+        application_stmt = (
+            select(JobApplication)
+            .join(JobDescription, JobApplication.job_id == JobDescription.id)
+            .where(
+                JobApplication.resume_id == resume_id,
+                JobApplication.employer_id == user_id,
+                JobDescription.employer_id == user_id,
+            )
+            .order_by(JobApplication.created_at.desc())
         )
-        job_result = await db.execute(job_stmt)
-        if not job_result.scalars().first():
-            raise HTTPException(status_code=403, detail="无权查看该简历")
+        applications = (await db.execute(application_stmt)).scalars().all()
+        if not any(application_has_candidate_authorization(app) for app in applications):
+            raise HTTPException(status_code=404, detail="资源不存在或无权访问")
     return {
         "id": str(resume.id),
         "user_id": resume.user_id,
         "parsed": resume.parsed_json,
         "health_check": resume.health_check,
         "raw_text": resume.raw_text,
-        "uploaded_at": resume.uploaded_at.isoformat()
+        "uploaded_at": resume.uploaded_at.isoformat(),
     }
+
 
 # ------------- 简历编辑 ---------------
 class ResumeUpdate(BaseModel):
@@ -408,6 +454,13 @@ class EvidenceFollowupAnswer(BaseModel):
 
 
 class EvidenceFollowupRegenerateRequest(BaseModel):
+    entry_type: str
+    index: int
+    answers: list[EvidenceFollowupAnswer]
+    rewrite_mode: str = "standard"
+
+
+class EvidenceFollowupAnalyzeRequest(BaseModel):
     entry_type: str
     index: int
     answers: list[EvidenceFollowupAnswer]
@@ -550,43 +603,22 @@ async def _get_top_match_for_resume(db: AsyncSession, resume_id: str) -> Optiona
 async def resume_coach_for_resume(
     resume_id: str,
     body: ResumeCoachRequest,
-    current_user: User = Depends(get_current_user),
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+    current_user: User = Depends(require_candidate),
     db: AsyncSession = Depends(get_db),
 ):
     """内嵌简历诊断（无需跳转 Analytics）。"""
-    resume = await db.get(Resume, resume_id)
-    if not resume:
-        raise HTTPException(status_code=404, detail="简历不存在")
-    if resume.user_id != str(current_user.id):
-        raise HTTPException(status_code=403, detail="无权访问该简历")
-
-    try:
-        result = await generate_resume_coach(
-            db,
-            resume.parsed_json or {},
-            body.company_id,
-            body.role_family,
-            body.target_job_title,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"简历诊断失败: {e}")
-
-    coach_actionable = build_coach_actionable_suggestions(
-        resume.parsed_json or {},
-        result,
-    )
-    pending_coach = await sync_suggestions_for_source(
+    resume = await owned_resume_or_404(db, resume_id, current_user)
+    return await run_resume_coach(
         db,
-        resume_id,
-        "coach",
-        coach_actionable,
+        actor=current_user,
+        resume=resume,
+        company_id=body.company_id,
+        role_family=body.role_family,
+        target_job_title=body.target_job_title,
+        idempotency_key=idempotency_key or str(uuid.uuid4()),
+        entrypoint="resume",
     )
-    result["actionable_suggestions"] = coach_actionable
-    result["pending_suggestions"] = await list_pending_suggestions(db, resume_id)
-    result["coach_suggestions_count"] = len(coach_actionable)
-    return result
 
 
 @app.get("/resumes/{resume_id}/suggestions")
@@ -602,15 +634,20 @@ async def get_resume_suggestions(
         raise HTTPException(status_code=403, detail="无权访问该简历")
 
     pending = await list_pending_suggestions(db, resume_id)
-    if not pending and resume.health_check:
+    health = resume.health_check or {}
+    consistency_issues = (health.get("consistency_diagnosis") or {}).get("issues") or []
+    has_consistency_pending = any(
+        (s.get("source") == "consistency") or str(s.get("id", "")).startswith("consistency_")
+        for s in pending
+    )
+    needs_sync = (not pending and health) or (consistency_issues and not has_consistency_pending)
+    if needs_sync:
         actionable = build_actionable_suggestions(
             resume.parsed_json or {},
-            resume.health_check,
+            health,
         )
         if actionable:
-            pending = await sync_suggestions_for_source(
-                db, resume_id, "health_check", actionable
-            )
+            pending = await sync_suggestions_for_source(db, resume_id, "health_check", actionable)
     return {"resume_id": resume_id, "suggestions": pending}
 
 
@@ -661,10 +698,48 @@ async def apply_resume_suggestion(
     if resume.user_id != str(current_user.id):
         raise HTTPException(status_code=403, detail="无权修改该简历")
 
+    stored_row = None
+    if body.suggestion_id:
+        stored_row = await get_suggestion_by_id(db, body.suggestion_id, resume_id=resume_id)
+    elif body.suggestion_key:
+        stored_row = await get_suggestion_by_key(db, resume_id, body.suggestion_key)
+
+    stored_dict = None
+    if stored_row is not None:
+        from .resume_suggestion_store import _row_to_dict
+
+        stored_dict = _row_to_dict(stored_row)
+
     old_json = copy.deepcopy(resume.parsed_json or {})
     try:
-        new_json = apply_suggestion_patch(old_json, body.patch)
+        # 不信任客户端随意改写 action；占位文案一律拒绝
+        safe_patch = validate_client_patch_against_stored(
+            body.patch,
+            stored_dict,
+            evidence_completed=bool((body.patch or {}).get("evidence_completed")),
+        )
+        requires_fidelity_proof = bool(
+            (stored_dict or {}).get("requires_evidence")
+            or (stored_dict or {}).get("needs_followup")
+            or safe_patch.get("evidence_completed")
+        )
+        fidelity_payload = None
+        if requires_fidelity_proof:
+            section = safe_patch.get("section")
+            index = safe_patch.get("index")
+            field = safe_patch.get("field") or "description"
+            field_path = (
+                f"{section}[{index}].{field}" if index is not None else f"{section}.{field}"
+            )
+            fidelity_payload = verify_fidelity_proof(
+                str(safe_patch.get("fidelity_proof") or ""),
+                resume_id=resume_id,
+                field_path=field_path,
+                value=safe_patch.get("value"),
+            )
+        new_json = apply_suggestion_patch(old_json, safe_patch)
     except ValueError as e:
+        # 失败时不得标记 applied
         raise HTTPException(status_code=400, detail=str(e))
 
     target_job = await _resolve_target_job(db, resume_id, body.job_id)
@@ -675,6 +750,17 @@ async def apply_resume_suggestion(
         target_job.title if target_job else "",
     )
 
+    if fidelity_payload:
+        history = list(new_json.get("_fidelity_history") or [])
+        history.append(
+            {
+                "field_path": fidelity_payload["field_path"],
+                "evidence_references": fidelity_payload.get("evidence_references") or [],
+                "fidelity_result": fidelity_payload.get("fidelity_result") or {},
+                "applied_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        new_json["_fidelity_history"] = history[-100:]
     resume.parsed_json = new_json
     await db.commit()
     health = await _run_and_save_health_check(db, resume)
@@ -808,7 +894,10 @@ async def evidence_followup_questions(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    questions = generate_followup_questions(context)
+    questions = await run_in_thread(generate_followup_questions, context)
+    resume_json = resume.parsed_json or {}
+    claim_followup_answers = match_claim_followup_answers(resume_json, context)
+    clarification_answers = match_clarification_answers(resume_json, context)
     return {
         "resume_id": resume_id,
         "entry_type": body.entry_type,
@@ -820,6 +909,39 @@ async def evidence_followup_questions(
             "field_path": context["field_path"],
         },
         "questions": questions,
+        "claim_followup_answers": claim_followup_answers,
+        "clarification_answers": clarification_answers,
+    }
+
+
+@app.post("/resumes/{resume_id}/evidence-followup/analyze")
+async def evidence_followup_analyze(
+    resume_id: str,
+    body: EvidenceFollowupAnalyzeRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """采纳前语义澄清分析：系统如何理解用户回答，不生成最终文本。"""
+    resume = await db.get(Resume, resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="简历不存在")
+    if resume.user_id != str(current_user.id):
+        raise HTTPException(status_code=403, detail="无权访问该简历")
+
+    try:
+        context = get_entry_context(resume.parsed_json or {}, body.entry_type, body.index)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    analysis = analyze_followup_answers(
+        context,
+        [a.model_dump() for a in body.answers],
+    )
+    return {
+        "resume_id": resume_id,
+        "entry_type": body.entry_type,
+        "index": body.index,
+        "analysis": analysis,
     }
 
 
@@ -827,6 +949,7 @@ async def evidence_followup_questions(
 async def evidence_followup_regenerate(
     resume_id: str,
     body: EvidenceFollowupRegenerateRequest,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -840,19 +963,139 @@ async def evidence_followup_regenerate(
     if not body.answers:
         raise HTTPException(status_code=400, detail="请至少回答一个问题")
 
+    reservation = await reserve_feature_entitlement(
+        db,
+        actor=current_user,
+        feature="evidence_regenerate",
+        idempotency_key=idempotency_key or str(uuid.uuid4()),
+        request_payload={
+            "resume_id": resume_id,
+            **body.model_dump(),
+        },
+        reservation_meta={"entrypoint": "evidence_followup"},
+    )
+    if not reservation["created"]:
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "idempotency_replayed", **reservation},
+        )
+
     try:
         context = get_entry_context(resume.parsed_json or {}, body.entry_type, body.index)
     except ValueError as e:
+        await finalize_quota(
+            db,
+            reservation["reservation_id"],
+            succeeded=False,
+            failure_reason="invalid_context",
+        )
         raise HTTPException(status_code=400, detail=str(e))
 
-    result = regenerate_evidence_sentence(
-        context,
-        [a.model_dump() for a in body.answers],
+    try:
+        result = await run_in_thread(
+            regenerate_evidence_sentence,
+            context,
+            [a.model_dump() for a in body.answers],
+            rewrite_mode=body.rewrite_mode,
+        )
+    except Exception:
+        await db.rollback()
+        await finalize_quota(
+            db,
+            reservation["reservation_id"],
+            succeeded=False,
+            failure_reason="generation_error",
+        )
+        raise
+    metering = result.pop("_metering", {})
+    if metering.get("model_called"):
+        await record_provider_cost_event(
+            db,
+            reservation_id=reservation["reservation_id"],
+            user_id=str(current_user.id),
+            organization_id=None,
+            feature="evidence_regenerate",
+            prompt_version="evidence-regenerate-v1",
+            provider_status=metering.get("provider_status") or "unknown",
+            usage=metering.get("provider_usage"),
+        )
+    model_output_used = bool(metering.get("model_output_used"))
+    await finalize_quota(
+        db,
+        reservation["reservation_id"],
+        succeeded=model_output_used,
+        failure_reason=(
+            None
+            if model_output_used
+            else (
+                "no_model_call"
+                if not metering.get("model_called")
+                else "model_output_not_delivered"
+            )
+        ),
+        meta={
+            "model_called": bool(metering.get("model_called")),
+            "fidelity_version": (result.get("fidelity_result") or {}).get("version"),
+            "evidence_references": result.get("evidence_references") or [],
+        },
+    )
+    result["fidelity_proof"] = create_fidelity_proof(
+        resume_id=resume_id,
+        field_path=result["field_path"],
+        value=result["example_after"],
+        fidelity_result=result.get("fidelity_result") or {},
+        evidence_references=result.get("evidence_references") or [],
     )
     return {
         "resume_id": resume_id,
         **result,
     }
+
+
+@app.get("/resumes/{resume_id}/claim-followup/questions")
+async def claim_followup_questions(
+    resume_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """AI 面试官：获取简历 claim 追问列表。"""
+    resume = await db.get(Resume, resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="简历不存在")
+    if resume.user_id != str(current_user.id):
+        raise HTTPException(status_code=403, detail="无权访问该简历")
+
+    parsed = resume.parsed_json or {}
+    pack = generate_claim_followup_pack(parsed)
+    questions = pack["questions"]
+    audit = pack["audit"]
+    return {
+        "resume_id": resume_id,
+        "intro": "为了让这段经历表达得更可信，AI 面试官会帮你补齐细节。",
+        "questions": questions,
+        "claim_audit_summary": {
+            "flagged_claims": audit.get("flagged_claims", 0),
+            "overall_status": audit.get("overall_status"),
+            "overall_status_label": audit.get("overall_status_label"),
+        },
+    }
+
+
+@app.get("/resumes/{resume_id}/claim-reasoning-audit")
+async def resume_claim_reasoning_audit(
+    resume_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """求职者侧：claim 级推理审计。"""
+    resume = await db.get(Resume, resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="简历不存在")
+    if resume.user_id != str(current_user.id):
+        raise HTTPException(status_code=403, detail="无权访问该简历")
+
+    audit = await run_in_thread(reason_about_claims, resume.parsed_json or {})
+    return {"resume_id": resume_id, "claim_reasoning": audit}
 
 
 @app.get("/resume-variant-templates")
@@ -1090,8 +1333,10 @@ async def candidate_dashboard_summary(
             top_match_score = top_matches[0].get("score")
             top_match_title = top_matches[0].get("job_title")
 
-    resume_stmt = select(MatchResult).join(Resume, MatchResult.resume_id == Resume.id).where(
-        Resume.user_id == user_id
+    resume_stmt = (
+        select(MatchResult)
+        .join(Resume, MatchResult.resume_id == Resume.id)
+        .where(Resume.user_id == user_id)
     )
     match_count = len((await db.execute(resume_stmt)).scalars().all())
 
@@ -1111,6 +1356,7 @@ async def candidate_dashboard_summary(
         "health_check": health,
     }
 
+
 # ------------- 简历删除 ---------------
 @app.delete("/resumes/{resume_id}")
 async def delete_resume(
@@ -1118,90 +1364,102 @@ async def delete_resume(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    resume = await db.get(Resume, resume_id)
-    if not resume:
-        raise HTTPException(status_code=404, detail="简历不存在")
-    if resume.user_id != str(current_user.id):
-        raise HTTPException(status_code=403, detail="无权删除该简历")
-
-    # 删除关联的匹配记录（如果有）
-    await db.execute(
-        sql_delete(MatchResult).where(MatchResult.resume_id == resume_id)
-    )
-    await db.delete(resume)
+    await owned_resume_or_404(db, resume_id, current_user)
+    await delete_resume_graph(db, [resume_id])
     await db.commit()
     return {"status": "ok"}
+
 
 # ------------- 岗位发布 ---------------
 @app.post("/post-job", response_model=JobInfo)
 async def post_job(
-    employer_id: str = "employer-001",
     file: Optional[UploadFile] = None,
     description_text: Optional[str] = None,
-    db: AsyncSession = Depends(get_db)
+    current_user: User = Depends(require_employer),
+    db: AsyncSession = Depends(get_db),
 ):
+    file_path = None
     if file:
-        file_path = os.path.join(UPLOAD_DIR, file.filename)
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        ext = os.path.splitext(file.filename)[-1].lower()
-        if ext == ".pdf":
-            text = extract_text_from_pdf(file_path)
-        elif ext in [".docx", ".doc"]:
-            text = extract_text_from_docx(file_path)
-        elif ext == ".txt":
-            with open(file_path, "r", encoding="utf-8") as f:
-                text = f.read()
-        else:
-            os.remove(file_path)
-            raise HTTPException(status_code=400, detail="仅支持 PDF, DOCX, TXT 格式")
-        os.remove(file_path)
+        try:
+            file_path, ext = await save_upload_safely(file, UPLOAD_DIR)
+            text = await extract_text_bounded(
+                file_path,
+                ext,
+                extract_text_from_pdf,
+                extract_text_from_docx,
+            )
+        finally:
+            if file_path is not None:
+                file_path.unlink(missing_ok=True)
     elif description_text:
         text = description_text
+        max_chars = int(os.getenv("UPLOAD_MAX_TEXT_CHARS", "100000"))
+        if len(text) > max_chars:
+            raise HTTPException(status_code=413, detail="岗位描述超过长度限制")
     else:
         raise HTTPException(status_code=400, detail="请上传文件或填写 description_text")
-    try:
-        job_data = parse_job_with_llm(text)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI 解析失败: {str(e)}")
-    emp = await db.get(User, employer_id)
-    if not emp:
-        emp = User(id=employer_id, email=f"{employer_id}@example.com")
-        db.add(emp)
+    job_data = await call_parser_bounded(parse_job_with_llm, text)
     jd = JobDescription(
-        employer_id=employer_id,
+        employer_id=str(current_user.id),
         title=job_data.title or "未命名岗位",
         raw_text=text,
-        parsed_json=job_data.model_dump()
+        parsed_json=job_data.model_dump(),
     )
     db.add(jd)
     await db.commit()
     return job_data
 
+
 # ------------- 岗位查询 ---------------
-@app.get("/jobs/{employer_id}")
-async def get_jobs(employer_id: str, db: AsyncSession = Depends(get_db)):
-    stmt = select(JobDescription).where(JobDescription.employer_id == employer_id).order_by(JobDescription.created_at.desc())
+def _owned_job_payload(job: JobDescription) -> dict:
+    return {
+        "id": str(job.id),
+        "title": job.title,
+        "parsed": job.parsed_json,
+        "created_at": job.created_at.isoformat(),
+    }
+
+
+@app.get("/jobs/mine")
+async def get_my_jobs(
+    current_user: User = Depends(require_employer),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = (
+        select(JobDescription)
+        .where(JobDescription.employer_id == str(current_user.id))
+        .order_by(JobDescription.created_at.desc())
+    )
     result = await db.execute(stmt)
-    jobs = result.scalars().all()
-    return [
-        {
-            "id": str(j.id),
-            "title": j.title,
-            "parsed": j.parsed_json,
-            "created_at": j.created_at.isoformat()
-        }
-        for j in jobs
-    ]
+    return [_owned_job_payload(job) for job in result.scalars().all()]
+
+
+@app.get("/jobs/{employer_id}")
+async def get_jobs(
+    employer_id: str,
+    current_user: User = Depends(require_employer),
+    db: AsyncSession = Depends(get_db),
+):
+    if employer_id != str(current_user.id):
+        raise HTTPException(status_code=404, detail="资源不存在或无权访问")
+    return await get_my_jobs(current_user=current_user, db=db)
+
 
 @app.post("/jobs/sync-sources")
-async def sync_job_sources(db: AsyncSession = Depends(get_db)):
-    """手动同步国企 + 外企岗位数据源"""
-    await fetch_foreign_jobs()
-    await fetch_guoqi_jobs()
-    await run_full_analytics_rebuild()
+async def sync_job_sources(
+    current_user: User = Depends(require_admin),
+):
+    """Enqueue scrape + analytics rebuild (admin)."""
+    accepted = await enqueue_job(
+        redis_client,
+        job_type="job_sources_sync",
+        payload={},
+        idempotency_key=f"job_sources_sync:{current_user.id}:{int(time.time()) // 60}",
+    )
     return {
-        "msg": "岗位与数据分析已同步",
+        "msg": "岗位与数据分析同步任务已受理",
+        "job_id": accepted["job_id"],
+        "status": accepted["status"],
         "sources": ["国企-国资央企", "外企-Remotive/Arbeitnow", "录用画像-网络论坛统计"],
     }
 
@@ -1214,29 +1472,30 @@ async def browse_jobs(
     salary_max: Optional[int] = None,
     source_type: Optional[str] = None,
     sort_by: str = "created_at",
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     stmt = select(JobDescription)
     if keyword:
         like_pattern = f"%{keyword}%"
         stmt = stmt.where(
-            (JobDescription.title.ilike(like_pattern)) |
-            (JobDescription.raw_text.ilike(like_pattern))
+            (JobDescription.title.ilike(like_pattern))
+            | (JobDescription.raw_text.ilike(like_pattern))
         )
     result = await db.execute(stmt.order_by(JobDescription.created_at.desc()))
     jobs = result.scalars().all()
 
     # 地点过滤
     if location:
-        jobs = [j for j in jobs if j.parsed_json and
-                location in (j.parsed_json.get("location") or "")]
-    
+        jobs = [
+            j for j in jobs if j.parsed_json and location in (j.parsed_json.get("location") or "")
+        ]
+
     # 薪资范围过滤
     def parse_salary_range(salary_str):
         """解析 '25k-35k' 或 '25000-35000' 返回 (最低, 最高) 单位为k"""
         if not salary_str:
             return None
-        nums = re.findall(r'[\d.]+', salary_str)
+        nums = re.findall(r"[\d.]+", salary_str)
         if len(nums) >= 2:
             low = float(nums[0])
             high = float(nums[1])
@@ -1266,10 +1525,7 @@ async def browse_jobs(
         jobs = filtered
 
     if source_type in ("soe", "foreign", "employer"):
-        jobs = [
-            j for j in jobs
-            if job_source_type(j.employer_id, j.parsed_json) == source_type
-        ]
+        jobs = [j for j in jobs if job_source_type(j.employer_id, j.parsed_json) == source_type]
 
     if sort_by == "created_at":
         jobs = sorted(jobs, key=lambda j: j.created_at, reverse=True)
@@ -1278,28 +1534,59 @@ async def browse_jobs(
         {
             "id": str(j.id),
             "title": j.title,
-            "parsed": j.parsed_json,
+            "parsed": public_job_payload(j.parsed_json),
             "company_name": (j.parsed_json or {}).get("company_name", ""),
-            "contact_person": (j.parsed_json or {}).get("contact_person", ""),
-            "contact_info": (j.parsed_json or {}).get("contact_info", ""),
             "created_at": j.created_at.isoformat(),
             "source": job_source_label(j.employer_id, j.parsed_json),
             "source_type": job_source_type(j.employer_id, j.parsed_json),
         }
         for j in jobs
     ]
+
+
 # ------------- 岗位编辑 ---------------
 class JobUpdate(BaseModel):
     parsed_json: Dict[str, Any]
 
+
+PUBLIC_JOB_FIELDS = {
+    "title",
+    "responsibilities",
+    "requirements",
+    "required_skills",
+    "soft_skills",
+    "leadership_signals",
+    "communication_signals",
+    "education_requirement",
+    "school_tier_keywords",
+    "salary_range",
+    "location",
+    "experience_years",
+    "education",
+    "other_notes",
+    "company_name",
+    "description",
+}
+
+
+def public_job_payload(parsed: Optional[dict]) -> dict:
+    source = parsed or {}
+    return {key: source[key] for key in PUBLIC_JOB_FIELDS if key in source}
+
+
 @app.put("/jobs/{job_id}")
-async def update_job(job_id: str, update: JobUpdate, db: AsyncSession = Depends(get_db)):
-    job = await db.get(JobDescription, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="岗位不存在")
+async def update_job(
+    job_id: str,
+    update: JobUpdate,
+    current_user: User = Depends(require_employer),
+    db: AsyncSession = Depends(get_db),
+):
+    job = await owned_job_or_404(db, job_id, current_user)
     job.parsed_json = update.parsed_json
+    job.title = str(update.parsed_json.get("title") or job.title)
     await db.commit()
     return {"status": "ok"}
+
 
 @app.get("/job/{job_id}")
 async def get_job_detail(job_id: str, db: AsyncSession = Depends(get_db)):
@@ -1309,43 +1596,40 @@ async def get_job_detail(job_id: str, db: AsyncSession = Depends(get_db)):
     return {
         "id": str(job.id),
         "title": job.title,
-        "parsed": job.parsed_json,
+        "parsed": public_job_payload(job.parsed_json),
         "company_name": job.parsed_json.get("company_name", "") if job.parsed_json else "",
-        "contact_person": job.parsed_json.get("contact_person", "") if job.parsed_json else "",
-        "contact_info": job.parsed_json.get("contact_info", "") if job.parsed_json else "",
-        "created_at": job.created_at.isoformat()
+        "created_at": job.created_at.isoformat(),
     }
+
 
 # ------------- 岗位删除 ---------------
 @app.delete("/jobs/{job_id}")
-async def delete_job(job_id: str, db: AsyncSession = Depends(get_db)):
-    # 检查岗位是否存在
-    job = await db.get(JobDescription, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="岗位不存在")
-
+async def delete_job(
+    job_id: str,
+    current_user: User = Depends(require_employer),
+    db: AsyncSession = Depends(get_db),
+):
+    await owned_job_or_404(db, job_id, current_user)
     try:
-        # 1. 先删除该岗位下的所有匹配记录（使用批量删除）
-        await db.execute(
-            sql_delete(MatchResult).where(MatchResult.job_id == job_id)
-        )
-        # 2. 删除岗位本身
-        await db.delete(job)
+        await delete_job_graph(db, [job_id])
         await db.commit()
         return {"status": "ok"}
-    except Exception as e:
+    except Exception:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"删除失败: {str(e)}")
+        logger.exception("岗位删除失败 job_id=%s", job_id)
+        raise HTTPException(status_code=500, detail="删除失败，请稍后重试")
+
 
 # ------------- 匹配 ---------------
 class MatchEvaluateRequest(BaseModel):
     resume_id: Optional[str] = None
     job_id: Optional[str] = None
 
+
 @app.post("/match/evaluate")
 async def evaluate_match(
     req: MatchEvaluateRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_candidate),
     db: AsyncSession = Depends(get_db),
 ):
     """v2 完整匹配评估：十维 breakdown + 补充信号 + 职业建议。"""
@@ -1370,42 +1654,94 @@ async def evaluate_match(
     result["job_title"] = job.title
     return result
 
+
 @app.post("/match")
 async def trigger_matching(
     resume_id: Optional[str] = None,
     job_id: Optional[str] = None,
-    db: AsyncSession = Depends(get_db)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    await generate_matches(db, resume_id, job_id)
-    return {"status": "ok"}
+    if current_user.role == "candidate":
+        if not resume_id:
+            raise HTTPException(status_code=400, detail="求职者必须指定自己的简历")
+        await owned_resume_or_404(db, resume_id, current_user)
+    elif current_user.role == "employer":
+        if not job_id:
+            raise HTTPException(status_code=400, detail="招聘方必须指定自己的岗位")
+        await owned_job_or_404(db, job_id, current_user)
+        if resume_id:
+            raise HTTPException(
+                status_code=400,
+                detail="招聘方不能按任意 resume_id 定向生成匹配",
+            )
+    elif current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="无权执行匹配")
+    accepted = await enqueue_job(
+        redis_client,
+        job_type="match_generate",
+        payload={
+            "resume_id": resume_id,
+            "job_id": job_id,
+            "force_refresh": True,
+            "llm_rerank_top": 0,
+        },
+        idempotency_key=f"match_generate:{resume_id}:{job_id}",
+    )
+    return {"status": accepted["status"], "job_id": accepted["job_id"]}
+
 
 @app.post("/match/user/{user_id}")
 async def match_for_user(
     user_id: str,
     use_llm: bool = True,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    n = await generate_matches_for_user(
-        db,
-        user_id,
-        force_refresh=True,
-        llm_rerank_top=5 if use_llm else 0,
+    if current_user.role != "admin" and (
+        current_user.role != "candidate" or str(current_user.id) != user_id
+    ):
+        raise HTTPException(status_code=404, detail="资源不存在或无权访问")
+    accepted = await enqueue_job(
+        redis_client,
+        job_type="match_generate",
+        payload={
+            "user_id": user_id,
+            "force_refresh": True,
+            "llm_rerank_top": 5 if use_llm else 0,
+        },
+        idempotency_key=f"match_generate:user:{user_id}:{int(use_llm)}",
     )
-    return {"status": "ok", "resumes_processed": n}
+    return {
+        "status": accepted["status"],
+        "job_id": accepted["job_id"],
+        "inline": accepted.get("inline"),
+        "result": accepted.get("result"),
+    }
+
 
 @app.get("/matches/user/{user_id}")
 async def get_matches_for_user(
     user_id: str,
     refresh: bool = False,
-    db: AsyncSession = Depends(get_db)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    # 如果需要刷新，先生成匹配（快速本地算法）
+    if current_user.role != "admin" and (
+        current_user.role != "candidate" or str(current_user.id) != user_id
+    ):
+        raise HTTPException(status_code=404, detail="资源不存在或无权访问")
+    # 如果需要刷新，先入队生成匹配（TESTING 下 inline）
     if refresh:
-        await generate_matches_for_user(
-            db,
-            user_id,
-            force_refresh=True,
-            llm_rerank_top=5,
+        await enqueue_job(
+            redis_client,
+            job_type="match_generate",
+            payload={
+                "user_id": user_id,
+                "force_refresh": True,
+                "llm_rerank_top": 5,
+            },
+            idempotency_key=f"match_generate:user:{user_id}:refresh",
         )
 
     # 重新获取简历列表
@@ -1420,7 +1756,7 @@ async def get_matches_for_user(
         select(MatchResult)
         .where(MatchResult.resume_id.in_(resume_ids))
         .order_by(MatchResult.score.desc())
-        .limit(100)   # 最多 100 个
+        .limit(100)  # 最多 100 个
     )
     result = await db.execute(stmt)
     matches = result.scalars().all()
@@ -1451,16 +1787,30 @@ async def get_matches_for_user(
             "improvement_delta": bd.get("improvement_delta"),
             "llm_reranked": bool((bd.get("llm_rerank") or {}).get("source") == "llm_rerank"),
             "job_title": job_map[str(m.job_id)].title if str(m.job_id) in job_map else "未知岗位",
-            "job_location": job_map[str(m.job_id)].parsed_json.get("location") if str(m.job_id) in job_map else None,
-            "job_salary": job_map[str(m.job_id)].parsed_json.get("salary_range") if str(m.job_id) in job_map else None,
+            "job_location": job_map[str(m.job_id)].parsed_json.get("location")
+            if str(m.job_id) in job_map
+            else None,
+            "job_salary": job_map[str(m.job_id)].parsed_json.get("salary_range")
+            if str(m.job_id) in job_map
+            else None,
             "created_at": m.created_at.isoformat(),
         }
 
     return [_serialize_user_match(m) for m in matches]
 
+
 @app.get("/matches/resume/{resume_id}")
-async def get_matches_for_resume(resume_id: str, db: AsyncSession = Depends(get_db)):
-    stmt = select(MatchResult).where(MatchResult.resume_id == resume_id).order_by(MatchResult.score.desc())
+async def get_matches_for_resume(
+    resume_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await owned_resume_or_404(db, resume_id, current_user)
+    stmt = (
+        select(MatchResult)
+        .where(MatchResult.resume_id == resume_id)
+        .order_by(MatchResult.score.desc())
+    )
     result = await db.execute(stmt)
     matches = result.scalars().all()
 
@@ -1481,16 +1831,39 @@ async def get_matches_for_resume(resume_id: str, db: AsyncSession = Depends(get_
             "reason": m.reason,
             "score_breakdown": m.score_breakdown,
             "potential_score": (m.score_breakdown or {}).get("potential_score"),
-            "created_at": m.created_at.isoformat()
+            "created_at": m.created_at.isoformat(),
         }
         for m in matches
     ]
 
+
 @app.get("/matches/job/{job_id}")
-async def get_matches_for_job(job_id: str, db: AsyncSession = Depends(get_db)):
-    stmt = select(MatchResult).where(MatchResult.job_id == job_id).order_by(MatchResult.score.desc())
+async def get_matches_for_job(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role not in {"employer", "admin"}:
+        raise HTTPException(status_code=403, detail="仅招聘方可查看岗位匹配")
+    await owned_job_or_404(db, job_id, current_user)
+    stmt = (
+        select(MatchResult).where(MatchResult.job_id == job_id).order_by(MatchResult.score.desc())
+    )
     result = await db.execute(stmt)
     matches = result.scalars().all()
+
+    if current_user.role != "admin":
+        application_stmt = select(JobApplication).where(
+            JobApplication.job_id == job_id,
+            JobApplication.employer_id == str(current_user.id),
+        )
+        applications = (await db.execute(application_stmt)).scalars().all()
+        authorized_resume_ids = {
+            str(application.resume_id)
+            for application in applications
+            if application_has_candidate_authorization(application)
+        }
+        matches = [match for match in matches if str(match.resume_id) in authorized_resume_ids]
 
     resume_ids = list({m.resume_id for m in matches})
     resume_map = {}
@@ -1507,20 +1880,109 @@ async def get_matches_for_job(job_id: str, db: AsyncSession = Depends(get_db)):
             "score": m.score,
             "reason": m.reason,
             "score_breakdown": m.score_breakdown,
-            "candidate_name": (resume_map[str(m.resume_id)].parsed_json.get("name") if str(m.resume_id) in resume_map else None) or "匿名",
-            "expected_title": (resume_map[str(m.resume_id)].parsed_json.get("expected_job_title") if str(m.resume_id) in resume_map else None) or "未填写",
-            "created_at": m.created_at.isoformat()
+            "candidate_name": (
+                resume_map[str(m.resume_id)].parsed_json.get("name")
+                if str(m.resume_id) in resume_map
+                else None
+            )
+            or "匿名",
+            "expected_title": (
+                resume_map[str(m.resume_id)].parsed_json.get("expected_job_title")
+                if str(m.resume_id) in resume_map
+                else None
+            )
+            or "未填写",
+            "created_at": m.created_at.isoformat(),
         }
         for m in matches
     ]
 
+
 # ------------- 虚拟面试官 ---------------
+# 鉴权优先：首条 JSON {"type":"auth","token":"..."}；query token 默认关闭。
 @app.websocket("/ws/interview/{user_id}")
 async def websocket_interview(websocket: WebSocket, user_id: str):
+    requested_mode = websocket.query_params.get("mode", "profile")
+    mode = requested_mode if requested_mode in {"profile", "claim_followup"} else "profile"
+    resume_id = websocket.query_params.get("resume_id")
+    application_id = websocket.query_params.get("application_id")
+    await websocket.accept()
+
     async with AsyncSessionLocal() as db:
-        await interview_handler(websocket, user_id, db)
+        user = await authenticate_websocket(
+            websocket,
+            db,
+            user_id=user_id,
+            resume_id=resume_id,
+            application_id=application_id,
+        )
+        if user is None:
+            return
+
+        try:
+            fair_use = await start_interview_session(
+                db,
+                actor=user,
+                mode=mode,
+            )
+        except HTTPException as exc:
+            await send_fair_use_error(websocket, exc)
+            await websocket.close(code=1008, reason="fair_use_exceeded")
+            return
+
+        try:
+            if mode == "claim_followup" and resume_id:
+                await claim_followup_handler(
+                    websocket,
+                    user_id,
+                    resume_id,
+                    db,
+                    application_id=application_id,
+                    fair_use=fair_use,
+                )
+            else:
+                await interview_handler(
+                    websocket,
+                    user_id,
+                    db,
+                    application_id=application_id,
+                    fair_use=fair_use,
+                )
+        finally:
+            await close_interview_session(db, fair_use)
+
+
+@app.get("/usage/me")
+async def my_usage(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """当前用户本月功能额度；供应商 token 与成本仅管理员可见。"""
+    return await get_usage_summary(db, str(current_user.id))
+
 
 # ------------- 健康检查 ---------------
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/ready")
+async def ready():
+    result = await collect_readiness(engine, redis_client)
+    if result["status"] != "ready":
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "service_not_ready", "message": "服务尚未就绪"},
+        )
+    return {
+        "status": "ready",
+        "model_mode": model_runtime_mode(),
+    }
+
+
+@app.get("/admin/readiness")
+async def admin_readiness(
+    _current_user: User = Depends(require_admin),
+):
+    return await collect_readiness(engine, redis_client)

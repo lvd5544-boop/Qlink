@@ -1,24 +1,25 @@
 import os
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .auth import get_current_user
 from .database import get_db
-from .models_db import User, Resume, Company, HiredProfileSubmission
+from .models_db import User, Company, HiredProfileSubmission
 from .company_registry import seed_companies, infer_role_family, TIER_LABELS
 from .market_analytics import (
     get_company_profile,
-    rebuild_market_insights,
     rebuild_hired_benchmarks_statistical,
-    run_full_analytics_rebuild,
 )
-from .forum_insight_pipeline import sync_forum_insights_to_db
-from .resume_coach import generate_resume_coach
+from .resume_coach_service import run_resume_coach
+from .fairness import build_fairness_baseline
+from .background_jobs import enqueue_job, shared_redis
+from .security import owned_resume_or_404, require_admin, require_candidate
 
 router = APIRouter(prefix="/analytics", tags=["数据分析"])
 
@@ -64,6 +65,49 @@ def _validate_hired_submission(req: HiredProfileSubmitRequest) -> None:
     spam_markers = ["测试", "test", "asdf", "1111"]
     if any(m in title.lower() for m in spam_markers):
         raise HTTPException(status_code=400, detail="职位名称疑似无效，请填写真实岗位")
+
+
+@router.get("/fairness/baseline")
+async def fairness_baseline(
+    top_k: int = 10,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Pilot fairness monitoring: score distributions and observational ratios.
+
+    Does not collect or expose demographic attributes. Admin-only.
+    """
+    if top_k < 1 or top_k > 50:
+        raise HTTPException(status_code=400, detail="top_k 需在 1-50 之间")
+    return await build_fairness_baseline(db, top_k=top_k)
+
+
+class FairnessLegalGroupRequest(BaseModel):
+    top_k: int = 10
+    legal_basis_attested: bool = False
+    groups: List[dict] = Field(default_factory=list)
+
+
+@router.post("/fairness/baseline")
+async def fairness_baseline_with_legal_groups(
+    body: FairnessLegalGroupRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Same baseline, optionally with operator-attested de-identified groups."""
+    if body.top_k < 1 or body.top_k > 50:
+        raise HTTPException(status_code=400, detail="top_k 需在 1-50 之间")
+    if body.groups and not body.legal_basis_attested:
+        raise HTTPException(
+            status_code=400,
+            detail="提交去标识化分组时必须确认 legal_basis_attested=true",
+        )
+    return await build_fairness_baseline(
+        db,
+        top_k=body.top_k,
+        legal_groups=body.groups,
+        legal_basis_attested=body.legal_basis_attested,
+    )
 
 
 @router.get("/companies")
@@ -225,11 +269,9 @@ async def moderate_hired_submission(
     submission_id: str,
     body: ModerateSubmissionRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
 ):
-    """招聘方审核用户提交的录用画像（通过/拒绝）"""
-    if current_user.role != "employer":
-        raise HTTPException(status_code=403, detail="仅招聘方可审核")
+    """管理员审核用户提交的录用画像（通过/拒绝）。"""
 
     row = await db.get(HiredProfileSubmission, submission_id)
     if not row:
@@ -246,58 +288,57 @@ async def moderate_hired_submission(
 @router.post("/resume-coach")
 async def resume_coach(
     req: ResumeCoachRequest,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_candidate),
 ):
-    resume = await db.get(Resume, req.resume_id)
-    if not resume:
-        raise HTTPException(status_code=404, detail="简历不存在")
-    if str(resume.user_id) != str(current_user.id):
-        raise HTTPException(status_code=403, detail="无权访问该简历")
-
-    try:
-        result = await generate_resume_coach(
-            db,
-            resume.parsed_json or {},
-            req.company_id,
-            req.role_family,
-            req.target_job_title,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"简历诊断失败: {e}")
-
-    return result
+    resume = await owned_resume_or_404(db, req.resume_id, current_user)
+    return await run_resume_coach(
+        db,
+        actor=current_user,
+        resume=resume,
+        company_id=req.company_id,
+        role_family=req.role_family,
+        target_job_title=req.target_job_title,
+        idempotency_key=idempotency_key or str(uuid.uuid4()),
+        entrypoint="analytics",
+    )
 
 
 @router.post("/rebuild")
 async def rebuild_analytics(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
 ):
-    """手动触发聚合（开发/管理员用）"""
-    await seed_companies(db)
-    forum_stats = await sync_forum_insights_to_db(db)
-    jd_count = await rebuild_market_insights(db)
-    hb_count = await rebuild_hired_benchmarks_statistical(db)
+    """Enqueue analytics rebuild (admin)."""
+    accepted = await enqueue_job(
+        shared_redis(),
+        job_type="analytics_rebuild",
+        payload={"seed_companies": True},
+        idempotency_key=f"analytics_rebuild:{current_user.id}",
+    )
     return {
-        "msg": "分析数据已重建（含网络论坛抓取与统计模型）",
-        "forum": forum_stats,
-        "market_insights": jd_count,
-        "hired_benchmarks": hb_count,
+        "msg": "分析数据重建任务已受理",
+        "job_id": accepted["job_id"],
+        "status": accepted["status"],
     }
 
 
 @router.post("/sync-forum-insights")
 async def sync_forum_insights(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
 ):
-    """抓取 Reddit / V2EX / HN 等公开经验帖并重建统计录用画像"""
-    stats = await sync_forum_insights_to_db(db)
-    hb = await rebuild_hired_benchmarks_statistical(db)
-    return {"msg": "网络经验数据已同步", "forum": stats, "hired_benchmarks": hb}
+    """Enqueue forum scrape + hired benchmark rebuild (admin)."""
+    accepted = await enqueue_job(
+        shared_redis(),
+        job_type="forum_sync",
+        payload={},
+        idempotency_key=f"forum_sync:{current_user.id}",
+    )
+    return {
+        "msg": "网络经验同步任务已受理",
+        "job_id": accepted["job_id"],
+        "status": accepted["status"],
+    }
 
 
 @router.get("/data-sources")

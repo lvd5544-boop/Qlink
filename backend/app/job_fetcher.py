@@ -1,21 +1,21 @@
-import os
 import re
 import logging
 import httpx
-from sqlalchemy.ext.asyncio import AsyncSession
 from .database import AsyncSessionLocal
 from .models_db import JobDescription, User
-from sqlalchemy import select, delete
+from sqlalchemy import delete
 
 logger = logging.getLogger(__name__)
 
 REMOTE_API_URL = "https://remotive.com/api/remote-jobs"
 
+
 def clean_html(raw_html: str) -> str:
     """去除 HTML 标签，只保留纯文本"""
-    clean = re.sub(r'<[^>]+>', '', raw_html)
-    clean = re.sub(r'\s+', ' ', clean).strip()
+    clean = re.sub(r"<[^>]+>", "", raw_html)
+    clean = re.sub(r"\s+", " ", clean).strip()
     return clean
+
 
 async def fetch_and_store_jobs():
     logger.info("开始抓取远程岗位...")
@@ -41,9 +41,7 @@ async def fetch_and_store_jobs():
             await db.flush()
 
         # 清除旧的系统岗位
-        await db.execute(
-            delete(JobDescription).where(JobDescription.employer_id == "system")
-        )
+        await db.execute(delete(JobDescription).where(JobDescription.employer_id == "system"))
 
         count = 0
         for job in jobs_list:
@@ -54,18 +52,20 @@ async def fetch_and_store_jobs():
                     "title": job.get("title", "未知岗位"),
                     "salary_range": job.get("salary", ""),
                     "location": "远程",
-                    "required_skills": [{"name": tag, "level": "intermediate"} for tag in job.get("tags", [])[:8]],
-                    "responsibilities": [clean_desc],   # 完整干净文本
+                    "required_skills": [
+                        {"name": tag, "level": "intermediate"} for tag in job.get("tags", [])[:8]
+                    ],
+                    "responsibilities": [clean_desc],  # 完整干净文本
                     "experience_years": None,
                     "education": "",
-                    "other_notes": f"来源: {job.get('url', '')}"
+                    "other_notes": f"来源: {job.get('url', '')}",
                 }
 
                 jd = JobDescription(
                     employer_id="system",
                     title=job_info["title"],
                     raw_text=description_raw,
-                    parsed_json=job_info
+                    parsed_json=job_info,
                 )
                 db.add(jd)
                 count += 1

@@ -1,0 +1,5 @@
+ALTER TABLE usage_events
+    ADD COLUMN IF NOT EXISTS estimated_cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0;
+
+ALTER TABLE usage_reservations
+    ADD COLUMN IF NOT EXISTS estimated_cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0;

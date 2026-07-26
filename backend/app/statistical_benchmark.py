@@ -1,4 +1,5 @@
 """录用画像统计模型：加权频率 + 拉普拉斯平滑 + Wilson 置信区间"""
+
 import math
 import logging
 from collections import defaultdict
@@ -187,7 +188,7 @@ def generate_statistical_conclusions(
             ci_h = stats.get("ci_high", 0) * 100
             prefix = "在公开经验帖中提及较多" if label == "院校层次" else "信号出现频率较高"
             conclusions.append(
-                f"【{label}】{name}：{prefix}，加权估计约 {p*100:.1f}%（近似区间 {ci_l:.0f}%–{ci_h:.0f}%）"
+                f"【{label}】{name}：{prefix}，加权估计约 {p * 100:.1f}%（近似区间 {ci_l:.0f}%–{ci_h:.0f}%）"
             )
 
     top_lines(school_dist, "院校层次")
@@ -243,9 +244,7 @@ def build_statistical_benchmark_payload(bucket: dict) -> dict:
     elif n_corpus > 0 and n_live >= MIN_FORUM_SAMPLES_DISPLAY:
         corpus_share = source_breakdown.get("corpus", 0) / max(bucket["n_effective"], 0.01)
         if corpus_share > 0.4:
-            conclusions.append(
-                "网络样本中演示语料占比较高，结论请优先参考非语料来源。"
-            )
+            conclusions.append("网络样本中演示语料占比较高，结论请优先参考非语料来源。")
     confidence = compute_confidence_score(
         n_live, bucket["n_effective"], len(school_dist) + len(skill_dist)
     )

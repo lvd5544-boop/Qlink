@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Card, Statistic, Row, Col, Typography, Progress, Spin, Alert, List, Tag, Button } from 'antd';
+import { Card, Statistic, Row, Col, Typography, Progress, Spin, Alert, List, Tag, Button, Space } from 'antd';
 import {
   FileTextOutlined,
   MessageOutlined,
@@ -13,12 +13,9 @@ import {
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/PageHeader';
+import BillingSummaryCard from '../../components/BillingSummaryCard';
 import api from '../../api';
-import {
-  notifyDashboardRefresh,
-  readDashboardDeltas,
-  clearDashboardDeltas,
-} from '../../utils/dashboardSync';
+import { readDashboardDeltas, clearDashboardDeltas } from '../../utils/dashboardSync';
 
 const { Text } = Typography;
 
@@ -80,8 +77,10 @@ export default function Dashboard() {
   }, [userId]);
 
   useEffect(() => {
-    fetchSummary();
-    setRecentDeltas(readDashboardDeltas());
+    const initialTimer = setTimeout(() => {
+      fetchSummary();
+      setRecentDeltas(readDashboardDeltas());
+    }, 0);
 
     const onRefresh = () => {
       fetchSummary();
@@ -95,6 +94,7 @@ export default function Dashboard() {
     window.addEventListener('dashboard-refresh', onRefresh);
     window.addEventListener('focus', onFocus);
     return () => {
+      clearTimeout(initialTimer);
       window.removeEventListener('dashboard-refresh', onRefresh);
       window.removeEventListener('focus', onFocus);
     };
@@ -275,6 +275,8 @@ export default function Dashboard() {
         )}
       </Spin>
 
+      <BillingSummaryCard audience="candidate" />
+
       <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
         快捷入口
       </Text>
@@ -303,6 +305,3 @@ export default function Dashboard() {
     </div>
   );
 }
-
-// 供上传页等场景触发联动（导出以便复用）
-export { notifyDashboardRefresh };

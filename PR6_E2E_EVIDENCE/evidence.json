@@ -1,0 +1,51 @@
+{
+  "evidence": [
+    {
+      "step": "candidate_applied_jobs",
+      "hasInterviewInvite": true,
+      "snippet": "Q\n快连 QLink\n求职者中心\n首页\n浏览岗位\n已申请岗位\n上传简历\n我的简历\n虚拟面试\n岗位推荐\n面试邀请\n数据分析\n帮助\n已申请岗位\n 求职者\n退出\n已申请岗位\n刷新\nPR6 Gate Backend Engineer\n已收到面试邀请\n不限\n面议\n申请：7/25/2026, 9:20:46 PM\n查看对话"
+    },
+    {
+      "step": "candidate_invitations",
+      "hasInvite": true,
+      "snippet": "Q\n快连 QLink\n求职者中心\n首页\n浏览岗位\n已申请岗位\n上传简历\n我的简历\n虚拟面试\n岗位推荐\n面试邀请\n数据分析\n帮助\n面试邀请\n 求职者\n退出\n面试邀请\n岗位：PR6 Gate Backend Engineer\n\n消息：PR6 Gate 面试邀请\n\n发送时间：7/25/2026, 9:43:38 PM\n\n接受\n拒绝"
+    },
+    {
+      "step": "candidate_interview_uses",
+      "hasUseChoices": true,
+      "snippet": "Q\n快连 QLink\n求职者中心\n首页\n浏览岗位\n已申请岗位\n上传简历\n我的简历\n虚拟面试\n岗位推荐\n面试邀请\n数据分析\n帮助\n虚拟面试\n 求职者\n退出\nAI 虚拟面试官\n面试模式\n普通面试\n简历追问\n本次面试的用途偏好\n四项用途独立选择，结束后还会请你再次确认\n不开启的用途不会使用本次面试原文或结构化结果。\n帮助生成或改写我的简历\n将面试草稿作为个人岗位推荐的额外信号\n与本次申请对应的招聘方分享指定结果\n去标识化后用于模型质量改进\n开始面试\n\n与 AI 面试官轻松对话；结果先保存为草稿，由你决定每一种用途"
+    },
+    {
+      "step": "candidate_interview_ws_probe",
+      "href": "http://127.0.0.1:8080/candidate/interview",
+      "hasTokenInLocation": false,
+      "consoleErrors": []
+    },
+    {
+      "step": "employer_applications",
+      "hasInviteStatus": true,
+      "snippet": "Q\n快连 QLink\n招聘管理\n首页\n发布岗位\n我的岗位\n1\n帮助\n快连 QLink\n 招聘方\n退出\n岗位申请记录\n匹配候选人\n返回岗位列表\n全部 (1)\n待澄清\n候选人已说明\n已关闭未说明\n面试邀请 (1)\n拒绝/录用\n张三 · 未填写\n有待复核回复\n申请时间：7/25/2026, 9:20:46 PM\n已发送面试邀请\n对话"
+    },
+    {
+      "step": "employer_my_jobs",
+      "ok": true,
+      "consoleErrors": []
+    },
+    {
+      "step": "browser_health",
+      "health": 200,
+      "ready": 200,
+      "readyBody": "{\"status\":\"ready\",\"model_mode\":\"rules_only\"}"
+    },
+    {
+      "step": "interview_confirm_and_revoke",
+      "confirm_http": 200,
+      "confirm_status": "confirmed",
+      "revoke_http": 200,
+      "revoke_status": "revoked",
+      "note": "rules_only: seeded pending drafts; exercised confirm + delete/revoke"
+    }
+  ],
+  "candErrors": [],
+  "empErrors": []
+}

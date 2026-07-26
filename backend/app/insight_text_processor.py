@@ -1,4 +1,5 @@
 """招聘经验文本清洗与去重"""
+
 import hashlib
 import re
 from typing import List, Dict
@@ -50,9 +51,26 @@ def dedupe_posts(posts: List[Dict]) -> List[Dict]:
 def is_hiring_related(text: str) -> bool:
     """过滤明显无关帖"""
     keywords = [
-        "面试", "offer", "录用", "上岸", "入职", "校招", "社招", "简历",
-        "hiring", "interview", "recruit", "job", "career", "salary",
-        "岗位", "求职", "背调", "笔试", "复试", "hr",
+        "面试",
+        "offer",
+        "录用",
+        "上岸",
+        "入职",
+        "校招",
+        "社招",
+        "简历",
+        "hiring",
+        "interview",
+        "recruit",
+        "job",
+        "career",
+        "salary",
+        "岗位",
+        "求职",
+        "背调",
+        "笔试",
+        "复试",
+        "hr",
     ]
     t = text.lower()
     return any(k in t for k in keywords)

@@ -1,0 +1,16 @@
+services:
+  pr3-postgres:
+    image: pgvector/pgvector:0.7.4-pg16
+    environment:
+      POSTGRES_USER: pr3_test
+      POSTGRES_PASSWORD: pr3_test_only
+      POSTGRES_DB: jobplatform_test
+    ports:
+      - "127.0.0.1:55432:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pr3_test -d jobplatform_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30

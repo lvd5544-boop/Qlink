@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Card, List, Input, Button, Space, Tag, message, Spin, Modal, Descriptions, Typography, Select } from 'antd';
 import { SearchOutlined, EnvironmentOutlined, ClockCircleOutlined, DollarOutlined, SendOutlined, MessageOutlined } from '@ant-design/icons';
 import api from '../../api';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 const { Text } = Typography;
 
@@ -53,7 +54,7 @@ export default function BrowseJobs() {
       if (sourceType) params.source_type = sourceType;
       const res = await api.get('/browse-jobs', { params });
       setJobs(res.data);
-    } catch (err) {
+    } catch {
       message.error('加载岗位列表失败');
     } finally {
       setLoading(false);
@@ -61,7 +62,20 @@ export default function BrowseJobs() {
   };
 
   useEffect(() => {
-    fetchJobs();
+    let cancelled = false;
+    api.get('/browse-jobs', { params: { sort_by: 'created_at' } })
+      .then((res) => {
+        if (!cancelled) setJobs(res.data);
+      })
+      .catch(() => {
+        if (!cancelled) message.error('加载岗位列表失败');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const fetchResumes = async () => {
@@ -146,7 +160,7 @@ export default function BrowseJobs() {
       setSelectedJob(null);
       await openChat(application);
     } catch (err) {
-      message.error('申请失败：' + (err.response?.data?.detail || '请重试'));
+      message.error(`申请失败：${getApiErrorMessage(err, '请重试')}`);
     } finally {
       setSubmittingApplication(false);
     }
@@ -162,7 +176,7 @@ export default function BrowseJobs() {
       setChatMessages((prev) => [...prev, res.data]);
       setChatText('');
     } catch (err) {
-      message.error('发送失败：' + (err.response?.data?.detail || '请重试'));
+      message.error(`发送失败：${getApiErrorMessage(err, '请重试')}`);
     } finally {
       setSendingMessage(false);
     }

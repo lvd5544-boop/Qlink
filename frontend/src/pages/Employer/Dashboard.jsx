@@ -3,6 +3,7 @@ import { Card, Statistic, Row, Col, Typography } from 'antd';
 import { FileTextOutlined, TeamOutlined, FileAddOutlined, FolderOpenOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/PageHeader';
+import BillingSummaryCard from '../../components/BillingSummaryCard';
 import api from '../../api';
 
 const { Text } = Typography;
@@ -31,8 +32,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState({ jobs: 0, candidates: 0 });
 
   useEffect(() => {
-    const employerId = localStorage.getItem('user_id');
-    api.get(`/jobs/${employerId}`).then((res) => {
+    api.get('/jobs/mine').then((res) => {
       setStats((prev) => ({ ...prev, jobs: res.data.length }));
       const jobIds = res.data.map((j) => j.id);
       if (jobIds.length === 0) return;
@@ -62,6 +62,8 @@ export default function Dashboard() {
           </Card>
         </Col>
       </Row>
+
+      <BillingSummaryCard audience="organization" />
 
       <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
         快捷入口

@@ -1,8 +1,9 @@
-import { Form, Input, Button, message, Radio } from 'antd';
+import { Form, Input, Button, message, Alert } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { Link, useNavigate } from 'react-router-dom';
 import AuthLayout from '../components/AuthLayout';
 import api from '../api';
+import { getApiErrorMessage } from '../utils/apiError';
 
 export default function Register() {
   const navigate = useNavigate();
@@ -12,8 +13,8 @@ export default function Register() {
       await api.post('/auth/register', values);
       message.success('注册成功，请登录');
       navigate('/login');
-    } catch {
-      message.error('注册失败，邮箱可能已存在');
+    } catch (error) {
+      message.error(getApiErrorMessage(error, '注册失败，请检查填写内容'));
     }
   };
 
@@ -23,19 +24,24 @@ export default function Register() {
         <Form.Item name="email" rules={[{ required: true, message: '请输入邮箱' }]}>
           <Input prefix={<UserOutlined />} placeholder="邮箱" />
         </Form.Item>
-        <Form.Item name="password" rules={[{ required: true, message: '请输入密码' }]}>
+        <Form.Item
+          name="password"
+          rules={[
+            { required: true, message: '请输入密码' },
+            {
+              pattern: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{10,}$/,
+              message: '至少 10 位，并包含大写字母、小写字母和数字',
+            },
+          ]}
+        >
           <Input.Password prefix={<LockOutlined />} placeholder="密码" />
         </Form.Item>
-        <Form.Item name="role" rules={[{ required: true, message: '请选择角色' }]}>
-          <Radio.Group style={{ width: '100%' }}>
-            <Radio.Button value="candidate" style={{ width: '50%', textAlign: 'center' }}>
-              求职者
-            </Radio.Button>
-            <Radio.Button value="employer" style={{ width: '50%', textAlign: 'center' }}>
-              招聘方
-            </Radio.Button>
-          </Radio.Group>
-        </Form.Item>
+        <Alert
+          type="info"
+          showIcon
+          title="公开注册将创建求职者账号；招聘方账号需使用企业邀请码开通。"
+          style={{ marginBottom: 16 }}
+        />
         <Form.Item style={{ marginBottom: 12 }}>
           <Button type="primary" htmlType="submit" block>
             注册

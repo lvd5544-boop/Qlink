@@ -13,18 +13,52 @@ logger = logging.getLogger(__name__)
 SEED_PATH = Path(__file__).parent / "data" / "companies_seed.json"
 
 SOFT_SKILL_KEYWORDS = [
-    "沟通", "协作", "团队合作", "跨部门", "协调", "表达", "书面", "口头",
-    "抗压", "责任心", "自驱", "主动", "学习能力", "适应", "细致", "严谨",
-    "英语", "外语", "演讲", "汇报",
+    "沟通",
+    "协作",
+    "团队合作",
+    "跨部门",
+    "协调",
+    "表达",
+    "书面",
+    "口头",
+    "抗压",
+    "责任心",
+    "自驱",
+    "主动",
+    "学习能力",
+    "适应",
+    "细致",
+    "严谨",
+    "英语",
+    "外语",
+    "演讲",
+    "汇报",
 ]
 
 LEADERSHIP_KEYWORDS = [
-    "领导", "带领", "带团队", "管理", "主导", "负责", "项目负责人",
-    "项目经理", "mentor", "指导", "统筹", "决策",
+    "领导",
+    "带领",
+    "带团队",
+    "管理",
+    "主导",
+    "负责",
+    "项目负责人",
+    "项目经理",
+    "mentor",
+    "指导",
+    "统筹",
+    "决策",
 ]
 
 COMMUNICATION_KEYWORDS = [
-    "沟通", "协调", "汇报", "表达", "演讲", "书面", "跨部门", "客户沟通",
+    "沟通",
+    "协调",
+    "汇报",
+    "表达",
+    "演讲",
+    "书面",
+    "跨部门",
+    "客户沟通",
 ]
 
 SCHOOL_TIER_PATTERNS = [
@@ -37,7 +71,17 @@ SCHOOL_TIER_PATTERNS = [
 ]
 
 ROLE_FAMILIES = {
-    "engineering": ["工程师", "开发", "研发", "算法", "架构", "测试", "运维", "backend", "frontend"],
+    "engineering": [
+        "工程师",
+        "开发",
+        "研发",
+        "算法",
+        "架构",
+        "测试",
+        "运维",
+        "backend",
+        "frontend",
+    ],
     "product": ["产品", "产品经理", "pm"],
     "data": ["数据", "分析", "算法", "科学家"],
     "management": ["经理", "总监", "主管", "负责人", "管理"],
@@ -169,4 +213,3 @@ def match_companies_in_text(text: str, companies: List[Company]) -> List[Company
     from .insight_nlp import match_companies_in_post
 
     return [c for c, _conf in match_companies_in_post(text, companies)]
-

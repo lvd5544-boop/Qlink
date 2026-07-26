@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
-  Alert, Button, Card, Col, Divider, Input, List, Row, Select, Space, Spin, Tag, Typography,
+  Alert, Button, Card, Col, Divider, Input, List, Row, Select, Spin, Tag, Typography,
 } from 'antd';
 import { FileSearchOutlined, RobotOutlined } from '@ant-design/icons';
 import api from '../api';
+import { getApiErrorMessage } from '../utils/apiError';
 import SuggestionDiffCard from './SuggestionDiffCard';
+import { createIdempotencyTracker } from '../utils/idempotency';
 
 const { Text, Paragraph, Title } = Typography;
 
@@ -33,28 +35,39 @@ export default function ResumeCoachPanel({
   const [loading, setLoading] = useState(false);
   const [coachResult, setCoachResult] = useState(null);
   const [coachSuggestions, setCoachSuggestions] = useState([]);
+  const coachIdempotency = useRef(createIdempotencyTracker('resume-coach'));
 
   useEffect(() => {
     api.get('/analytics/companies').then((res) => setCompanies(res.data || [])).catch(() => {});
   }, []);
 
   useEffect(() => {
-    setTargetJobTitle(defaultJobTitle || '');
-    setCoachResult(null);
-    setCoachSuggestions([]);
+    const timer = setTimeout(() => {
+      setTargetJobTitle(defaultJobTitle || '');
+      setCoachResult(null);
+      setCoachSuggestions([]);
+    }, 0);
+    return () => clearTimeout(timer);
   }, [resumeId, defaultJobTitle]);
 
   const runCoach = async () => {
     if (!companyId) return;
+    const requestPayload = {
+      company_id: companyId,
+      role_family: roleFamily,
+      target_job_title: targetJobTitle || undefined,
+    };
+    const idempotencyKey = coachIdempotency.current.keyFor(requestPayload);
     setLoading(true);
     setCoachResult(null);
     setCoachSuggestions([]);
     try {
-      const res = await api.post(`/resumes/${resumeId}/coach`, {
-        company_id: companyId,
-        role_family: roleFamily,
-        target_job_title: targetJobTitle || undefined,
-      });
+      const res = await api.post(
+        `/resumes/${resumeId}/coach`,
+        requestPayload,
+        { headers: { 'Idempotency-Key': idempotencyKey } },
+      );
+      coachIdempotency.current.complete(idempotencyKey);
       setCoachResult(res.data);
       const coachItems = (res.data.actionable_suggestions || [])
         .filter((s) => s.source === 'coach');
@@ -63,7 +76,7 @@ export default function ResumeCoachPanel({
         onSuggestionsUpdated(res.data.pending_suggestions);
       }
     } catch (err) {
-      setCoachResult({ error: err.response?.data?.detail || '简历诊断失败' });
+      setCoachResult({ error: getApiErrorMessage(err, '简历诊断失败') });
     } finally {
       setLoading(false);
     }

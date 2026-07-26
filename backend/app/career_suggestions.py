@@ -5,6 +5,7 @@
   - 由评分系统「诊断并生成」建议（career_suggestions）
   - 由简历工作台「展示并采纳」建议（resume_coach / MyResumes）
 """
+
 from __future__ import annotations
 
 from typing import Dict, List, Optional, Set
@@ -194,33 +195,41 @@ def generate_career_suggestions(
     missing = missing_skills or []
     known = _resume_skill_set(resume_json)
 
-    experience: List[dict] = list(EXPERIENCE_TEMPLATES.get(role_key, EXPERIENCE_TEMPLATES["engineering"]))
+    experience: List[dict] = list(
+        EXPERIENCE_TEMPLATES.get(role_key, EXPERIENCE_TEMPLATES["engineering"])
+    )
     projects: List[dict] = list(PROJECT_TEMPLATES.get(role_key, PROJECT_TEMPLATES["engineering"]))
 
     # 行业不匹配时优先建议相关行业实习
     if industry_mismatch and role_key == "quant":
-        experience.insert(0, {
-            "type": "internship",
-            "title": "金融机构科技/量化实习",
-            "company_examples": ["券商 IT 部", "银行金融科技中心", "合规量化团队"],
-            "position_examples": ["FinTech Intern"],
-            "why": "从游戏/互联网转向 Quant 需要金融行业经历背书",
-            "estimated_score_gain": 1.5,
-            "priority": "high",
-        })
+        experience.insert(
+            0,
+            {
+                "type": "internship",
+                "title": "金融机构科技/量化实习",
+                "company_examples": ["券商 IT 部", "银行金融科技中心", "合规量化团队"],
+                "position_examples": ["FinTech Intern"],
+                "why": "从游戏/互联网转向 Quant 需要金融行业经历背书",
+                "estimated_score_gain": 1.5,
+                "priority": "high",
+            },
+        )
 
     # 影响力弱 → 建议量化现有项目
     if impact_weak:
-        projects.insert(0, {
-            "type": "project",
-            "title": "量化改造现有项目描述",
-            "description": "为已有项目补充 metrics：性能提升 %、用户量、成本节省、错误率下降等",
-            "skills_gained": ["impact storytelling"],
-            "deliverable": "改写后的 bullet points（每条含数字）",
-            "why": "大厂招聘非常看重可量化的项目影响力",
-            "estimated_score_gain": 0.8,
-            "priority": "high",
-        })
+        projects.insert(
+            0,
+            {
+                "type": "project",
+                "title": "量化改造现有项目描述",
+                "description": "为已有项目补充 metrics：性能提升 %、用户量、成本节省、错误率下降等",
+                "skills_gained": ["impact storytelling"],
+                "deliverable": "改写后的 bullet points（每条含数字）",
+                "why": "大厂招聘非常看重可量化的项目影响力",
+                "estimated_score_gain": 0.8,
+                "priority": "high",
+            },
+        )
 
     # 按缺失技能补充小项目
     skill_projects: List[dict] = []
@@ -235,8 +244,7 @@ def generate_career_suggestions(
     skill_projects = skill_projects[:3]
 
     total_gain = sum(
-        s.get("estimated_score_gain", 0)
-        for s in experience + projects + skill_projects
+        s.get("estimated_score_gain", 0) for s in experience + projects + skill_projects
     )
 
     role_labels = {

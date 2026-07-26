@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Card, List, Button, Tag, Space, message, Modal, Descriptions, Spin } from 'antd';
-import { EditOutlined, EyeOutlined, DeleteOutlined } from '@ant-design/icons';
+import { EditOutlined, EyeOutlined, DeleteOutlined, FileTextOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import api from '../../api';
 
@@ -9,19 +9,18 @@ export default function MyJobs() {
   const [loading, setLoading] = useState(true);
   const [selectedJob, setSelectedJob] = useState(null);
   const [detailVisible, setDetailVisible] = useState(false);
-  const employerId = localStorage.getItem('user_id');
-
-  const fetchJobs = () => {
+  const fetchJobs = useCallback(() => {
     setLoading(true);
-    api.get(`/jobs/${employerId}`)
+    api.get('/jobs/mine')
       .then((res) => setJobs(res.data))
       .catch(() => message.error('加载岗位失败'))
       .finally(() => setLoading(false));
-  };
+  }, []);
 
   useEffect(() => {
-    fetchJobs();
-  }, [employerId]);
+    const timer = setTimeout(fetchJobs, 0);
+    return () => clearTimeout(timer);
+  }, [fetchJobs]);
 
   const handleView = (job) => {
     setSelectedJob(job);
@@ -57,16 +56,16 @@ export default function MyJobs() {
           renderItem={(item) => (
             <List.Item
               extra={
-                <Space>
+                <Space wrap>
                   <Button icon={<EyeOutlined />} onClick={() => handleView(item)}>查看</Button>
                   <Link to={`/employer/edit-job/${item.id}`}>
                     <Button icon={<EditOutlined />}>编辑</Button>
                   </Link>
-                  <Link to={`/employer/candidates/${item.id}`}>
-                    <Button type="link">候选人</Button>
-                  </Link>
                   <Link to={`/employer/applications/${item.id}`}>
-                    <Button type="link">申请记录</Button>
+                    <Button type="primary" icon={<FileTextOutlined />}>申请记录</Button>
+                  </Link>
+                  <Link to={`/employer/candidates/${item.id}`}>
+                    <Button>匹配候选人</Button>
                   </Link>
                   <Button danger icon={<DeleteOutlined />} onClick={() => handleDelete(item.id)}>删除</Button>
                 </Space>

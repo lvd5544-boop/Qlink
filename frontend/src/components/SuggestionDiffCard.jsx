@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { Card, Button, Space, Tag, Typography, Input, Spin } from 'antd';
 import { CheckOutlined, CloseOutlined, EditOutlined, RiseOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import api from '../api';
@@ -7,8 +7,17 @@ import EvidenceFollowupModal from './EvidenceFollowupModal';
 const { Text, Paragraph } = Typography;
 const { TextArea } = Input;
 
+const PLACEHOLDER_HINTS = ['需先完成', '待补充', '待填写', '证据追问', '填入真实数据后再'];
+
+function isPlaceholderText(text) {
+  const t = (text || '').trim();
+  if (!t) return true;
+  return PLACEHOLDER_HINTS.some((h) => t.includes(h));
+}
+
 /**
  * 建议卡片：原文与修改版对照，预览 score_delta，可编辑后采纳。
+ * 不得把 append_quantification 静默改成 fill_field；未完成证据时禁用采纳。
  */
 export default function SuggestionDiffCard({
   suggestion,
@@ -22,54 +31,92 @@ export default function SuggestionDiffCard({
   const [preview, setPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [followupOpen, setFollowupOpen] = useState(false);
+  const [evidenceReady, setEvidenceReady] = useState(false);
 
   const entryType = suggestion.entry_type
     || (suggestion.patch?.section === 'projects' ? 'project' : 'work');
   const entryIndex = suggestion.entry_index ?? suggestion.patch?.index;
-  const showFollowup = suggestion.needs_followup
-    || suggestion.patch?.action === 'append_quantification';
+  const storedAction = suggestion.patch?.action || 'fill_field';
+  const needsEvidence = Boolean(
+    suggestion.requires_evidence
+    || suggestion.needs_followup
+    || storedAction === 'append_quantification'
+  );
+  const showFollowup = needsEvidence;
+  const blockedByEvidence = needsEvidence && !evidenceReady;
+  const displayText = editedText || suggestion.suggested_text || '';
+  const acceptBlocked = blockedByEvidence || isPlaceholderText(displayText);
 
-  const buildPatch = (finalText) => {
+  /**
+   * 保留存储的 action；仅在非量化建议时允许用编辑后的全文更新 value。
+   * append_quantification：value 为证据片段，不得改成 fill_field。
+   */
+  const buildPatch = useCallback((finalText, { evidenceCompleted = false } = {}) => {
     const patch = { ...suggestion.patch };
+    const text = (finalText || '').trim();
+
+    if (storedAction === 'append_quantification') {
+      patch.action = 'append_quantification';
+      patch.value = text;
+      if (evidenceCompleted) {
+        patch.evidence_completed = true;
+      }
+      return patch;
+    }
+
     if (patch.section === 'work_experience' && patch.index != null) {
-      patch.action = 'fill_field';
-      patch.field = 'description';
-      patch.value = finalText;
+      patch.action = patch.action || 'fill_field';
+      patch.field = patch.field || 'description';
+      patch.value = text;
     } else if (patch.section === 'projects' && patch.index != null) {
-      patch.action = 'fill_field';
-      patch.field = 'description';
-      patch.value = finalText;
+      patch.action = patch.action || 'fill_field';
+      patch.field = patch.field || 'description';
+      patch.value = text;
     } else if (patch.section === 'summary') {
-      patch.action = 'fill_field';
-      patch.value = finalText;
+      patch.action = patch.action || 'fill_field';
+      patch.value = text;
     } else if (patch.section === 'basic' && patch.field) {
-      patch.action = 'fill_field';
-      patch.value = finalText;
+      patch.action = patch.action || 'fill_field';
+      patch.value = text;
     } else if (patch.section === 'skills') {
-      const parts = finalText.split(/[、,，]/).map((s) => s.trim()).filter(Boolean);
-      patch.value = parts[parts.length - 1] || finalText;
+      const parts = text.split(/[、,，]/).map((s) => s.trim()).filter(Boolean);
+      patch.value = parts[parts.length - 1] || text;
     } else if (patch.action === 'add_project') {
       patch.value = {
         ...(patch.value || {}),
-        description: finalText,
+        description: text,
       };
     }
     return patch;
-  };
+  }, [storedAction, suggestion.patch]);
 
   useEffect(() => {
-    setEditedText(suggestion.suggested_text || '');
-    setEditing(false);
+    const timer = setTimeout(() => {
+      setEditedText(suggestion.suggested_text || '');
+      setEditing(false);
+      setEvidenceReady(false);
+    }, 0);
+    return () => clearTimeout(timer);
   }, [suggestion.id, suggestion.suggested_text]);
 
   useEffect(() => {
     if (!resumeId) return undefined;
+    if (acceptBlocked && !evidenceReady) {
+      const blockedTimer = setTimeout(() => setPreview(null), 0);
+      return () => clearTimeout(blockedTimer);
+    }
     let cancelled = false;
 
     const runPreview = async () => {
       setPreviewLoading(true);
       try {
-        const patch = buildPatch(editedText || suggestion.suggested_text || '');
+        const patch = buildPatch(editedText || suggestion.suggested_text || '', {
+          evidenceCompleted: evidenceReady,
+        });
+        if (isPlaceholderText(patch.value) && storedAction === 'append_quantification') {
+          if (!cancelled) setPreview(null);
+          return;
+        }
         const res = await api.post(`/resumes/${resumeId}/preview-suggestion`, { patch });
         if (!cancelled) setPreview(res.data);
       } catch {
@@ -84,11 +131,23 @@ export default function SuggestionDiffCard({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [resumeId, suggestion.id, editedText, editing, suggestion.suggested_text]);
+  }, [
+    resumeId,
+    suggestion.id,
+    editedText,
+    editing,
+    suggestion.suggested_text,
+    evidenceReady,
+    acceptBlocked,
+    buildPatch,
+    storedAction,
+  ]);
 
   const handleAccept = () => {
+    if (acceptBlocked) return;
     const finalText = (editedText || suggestion.suggested_text || '').trim();
-    const patch = buildPatch(finalText);
+    if (isPlaceholderText(finalText)) return;
+    const patch = buildPatch(finalText, { evidenceCompleted: evidenceReady });
     onAccept({ ...suggestion, patch, suggested_text: finalText });
   };
 
@@ -96,13 +155,19 @@ export default function SuggestionDiffCard({
     const finalText = regenerated.example_after;
     setEditedText(finalText);
     setEditing(false);
-    const patch = buildPatch(finalText);
+    setEvidenceReady(true);
+    const patch = buildPatch(finalText, { evidenceCompleted: true });
+    patch.fidelity_result = regenerated.patch?.fidelity_result || regenerated.fidelity_result;
+    patch.evidence_references = regenerated.patch?.evidence_references || regenerated.evidence_references;
+    patch.fidelity_proof = regenerated.fidelity_proof || regenerated.patch?.fidelity_proof;
     onAccept({
       ...suggestion,
       ...regenerated,
       patch,
       suggested_text: finalText,
       original_text: regenerated.example_before,
+      requires_evidence: false,
+      needs_followup: false,
     });
   };
 
@@ -126,6 +191,7 @@ export default function SuggestionDiffCard({
         <Tag color={suggestion.priority === '高' ? 'red' : 'blue'}>{suggestion.priority}</Tag>
         {suggestion.source === 'coach' && <Tag color="purple">Coach</Tag>}
         <Text strong>{suggestion.section_label || suggestion.title}</Text>
+        {needsEvidence && !evidenceReady && <Tag color="orange">需先补充证据</Tag>}
         {previewLoading ? (
           <Spin size="small" />
         ) : (
@@ -183,9 +249,11 @@ export default function SuggestionDiffCard({
       <div>
         <Space style={{ marginBottom: 4 }}>
           <Text type="secondary" style={{ fontSize: 12 }}>
-            {isEmptyOriginal ? '建议填写' : '建议改为'}
+            {blockedByEvidence
+              ? '占位提示（不可写回）'
+              : (isEmptyOriginal ? '建议填写' : '建议改为')}
           </Text>
-          {!editing && (
+          {!editing && !blockedByEvidence && (
             <Button
               type="link"
               size="small"
@@ -211,14 +279,14 @@ export default function SuggestionDiffCard({
             style={{
               padding: '10px 12px',
               borderRadius: 8,
-              background: '#ecfdf5',
-              border: '1px solid #a7f3d0',
-              color: '#065f46',
+              background: blockedByEvidence ? '#fff7ed' : '#ecfdf5',
+              border: blockedByEvidence ? '1px solid #fed7aa' : '1px solid #a7f3d0',
+              color: blockedByEvidence ? '#9a3412' : '#065f46',
               fontSize: 14,
               lineHeight: 1.6,
             }}
           >
-            {editedText || suggestion.suggested_text}
+            {displayText}
           </div>
         )}
       </div>
@@ -226,22 +294,23 @@ export default function SuggestionDiffCard({
       <Space style={{ marginTop: 12 }} wrap>
         {showFollowup && entryIndex != null && (
           <Button
+            type={blockedByEvidence ? 'primary' : 'default'}
             size="small"
             icon={<QuestionCircleOutlined />}
             onClick={() => setFollowupOpen(true)}
           >
-            AI 追问补充
+            先补充证据
           </Button>
         )}
         <Button
-          type="primary"
+          type={blockedByEvidence ? 'default' : 'primary'}
           size="small"
           icon={<CheckOutlined />}
           loading={loading}
+          disabled={acceptBlocked}
           onClick={handleAccept}
         >
-          采纳
-          {matchDelta > 0 ? ` (+${matchDelta})` : ''}
+          {blockedByEvidence ? '先补充证据' : `采纳${matchDelta > 0 ? ` (+${matchDelta})` : ''}`}
         </Button>
         <Button size="small" icon={<CloseOutlined />} onClick={() => onDismiss(suggestion)}>
           忽略

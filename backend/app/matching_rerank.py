@@ -1,6 +1,7 @@
 """
 Layer 3: Top-K LLM 重排 — 在 hybrid 分数基础上微调 ±1.5 并生成深度理由。
 """
+
 from __future__ import annotations
 
 import json
@@ -36,7 +37,9 @@ def _profile_summary(profile: dict) -> str:
     exps = []
     for e in profile.get("work_experience") or []:
         if isinstance(e, dict):
-            exps.append(f"{e.get('company', '')}-{e.get('position', '')}({e.get('duration_years', 0)}年)")
+            exps.append(
+                f"{e.get('company', '')}-{e.get('position', '')}({e.get('duration_years', 0)}年)"
+            )
     return json.dumps(
         {
             "name": profile.get("name"),
@@ -75,8 +78,16 @@ def _breakdown_summary(breakdown: dict) -> str:
         return "{}"
     slim = {}
     for key in (
-        "skills", "experience", "role_match", "industry_match",
-        "education", "location", "salary", "impact", "soft_skills", "growth_potential",
+        "skills",
+        "experience",
+        "role_match",
+        "industry_match",
+        "education",
+        "location",
+        "salary",
+        "impact",
+        "soft_skills",
+        "growth_potential",
     ):
         dim = breakdown.get(key)
         if dim:
@@ -102,10 +113,11 @@ async def llm_rerank_match(
     LLM 重排：在 hybrid_score 基础上调整 ±1.5，返回 (final_score, reason, llm_meta)。
     无 API Key 或调用失败时回退 hybrid 理由。
     """
+    from .llm_client import async_chat_completion, model_api_key
     from .matching_hybrid import build_match_reason_v2
 
     fallback_reason = build_match_reason_v2(breakdown, hybrid_score)
-    if not os.getenv("DEEPSEEK_API_KEY"):
+    if not model_api_key():
         return hybrid_score, fallback_reason, {"source": "hybrid_fallback", "llm_skipped": True}
 
     prompt = f"""你是专业招聘匹配评估专家。已有一套规则引擎给出 hybrid 评分，请你结合候选人画像与岗位 JD 做最终解读。
@@ -122,11 +134,8 @@ breakdown: {_breakdown_summary(breakdown)}
 岗位: {_job_summary(job_info, job_title)}
 """
 
-    client = get_openai_client()
-    model = get_model()
     try:
-        response = client.chat.completions.create(
-            model=model,
+        response = await async_chat_completion(
             messages=[
                 {"role": "system", "content": "你只输出合法 JSON，不要 markdown。"},
                 {"role": "user", "content": prompt},
@@ -144,12 +153,16 @@ breakdown: {_breakdown_summary(breakdown)}
         adjustment = max(-MAX_ADJUSTMENT, min(MAX_ADJUSTMENT, adjustment))
         score = round(min(max(hybrid_score + adjustment, 0), 10), 1)
         reason = str(result.get("reason") or fallback_reason)
-        return score, reason, {
-            "source": "llm_rerank",
-            "hybrid_score": hybrid_score,
-            "adjustment": adjustment,
-            "llm_skipped": False,
-        }
+        return (
+            score,
+            reason,
+            {
+                "source": "llm_rerank",
+                "hybrid_score": hybrid_score,
+                "adjustment": adjustment,
+                "llm_skipped": False,
+            },
+        )
     except Exception as e:
         logger.error("LLM rerank failed: %s", e)
         return hybrid_score, fallback_reason, {"source": "hybrid_fallback", "llm_error": str(e)}

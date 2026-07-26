@@ -1,9 +1,10 @@
 """
 resume_suggestions 表读写：记录 pending / applied / dismissed 状态。
 """
+
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +13,12 @@ from .models_db import ResumeSuggestion
 
 
 def _row_to_dict(row: ResumeSuggestion) -> dict:
+    patch = row.patch if isinstance(row.patch, dict) else (row.patch or {})
+    action = (patch or {}).get("action") or "fill_field"
+    requires_evidence = bool(
+        (patch or {}).get("requires_evidence") or action == "append_quantification"
+    )
+    needs_followup = bool((patch or {}).get("needs_followup") or requires_evidence)
     return {
         "id": row.suggestion_key,
         "db_id": row.id,
@@ -29,9 +36,11 @@ def _row_to_dict(row: ResumeSuggestion) -> dict:
         "original_text": row.original_text,
         "suggested_text": row.suggested_text,
         "section_label": row.section_label,
-        "patch": row.patch,
+        "patch": patch,
         "status": row.status,
         "score_delta": row.score_delta,
+        "requires_evidence": requires_evidence,
+        "needs_followup": needs_followup,
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
     }
@@ -63,6 +72,18 @@ async def get_suggestion_by_id(
     return row
 
 
+async def get_suggestion_by_key(
+    db: AsyncSession,
+    resume_id: str,
+    suggestion_key: str,
+) -> Optional[ResumeSuggestion]:
+    stmt = select(ResumeSuggestion).where(
+        ResumeSuggestion.resume_id == resume_id,
+        ResumeSuggestion.suggestion_key == suggestion_key,
+    )
+    return (await db.execute(stmt)).scalars().first()
+
+
 async def sync_suggestions_for_source(
     db: AsyncSession,
     resume_id: str,
@@ -90,11 +111,15 @@ async def sync_suggestions_for_source(
 
     for item in actionable_items:
         key = item["id"]
-        patch = item.get("patch") or {}
+        patch = dict(item.get("patch") or {})
+        if item.get("requires_evidence"):
+            patch["requires_evidence"] = True
+        if item.get("needs_followup"):
+            patch["needs_followup"] = True
         payload = {
             "resume_id": resume_id,
             "job_id": job_id or item.get("job_id"),
-            "source": source,
+            "source": item.get("source") or source,
             "suggestion_key": key,
             "section": patch.get("section") or item.get("section"),
             "field_path": item.get("field_path") or patch.get("field_path"),

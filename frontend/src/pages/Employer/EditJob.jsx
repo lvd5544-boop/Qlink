@@ -10,7 +10,7 @@ export default function EditJob() {
   const [form] = Form.useForm();
 
   useEffect(() => {
-    api.get(`/jobs/${localStorage.getItem('user_id')}`)  // 获取所有岗位，再筛选当前
+    api.get('/jobs/mine')
       .then(res => {
         const job = res.data.find(j => j.id === jobId);
         if (job && job.parsed) {
@@ -27,7 +27,7 @@ export default function EditJob() {
       })
       .catch(() => message.error('加载岗位详情失败'))
       .finally(() => setLoading(false));
-  }, [jobId]);
+  }, [form, jobId]);
 
   const handleSave = async (values) => {
     const parsed = {

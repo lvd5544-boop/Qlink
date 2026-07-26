@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -26,6 +26,8 @@ import {
   PlusOutlined,
 } from '@ant-design/icons';
 import api from '../../api';
+import { getApiErrorMessage } from '../../utils/apiError';
+import { createIdempotencyTracker } from '../../utils/idempotency';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -54,7 +56,7 @@ function FreqBars({ data, color = '#4f46e5' }) {
   if (!entries.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />;
   const max = entries[0][1] || 1;
   return (
-    <Space direction="vertical" style={{ width: '100%' }} size={8}>
+    <Space orientation="vertical" style={{ width: '100%' }} size={8}>
       {entries.map(([label, count]) => (
         <div key={label}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -81,59 +83,34 @@ export default function Analytics() {
   const [submitLoading, setSubmitLoading] = useState(false);
   const [mySubmissions, setMySubmissions] = useState([]);
   const [form] = Form.useForm();
-  const [syncing, setSyncing] = useState(false);
-  const [syncingForum, setSyncingForum] = useState(false);
   const [dataSources, setDataSources] = useState([]);
   const [methodology, setMethodology] = useState('');
+  const coachIdempotency = useRef(createIdempotencyTracker('analytics-resume-coach'));
 
   const userId = localStorage.getItem('user_id');
 
-  const loadCompanies = async (t) => {
-    const params = t ? { tier: t } : {};
-    const res = await api.get('/analytics/companies', { params });
-    setCompanies(res.data);
-  };
-
-  const syncJobSources = async () => {
-    setSyncing(true);
-    try {
-      await api.post('/jobs/sync-sources');
-      message.success('国企/外企岗位 JD 已同步');
-      if (companyId) loadProfile();
-      loadCompanies(tier);
-    } catch {
-      message.error('岗位同步失败，请确认后端与网络正常');
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  const syncForumInsights = async () => {
-    setSyncingForum(true);
-    try {
-      await api.post('/analytics/sync-forum-insights');
-      message.success('网络经验帖已抓取并完成统计建模');
-      if (companyId) loadProfile();
-    } catch {
-      message.error('论坛数据同步失败（可能受网络或平台限流影响）');
-    } finally {
-      setSyncingForum(false);
-    }
-  };
-
   useEffect(() => {
-    loadCompanies(tier).catch(() => message.error('加载公司列表失败'));
-    api.get('/analytics/data-sources').then((r) => {
-      setDataSources(r.data?.sources || []);
-      setMethodology(r.data?.methodology || '');
-    }).catch(() => {});
-    if (userId) {
-      api.get(`/resumes/${userId}`).then((r) => setResumes(r.data || [])).catch(() => {});
-      api.get('/analytics/hired-profiles/mine').then((r) => setMySubmissions(r.data || [])).catch(() => {});
-    }
-  }, [tier]);
+    const timer = setTimeout(async () => {
+      const params = tier ? { tier } : {};
+      try {
+        const response = await api.get('/analytics/companies', { params });
+        setCompanies(response.data);
+      } catch {
+        message.error('加载公司列表失败');
+      }
+      api.get('/analytics/data-sources').then((response) => {
+        setDataSources(response.data?.sources || []);
+        setMethodology(response.data?.methodology || '');
+      }).catch(() => {});
+      if (userId) {
+        api.get(`/resumes/${userId}`).then((response) => setResumes(response.data || [])).catch(() => {});
+        api.get('/analytics/hired-profiles/mine').then((response) => setMySubmissions(response.data || [])).catch(() => {});
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [tier, userId]);
 
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
     if (!companyId) return;
     setLoadingProfile(true);
     try {
@@ -146,11 +123,13 @@ export default function Analytics() {
     } finally {
       setLoadingProfile(false);
     }
-  };
+  }, [companyId, roleFamily]);
 
   useEffect(() => {
-    if (companyId) loadProfile();
-  }, [companyId, roleFamily]);
+    if (!companyId) return undefined;
+    const timer = setTimeout(loadProfile, 0);
+    return () => clearTimeout(timer);
+  }, [companyId, loadProfile]);
 
   const runCoach = async (values) => {
     const cid = companyId || values.company_id;
@@ -158,19 +137,26 @@ export default function Analytics() {
       message.warning('请先在「市场洞察」或此处选择目标公司');
       return;
     }
+    const requestPayload = {
+      resume_id: values.resume_id,
+      company_id: cid,
+      role_family: roleFamily,
+      target_job_title: values.target_job_title,
+    };
+    const idempotencyKey = coachIdempotency.current.keyFor(requestPayload);
     setLoadingCoach(true);
     setCoachResult(null);
     try {
-      const res = await api.post('/analytics/resume-coach', {
-        resume_id: values.resume_id,
-        company_id: cid,
-        role_family: roleFamily,
-        target_job_title: values.target_job_title,
-      });
+      const res = await api.post(
+        '/analytics/resume-coach',
+        requestPayload,
+        { headers: { 'Idempotency-Key': idempotencyKey } },
+      );
+      coachIdempotency.current.complete(idempotencyKey);
       setCoachResult(res.data);
       message.success('简历诊断完成');
     } catch (err) {
-      message.error(err.response?.data?.detail || '简历诊断失败');
+      message.error(getApiErrorMessage(err, '简历诊断失败'));
     } finally {
       setLoadingCoach(false);
     }
@@ -194,7 +180,7 @@ export default function Analytics() {
       setMySubmissions(r.data || []);
       if (companyId && res.data?.status === 'approved') loadProfile();
     } catch (err) {
-      message.error(err.response?.data?.detail || '提交失败');
+      message.error(getApiErrorMessage(err, '提交失败'));
     } finally {
       setSubmitLoading(false);
     }
@@ -207,7 +193,7 @@ export default function Analytics() {
     profile?.hired_benchmarks?.[0];
 
   const marketTab = (
-    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+    <Space orientation="vertical" size={16} style={{ width: '100%' }}>
       <Row gutter={16}>
         <Col xs={24} md={8}>
           <Text type="secondary">公司类型</Text>
@@ -400,7 +386,7 @@ export default function Analytics() {
   );
 
   const coachTab = (
-    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+    <Space orientation="vertical" size={16} style={{ width: '100%' }}>
       <Alert
         type="info"
         showIcon
@@ -492,7 +478,7 @@ export default function Analytics() {
           <Title level={5}>分条建议</Title>
           <List
             dataSource={coachResult.coach?.suggestions || []}
-            renderItem={(item, idx) => (
+            renderItem={(item) => (
               <List.Item>
                 <List.Item.Meta
                   title={
@@ -528,6 +514,81 @@ export default function Analytics() {
           {coachResult.coach?.school_advice && (
             <Alert message={coachResult.coach.school_advice} type="info" showIcon style={{ marginTop: 8 }} />
           )}
+        </Card>
+      )}
+
+      {coachResult?.battle_card && (
+        <Card className="content-card" title="投递作战卡" style={{ marginTop: 16 }}>
+          <Paragraph>{coachResult.battle_card.positioning}</Paragraph>
+
+          <Title level={5}>简历重点</Title>
+          <List
+            size="small"
+            dataSource={coachResult.battle_card.resume_focus || []}
+            renderItem={(item) => <List.Item>• {item}</List.Item>}
+          />
+
+          <Divider />
+          <Row gutter={16}>
+            <Col xs={24} md={12}>
+              <Title level={5}>已匹配能力</Title>
+              <Space wrap>
+                {(coachResult.battle_card.matched_signals || []).map((s) => (
+                  <Tag key={s} color="green">{s}</Tag>
+                ))}
+              </Space>
+            </Col>
+            <Col xs={24} md={12}>
+              <Title level={5}>缺失能力</Title>
+              <Space wrap>
+                {(coachResult.battle_card.missing_signals || []).map((s) => (
+                  <Tag key={s} color="orange">{s}</Tag>
+                ))}
+              </Space>
+              <Alert
+                type="warning"
+                showIcon
+                style={{ marginTop: 8, fontSize: 12 }}
+                message="如果没有真实经历，不建议硬写"
+              />
+            </Col>
+          </Row>
+
+          <Divider />
+          <Title level={5}>可补强经历</Title>
+          <List
+            size="small"
+            dataSource={coachResult.battle_card.experience_to_strengthen || []}
+            renderItem={(item) => <List.Item>• {item}</List.Item>}
+          />
+
+          {(coachResult.battle_card.do_not_fake || []).length > 0 && (
+            <>
+              <Divider />
+              <Title level={5}>不建议硬写内容</Title>
+              <List
+                size="small"
+                dataSource={coachResult.battle_card.do_not_fake}
+                renderItem={(item) => <List.Item style={{ color: '#64748b' }}>• {item}</List.Item>}
+              />
+            </>
+          )}
+
+          <Divider />
+          <Title level={5}>面试高频追问</Title>
+          <List
+            size="small"
+            dataSource={coachResult.battle_card.interview_questions || []}
+            renderItem={(item) => <List.Item>• {item}</List.Item>}
+          />
+
+          <Divider />
+          <Title level={5}>需要准备的证据</Title>
+          <List
+            size="small"
+            dataSource={coachResult.battle_card.evidence_to_prepare || []}
+            renderItem={(item) => <List.Item>• {item}</List.Item>}
+          />
         </Card>
       )}
     </Space>
@@ -622,20 +683,12 @@ export default function Analytics() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <Title level={3} style={{ marginBottom: 4 }}>
-            数据分析与简历诊断
+            目标企业画像
           </Title>
           <Text type="secondary">
-            JD 偏好来自国企/外企招聘源；录用画像来自网络社区经验帖 + 统计模型（Wilson 区间 / 加权频率）。
+            对照 JD 偏好与录用画像，生成投递作战卡与简历诊断建议。
           </Text>
         </div>
-        <Space>
-          <Button loading={syncingForum} onClick={syncForumInsights} type="primary">
-            同步网络经验数据
-          </Button>
-          <Button loading={syncing} onClick={syncJobSources}>
-            同步岗位 JD
-          </Button>
-        </Space>
       </div>
       {(methodology || dataSources.length > 0) && (
         <Alert

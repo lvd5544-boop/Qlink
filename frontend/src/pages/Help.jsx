@@ -1,7 +1,7 @@
 import { Card, Typography, Divider, Collapse } from 'antd';
 import { QuestionCircleOutlined } from '@ant-design/icons';
 
-const { Title, Paragraph, Text } = Typography;
+const { Title, Paragraph } = Typography;
 const { Panel } = Collapse;
 
 export default function Help() {

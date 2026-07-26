@@ -1,4 +1,5 @@
 """经验帖 NLP 规则：否定识别、帖子分类、公司实体置信度、多公司权重分摊"""
+
 from __future__ import annotations
 
 import re
@@ -6,10 +7,6 @@ from typing import List, Optional, Tuple
 
 from .company_registry import (
     SCHOOL_TIER_PATTERNS,
-    SOFT_SKILL_KEYWORDS,
-    LEADERSHIP_KEYWORDS,
-    extract_keywords_from_text,
-    normalize_skill_name,
     match_company_by_name,
 )
 from .models_db import Company
@@ -17,18 +14,59 @@ from .models_db import Company
 # 短别名易误匹配，需结合招聘上下文
 SHORT_ALIAS_MIN_CONFIDENCE = 0.55
 HIRING_CONTEXT_WORDS = [
-    "面试", "校招", "社招", "offer", "录用", "上岸", "入职", "岗位", "求职",
-    "简历", "笔试", "复试", "hr", "背调", "实习", "转正", "hiring", "interview",
+    "面试",
+    "校招",
+    "社招",
+    "offer",
+    "录用",
+    "上岸",
+    "入职",
+    "岗位",
+    "求职",
+    "简历",
+    "笔试",
+    "复试",
+    "hr",
+    "背调",
+    "实习",
+    "转正",
+    "hiring",
+    "interview",
 ]
 
 NEGATION_MARKERS = [
-    "不是", "并非", "不限", "无要求", "不要求", "没有要求", "非必须", "不卡",
-    "不唯", "无需", "未要求", "不看", "不限制",
+    "不是",
+    "并非",
+    "不限",
+    "无要求",
+    "不要求",
+    "没有要求",
+    "非必须",
+    "不卡",
+    "不唯",
+    "无需",
+    "未要求",
+    "不看",
+    "不限制",
 ]
 
 FAILURE_SIGNALS = [
-    "挂了", "被拒", "拒绝", "凉了", "挂了", "没进", "挂了", "reject", "rejected",
-    "failed", "failure", "挂经", "挂掉", "一面挂", "二面挂", "三面挂",
+    "挂了",
+    "被拒",
+    "拒绝",
+    "凉了",
+    "挂了",
+    "没进",
+    "挂了",
+    "reject",
+    "rejected",
+    "failed",
+    "failure",
+    "挂经",
+    "挂掉",
+    "一面挂",
+    "二面挂",
+    "三面挂",
 ]
 
 OFFER_SIGNALS = ["offer", "录用", "上岸", "入职", "拿到", "accepted", "hired", "oc"]
@@ -188,6 +226,5 @@ def extract_keywords_with_negation(text: str, keyword_list: List[str]) -> List[s
 
 def school_tier_disclaimer() -> str:
     return (
-        "院校层次仅反映公开经验帖中的提及频率，不代表企业官方筛选标准，"
-        "不建议作为唯一录用判断依据。"
+        "院校层次仅反映公开经验帖中的提及频率，不代表企业官方筛选标准，不建议作为唯一录用判断依据。"
     )

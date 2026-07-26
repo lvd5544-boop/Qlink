@@ -7,13 +7,12 @@ export default function PostJob() {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [textInput, setTextInput] = useState('');
-  const employerId = localStorage.getItem('user_id');
 
   const handleUpload = (file) => {
     setLoading(true);
     const formData = new FormData();
     formData.append('file', file);
-    api.post(`/post-job?employer_id=${employerId}`, formData)
+    api.post('/post-job', formData)
       .then((res) => {
         setResult(res.data);
         message.success('岗位发布成功');
@@ -26,7 +25,7 @@ export default function PostJob() {
   const handleTextSubmit = () => {
     if (!textInput.trim()) return;
     setLoading(true);
-    api.post(`/post-job?employer_id=${employerId}`, null, {
+    api.post('/post-job', null, {
       params: { description_text: textInput }
     })
       .then((res) => {
@@ -39,7 +38,7 @@ export default function PostJob() {
 
   return (
     <Card className="content-card" title="发布新岗位">
-      <Space direction="vertical" style={{ width: '100%' }}>
+      <Space orientation="vertical" style={{ width: '100%' }}>
         <Upload beforeUpload={handleUpload} showUploadList={false} accept=".pdf,.docx,.txt">
           <Button icon={<UploadOutlined />} loading={loading}>上传 JD 文件</Button>
         </Upload>
