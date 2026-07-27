@@ -159,19 +159,17 @@ async def test_fixtures_expose_two_claim_threads(application_a):
 
 def test_sse_routes_registered_distinct_paths():
     """
-    路由表级可达性：/stream/me 与 /{application_id}/events 同时注册。
-    backlog 未证实后者抢占前者；HTTP 长连接流式消费放到后续 PR，避免拖住基线。
+    ASGI 路由级可达性：/stream/me 与 /{application_id}/events 同时注册。
+
+    不直接枚举 ``app.routes``：新版本 FastAPI 可将 include_router 保留为
+    内部包装对象，路径不再位于顶层 ``route.path``，但真实 ASGI 分派仍正确。
+    未认证请求必须到达鉴权层（401/403），而非被动态路由或缺失路由误判为 404。
     """
+    from fastapi.testclient import TestClient
     from app.main import app
 
-    paths = {getattr(route, "path", None) for route in app.routes}
-    assert "/applications/stream/me" in paths
-    assert "/applications/{application_id}/events" in paths
-
-    # 确认静态段 stream/me 不会被解析成 application_id="stream"
-    matched = [
-        getattr(route, "path", None)
-        for route in app.routes
-        if getattr(route, "path", None) == "/applications/stream/me"
-    ]
-    assert matched, "user_events_sse 路由未注册"
+    client = TestClient(app)
+    stream_me = client.get("/applications/stream/me")
+    application_events = client.get("/applications/not-a-real-id/events")
+    assert stream_me.status_code in {401, 403}, stream_me.text
+    assert application_events.status_code in {401, 403}, application_events.text
