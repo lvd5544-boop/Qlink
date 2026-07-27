@@ -9,6 +9,7 @@ import re
 from typing import Any
 
 from .company_registry import normalize_skill_name
+from .job_profile import CROSSWALK_VERSION, build_target_role_profile
 from .matching_hybrid import hybrid_score_v2
 
 ISSUE_TYPES = frozenset(
@@ -39,7 +40,7 @@ STRATEGIES = frozenset(
     }
 )
 RULE_VERSION = "pr9-deterministic-v1"
-TAXONOMY_VERSION = "local-role-taxonomy-v1"
+TAXONOMY_VERSION = CROSSWALK_VERSION
 
 
 def _skills(values: list[Any]) -> set[str]:
@@ -49,8 +50,12 @@ def _skills(values: list[Any]) -> set[str]:
     } - {""}
 
 
-def _requirements(job: dict) -> list[str]:
-    return sorted(_skills(job.get("required_skills") or job.get("skills") or []))
+def _requirements(profile: dict) -> list[str]:
+    return [
+        str(requirement["canonical_skill"])
+        for requirement in profile["requirements"]
+        if requirement["kind"] == "skill"
+    ]
 
 
 def _claim_ids_for_text(claims: list[dict], terms: list[str]) -> list[str]:
@@ -208,7 +213,13 @@ def build_simulation(
 ) -> dict:
     """Build issues/options then re-score one complete, server-owned counterfactual."""
     current, breakdown, _, _ = hybrid_score_v2(resume, job, job_title)
-    requirements = _requirements(job)
+    profile = build_target_role_profile(job, job_title)
+    requirements = _requirements(profile)
+    requirement_refs = {
+        str(requirement.get("canonical_skill")): str(requirement["requirement_id"])
+        for requirement in profile["requirements"]
+        if requirement["kind"] == "skill"
+    }
     present = _skills(resume.get("skills") or [])
     missing = [skill for skill in requirements if skill not in present]
     issues: list[dict] = []
@@ -350,7 +361,7 @@ def build_simulation(
                 "target_requirement_id": "skills",
                 "claim_ids": claim_ids,
                 "diagnosis": "当前简历未观察到所需技能的充分证据。",
-                "source_refs": ["job.required_skills", *claim_ids],
+                "source_refs": [*(requirement_refs[skill] for skill in missing), *claim_ids],
                 "strategy_options": options,
                 "recommended_strategy_id": options[0]["strategy_id"],
             }
@@ -449,7 +460,7 @@ def build_simulation(
                 "target_requirement_id": "role_direction",
                 "claim_ids": [],
                 "diagnosis": "当前经历与目标岗位方向的直接关联较弱。",
-                "source_refs": ["job.title", "matching.role_match"],
+                "source_refs": [profile["source"]["jd_snapshot_sha256"], "matching.role_match"],
                 "strategy_options": options,
                 "recommended_strategy_id": options[0]["strategy_id"],
             }
@@ -488,7 +499,10 @@ def build_simulation(
                 "target_requirement_id": "career_transition",
                 "claim_ids": [],
                 "diagnosis": "岗位方向变化缺少可验证的职业叙事。",
-                "source_refs": ["resume.expected_job_title", "job.title"],
+                "source_refs": [
+                    "resume.expected_job_title",
+                    profile["source"]["jd_snapshot_sha256"],
+                ],
                 "strategy_options": narrative_options,
                 "recommended_strategy_id": narrative_options[0]["strategy_id"],
             }
@@ -630,9 +644,11 @@ def build_simulation(
         "selected_actions": selected_options,
         "rule_version": RULE_VERSION,
         "taxonomy_version": TAXONOMY_VERSION,
+        "target_role_profile": profile,
         "source_versions": {
             "resume_snapshot_sha256": _fingerprint(resume),
             "job_snapshot_sha256": _fingerprint(job),
+            "target_role_profile_sha256": _fingerprint(profile),
             "claim_snapshot_sha256": _fingerprint(claims),
             "scoring_version": "hybrid_v2",
             "prompt_version": None,

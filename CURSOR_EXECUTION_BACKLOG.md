@@ -90,7 +90,7 @@
 | PR 6 | 一键启动与客户交付 | 已完成并于 2026-07-25 最终验收 | 是 |
 | PR 7 | 前端质量、CI、迁移、后台任务和公平性基线 | 部分完成（本地：E2E/队列化/公平性协议已关；**远端 GitHub Actions 全绿仍阻断**；不得开始 PR8） | 试点扩容前 |
 | PR 8 | Claim Passport MVP | **部分完成**（本地功能、PG up/down/up、专项测试与浏览器 E2E 已复验，并已推送 `44f83d7`；远端 CI 门禁待核验，详见 `PR8_IMPLEMENTATION_AND_VERIFICATION_REPORT.md`） | 核心产品基础 |
-| PR 9 | Potential Score 反事实模拟增强 | **部分完成**（完整反事实、前端工作流、20 组跨岗回归与浏览器 E2E 已在本地复验；仍缺 JD/taxonomy 正式流水线、试点校准与远端 CI，详见独立验收 `PR9_IMPLEMENTATION_AND_VERIFICATION_REPORT.md`） | 核心产品增强 |
+| PR 9 | Potential Score 反事实模拟增强 | **部分完成**（完整反事实、前端工作流、20 组跨岗回归、浏览器 E2E 及 JD 快照/local-crosswalk 来源链已在本地复验；仍缺正式 ESCO/O*NET ingestion、试点校准与远端 CI，详见独立验收 `PR9_IMPLEMENTATION_AND_VERIFICATION_REPORT.md`） | 核心产品增强 |
 
 在 PR 3–6 完成前，不得宣称产品可安全处理真实客户简历；PR 5.5 未完成前，不得把当前界面和代码结构描述为稳定成品。PR 8 必须先于 PR 9，因为反事实动作需要稳定 Claim ID、证据和版本关系。
 

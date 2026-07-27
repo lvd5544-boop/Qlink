@@ -7,16 +7,16 @@
 
 **部分完成**
 
-不得标为「完成」。前置 PR7/PR8 远端门禁仍未关闭；PR9 的本地 P1 已修复并复验，但 ESCO/O*NET 流水线、真实世界校准、人工抽检和远端 CI 未达标。
+不得标为「完成」。前置 PR7/PR8 远端门禁仍未关闭；PR9 的本地 P1 已修复并复验，且已有可复现的 JD 快照/本地 crosswalk 契约，但正式 ESCO/O*NET 导入、真实世界校准、人工抽检和远端 CI 未达标。
 
 独立复验命令：
 
 | 命令 | 结果 |
 |---|---|
-| `pytest -q tests/test_pr9_potential_simulation.py` | **28 passed** |
+| `pytest -q tests/test_pr9_potential_simulation.py` | **29 passed** |
 | 后端完整 SQLite 回归 | **100% passed（6 PG-only skipped）** |
 | `npm run lint && npm test && npm run build` | lint 通过；**15 passed**；build 通过 |
-| 全新 PostgreSQL migration + browser E2E | 套餐 seed 已验证；**1 passed**，覆盖模拟器加载与重算 |
+| 全新 PostgreSQL migration + browser E2E | 隔离 PostgreSQL `upgrade head` 成功；**1 passed**，覆盖模拟器加载与重算及 JD 来源链 |
 
 缺陷优先审查见会话内 [PR9 review](63126b5d-7fcb-4d14-b8e4-3cc88427a717)。
 
@@ -36,7 +36,7 @@ Codex 总体结论「部分完成」**正确**，但表格中多项 “pass” *
 | PR9-R06 | 查看/选择/拒绝/采纳/完成事件 | `potential_simulation_events` + routes | 空数组=明确不选；unknown 策略拒绝；生命周期回归 | **pass（本地）** |
 | PR9-R07 | 四栏 UI、策略切换、免责声明 | `ImprovementSimulationPanel.jsx` | E2E 覆盖加载/重算；动作跳转至 Coach/Passport/岗位浏览或生成成长计划 | **pass（本地）** |
 | PR9-R08 | 20 组固定跨岗回归 +「总是补数字」门禁 | 命名 20 组跨技术、产品、运营、设计、研究、管理和应届项目固定集 | 回归禁止无来源量化 apply | **pass（本地）** |
-| PR9-R09 | ESCO/O*NET、JD 版本化流水线 | — | — | **fail / missing** |
+| PR9-R09 | JD 来源/快照版本化与 taxonomy 规范化 | `job_profile.py` 生成 raw/parsed/JD 快照 hash、稳定 requirement ID 与 local crosswalk 版本；每个事件留存结果快照 | `test_target_role_profile_*` 断言来源、标准化边界和 requirement 回指 | **partial**：已实现本地可重放来源链；未导入正式 ESCO/O*NET 数据集 |
 | PR9-R10 | expression/evidence/capability delta 分离 | expression → evidence → capability 顺序构造完整反事实 | 定向断言三类 delta 可由同一评分器产生且总和一致 | **pass（本地）** |
 | PR9-R11 | 校准/公平性/人工抽检/产品指标 | — | 报告正确声明未做 | **blocked（需试点数据）** |
 | PR9-R12 | 前置 PR7/PR8 完成后方可宣称产品级完成 | backlog | PR7 CI 未绿；PR8 仍部分完成且未远端交付 | **blocked** |
@@ -47,7 +47,7 @@ Codex 总体结论「部分完成」**正确**，但表格中多项 “pass” *
 2. ~~[P1] 空选择等同默认全选~~：GET 使用默认推荐，POST 空数组保留为用户明确清空。
 3. ~~[P1] 前端动作按钮无导航~~：已接入 Coach、Passport、岗位浏览与可见成长计划。
 4. ~~[P2] 固定集/E2E 不足~~：已改为 20 个命名跨岗样本，且 E2E 覆盖模拟器加载和重算。
-5. **[P2]** 仍缺完整 ESCO/O*NET 与版本化 JD ingestion；目前使用本地 normalization/crosswalk。
+5. **[P2]** 正式 ESCO/O*NET ingestion 仍缺失；当前只提供 employer-JD 快照 + 本地 crosswalk，且明确不把 taxonomy 当作公司的录用真值。
 
 ## 范围说明
 
@@ -56,11 +56,11 @@ Codex 总体结论「部分完成」**正确**，但表格中多项 “pass” *
 
 ## 尚未完成（阻断「完成」）
 
-1. 完整 ESCO/O*NET 与版本化 JD ingestion；
+1. 完整 ESCO/O*NET ingestion（当前已具备版本化 JD snapshot 与本地 crosswalk）；
 2. 关闭 PR7/PR8 的远端 CI 门禁后，再申请 PR9 最终验收；
 4. 用真实试点数据完成 delta 校准、公平性和候选人/招聘从业者人工抽检。
 
 ## 工作区保护
 
 - 本验收为只读审计 + 本地定向测试复跑；未 reset/覆盖 Codex 改动。
-- 验收对应 commit `44f83d7`，已推送到 `origin/integration/phase-4-full`；远端 Actions 结论仍待独立证据。
+- 验收对应 commit `8d7d994` 之后的本地工作区；远端 Actions 结论仍待独立证据。

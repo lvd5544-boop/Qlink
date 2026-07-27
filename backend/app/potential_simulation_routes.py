@@ -65,7 +65,7 @@ async def _simulate(
     try:
         result = build_simulation(
             resume.parsed_json or {},
-            job.parsed_json or {},
+            {**(job.parsed_json or {}), "_raw_text": job.raw_text or ""},
             job.title or "",
             claims,
             strategy_ids,

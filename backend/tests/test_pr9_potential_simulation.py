@@ -24,6 +24,10 @@ async def test_candidate_simulation_is_reproducible_and_records_view(
     assert data["potential_score"] == second.json()["potential_score"]
     assert len(data["source_versions"]["resume_snapshot_sha256"]) == 64
     assert data["source_versions"]["scoring_version"] == "hybrid_v2"
+    assert (
+        data["target_role_profile"]["source"]["source_kind"] == "employer_provided_job_description"
+    )
+    assert len(data["source_versions"]["target_role_profile_sha256"]) == 64
     assert "offer" not in str(data).lower()
     assert all(len(issue["strategy_options"]) >= 2 for issue in data["issues"])
     events = (await db_session.execute(select(PotentialSimulationEvent))).scalars().all()
@@ -92,6 +96,29 @@ async def test_quantification_is_never_apply_now_without_traced_numeric_evidence
         "产品经理",
         [{"id": "claim-1", "current_text": "负责项目", "evidence_state": "not_enough_information"}],
     )
+
+
+async def test_target_role_profile_preserves_jd_provenance_without_turning_taxonomy_into_truth():
+    result = build_simulation(
+        {"skills": []},
+        {
+            "title": "后端工程师",
+            "required_skills": [{"name": "Python"}],
+            "_raw_text": "要求 Python",
+        },
+        "后端工程师",
+        [],
+    )
+    profile = result["target_role_profile"]
+    requirement = profile["requirements"][0]
+    assert profile["source"]["is_company_requirement"] is True
+    assert requirement["canonical_skill"] == "python"
+    assert requirement["normalization"]["source"] == "local_crosswalk"
+    assert "不新增" in profile["normalization_notice"]
+    capability = next(
+        issue for issue in result["issues"] if issue["issue_id"] == "capability:missing_skills"
+    )
+    assert capability["source_refs"] == [requirement["requirement_id"]]
     options = [option for issue in result["issues"] for option in issue["strategy_options"]]
     assert not any(
         option["strategy"] == "quantification" and option["can_apply_now"] for option in options
