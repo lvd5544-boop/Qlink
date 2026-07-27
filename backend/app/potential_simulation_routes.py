@@ -12,7 +12,7 @@ from .claim_passport import sync_resume_claims
 from .database import get_db
 from .models_db import JobDescription, PotentialSimulationEvent, Resume, ResumeClaim, User
 from .potential_simulation import RULE_VERSION, build_simulation
-from .security import require_candidate
+from .security import require_admin, require_candidate
 
 router = APIRouter(tags=["Potential Simulation"])
 
@@ -24,6 +24,42 @@ class SimulationRequest(BaseModel):
 class SimulationEventRequest(BaseModel):
     event_type: Literal["rejected", "adopted", "completed"]
     strategy_ids: list[str] = Field(default_factory=list, max_length=30)
+
+
+def _pilot_metrics(events: list[PotentialSimulationEvent]) -> dict:
+    """Aggregate only product counters; never expose candidate or employer data."""
+    event_counts: dict[str, int] = {}
+    strategy_counts: dict[str, int] = {}
+    for event in events:
+        event_counts[event.event_type] = event_counts.get(event.event_type, 0) + 1
+        for strategy_id in event.strategy_ids or []:
+            strategy = str(strategy_id).rsplit(":", 1)[-1]
+            strategy_counts[strategy] = strategy_counts.get(strategy, 0) + 1
+    selected = event_counts.get("strategies_selected", 0)
+    viewed = event_counts.get("viewed", 0)
+    total_strategies = sum(strategy_counts.values())
+    repeated = max(strategy_counts.values(), default=0)
+    quantification = strategy_counts.get("quantification", 0)
+    return {
+        "sample_size": len(events),
+        "event_counts": event_counts,
+        "strategy_counts": strategy_counts,
+        "view_to_selection_rate": round(selected / viewed, 4) if viewed else None,
+        "selection_to_adoption_rate": round(event_counts.get("adopted", 0) / selected, 4)
+        if selected
+        else None,
+        "selection_to_completion_rate": round(event_counts.get("completed", 0) / selected, 4)
+        if selected
+        else None,
+        "quantification_strategy_ratio": round(quantification / total_strategies, 4)
+        if total_strategies
+        else None,
+        "strategy_repetition_rate": round(repeated / total_strategies, 4)
+        if total_strategies
+        else None,
+        "privacy_notice": "仅返回聚合计数；不含候选人、简历、岗位或敏感属性。",
+        "interpretation_notice": "样本量不足或未完成人工抽检时，不得据此宣称校准或公平性结论。",
+    }
 
 
 async def _owned_inputs(db: AsyncSession, resume_id: str, job_id: str, user: User):
@@ -144,3 +180,21 @@ async def record_improvement_simulation_event(
     )
     await db.commit()
     return {"event_type": body.event_type, "recorded": True}
+
+
+@router.get("/admin/potential-simulation/pilot-metrics")
+async def potential_simulation_pilot_metrics(
+    _admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin-only, aggregate-only inputs for the PR9 pilot review protocol."""
+    events = (
+        (
+            await db.execute(
+                select(PotentialSimulationEvent).order_by(PotentialSimulationEvent.created_at.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return _pilot_metrics(events)

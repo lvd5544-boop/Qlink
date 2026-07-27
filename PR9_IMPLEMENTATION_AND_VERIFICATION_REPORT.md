@@ -38,7 +38,7 @@ Codex 总体结论「部分完成」**正确**，但表格中多项 “pass” *
 | PR9-R08 | 20 组固定跨岗回归 +「总是补数字」门禁 | 命名 20 组跨技术、产品、运营、设计、研究、管理和应届项目固定集 | 回归禁止无来源量化 apply | **pass（本地）** |
 | PR9-R09 | JD 来源/快照版本化与 taxonomy 规范化 | `job_profile.py` 生成 raw/parsed/JD 快照 hash、稳定 requirement ID 与 local crosswalk 版本；每个事件留存结果快照 | `test_target_role_profile_*` 断言来源、标准化边界和 requirement 回指 | **partial**：已实现本地可重放来源链；未导入正式 ESCO/O*NET 数据集 |
 | PR9-R10 | expression/evidence/capability delta 分离 | expression → evidence → capability 顺序构造完整反事实 | 定向断言三类 delta 可由同一评分器产生且总和一致 | **pass（本地）** |
-| PR9-R11 | 校准/公平性/人工抽检/产品指标 | — | 报告正确声明未做 | **blocked（需试点数据）** |
+| PR9-R11 | 校准/公平性/人工抽检/产品指标 | 管理员聚合指标端点 + `PR9_PILOT_CALIBRATION_AND_REVIEW_PROTOCOL.md`；不暴露个人/敏感数据 | admin-only 与聚合结果回归 | **partial**：试点协议和指标已就绪，真实样本/人工评审尚未发生 |
 | PR9-R12 | 前置 PR7/PR8 完成后方可宣称产品级完成 | backlog | PR7 CI 未绿；PR8 仍部分完成且未远端交付 | **blocked** |
 
 ## 审计发现（须优先修）

@@ -72,6 +72,29 @@ async def test_strategy_lifecycle_events_are_candidate_owned(
     assert event.event_type == "rejected"
 
 
+async def test_pilot_metrics_are_admin_only_and_aggregate_only(
+    client, auth_header, candidate_a, admin_user, resume_a, job_a
+):
+    path = f"/resumes/{resume_a.id}/jobs/{job_a.id}/improvement-simulation"
+    viewed = await client.get(path, headers=auth_header(candidate_a))
+    selected = await client.post(
+        path,
+        headers=auth_header(candidate_a),
+        json={"strategy_ids": viewed.json()["selected_strategy_ids"][:1]},
+    )
+    assert selected.status_code == 200
+    endpoint = "/admin/potential-simulation/pilot-metrics"
+    assert (await client.get(endpoint, headers=auth_header(candidate_a))).status_code == 403
+    response = await client.get(endpoint, headers=auth_header(admin_user))
+    assert response.status_code == 200
+    metrics = response.json()
+    assert metrics["event_counts"]["viewed"] == 1
+    assert metrics["event_counts"]["strategies_selected"] == 1
+    assert metrics["view_to_selection_rate"] == 1.0
+    assert "candidate" not in str(metrics).lower()
+    assert "公平性结论" in metrics["interpretation_notice"]
+
+
 async def test_hard_constraint_never_becomes_an_apply_now_resume_patch():
     resume = {
         "skills": [{"name": "python"}],
