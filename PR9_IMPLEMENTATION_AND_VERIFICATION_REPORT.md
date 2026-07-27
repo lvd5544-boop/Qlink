@@ -13,7 +13,7 @@
 
 | 命令 | 结果 |
 |---|---|
-| `pytest -q tests/test_pr9_potential_simulation.py` | **27 passed** |
+| `pytest -q tests/test_pr9_potential_simulation.py` | **28 passed** |
 | 后端完整 SQLite 回归 | **100% passed（6 PG-only skipped）** |
 | `npm run lint && npm test && npm run build` | lint 通过；**15 passed**；build 通过 |
 | 全新 PostgreSQL migration + browser E2E | 套餐 seed 已验证；**1 passed**，覆盖模拟器加载与重算 |
@@ -37,7 +37,7 @@ Codex 总体结论「部分完成」**正确**，但表格中多项 “pass” *
 | PR9-R07 | 四栏 UI、策略切换、免责声明 | `ImprovementSimulationPanel.jsx` | E2E 覆盖加载/重算；动作跳转至 Coach/Passport/岗位浏览或生成成长计划 | **pass（本地）** |
 | PR9-R08 | 20 组固定跨岗回归 +「总是补数字」门禁 | 命名 20 组跨技术、产品、运营、设计、研究、管理和应届项目固定集 | 回归禁止无来源量化 apply | **pass（本地）** |
 | PR9-R09 | ESCO/O*NET、JD 版本化流水线 | — | — | **fail / missing** |
-| PR9-R10 | expression/evidence/capability delta 分离 | 字段存在 | expression/evidence 恒为 0；全部计入 capability | **partial** |
+| PR9-R10 | expression/evidence/capability delta 分离 | expression → evidence → capability 顺序构造完整反事实 | 定向断言三类 delta 可由同一评分器产生且总和一致 | **pass（本地）** |
 | PR9-R11 | 校准/公平性/人工抽检/产品指标 | — | 报告正确声明未做 | **blocked（需试点数据）** |
 | PR9-R12 | 前置 PR7/PR8 完成后方可宣称产品级完成 | backlog | PR7 CI 未绿；PR8 仍部分完成且未远端交付 | **blocked** |
 
@@ -57,11 +57,10 @@ Codex 总体结论「部分完成」**正确**，但表格中多项 “pass” *
 ## 尚未完成（阻断「完成」）
 
 1. 完整 ESCO/O*NET 与版本化 JD ingestion；
-2. 关闭 PR7 远端 CI，并完成 PR8 推送与剩余门禁后，再申请 PR9 最终验收；
-3. 提交/推送当前工作区（含 PR8/PR9）后取得 Actions 记录；
+2. 关闭 PR7/PR8 的远端 CI 门禁后，再申请 PR9 最终验收；
 4. 用真实试点数据完成 delta 校准、公平性和候选人/招聘从业者人工抽检。
 
 ## 工作区保护
 
 - 本验收为只读审计 + 本地定向测试复跑；未 reset/覆盖 Codex 改动。
-- Codex 沙箱进程可能仍挂着，但关键 PR9 文件在验收前已连续稳定（hashes 一致）。
+- 验收对应 commit `44f83d7`，已推送到 `origin/integration/phase-4-full`；远端 Actions 结论仍待独立证据。

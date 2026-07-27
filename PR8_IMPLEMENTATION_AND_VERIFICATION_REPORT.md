@@ -1,15 +1,15 @@
 # PR8 Claim Passport 实现与验收报告
 
-日期：2026-07-26  
+日期：2026-07-27
 验收依据：`CURSOR_DEFINITION_OF_DONE.md`、`CURSOR_EXECUTION_BACKLOG.md` §13、`CURSOR_REMEDIATION_PLAN.md` §5、`AI_EVIDENCE_INTERVIEW_DATA_DESIGN.md`
 
 ## 最终判定
 
 **部分完成（本地功能与验收已通过；远端交付门禁待关闭）**
 
-PR8 的本地功能、PostgreSQL migration、浏览器链路和专项自动化均已复验通过；
-但当前改动尚未提交/推送，且 PR7 所要求的远端 GitHub Actions 全绿记录仍不可核验，
-因此按统一 DoD 不能标为最终「完成」。
+PR8 的本地功能、PostgreSQL migration、浏览器链路和专项自动化均已复验通过，
+并已随 commit `44f83d7` 推送到 `origin/integration/phase-4-full`。但 PR7 所要求的
+远端 GitHub Actions 全绿记录仍不可核验，因此按统一 DoD 不能标为最终「完成」。
 
 ## 范围
 
@@ -31,7 +31,7 @@ PR8 的本地功能、PostgreSQL migration、浏览器链路和专项自动化�
 | PR8-R09 | 招聘方只见授权申请快照 | `GET /applications/{id}/claim-passport` | 跨雇主 404 | `ApplicationClaimPassportPanel` | **pass** |
 | PR8-R10 | UI 禁止「已验证真实/认证通过」 | Passport 面板文案；申请页 disclaimer | `claimPassportCopy.test.js` | 面板 Alert：「不代表事实已认证」 | **pass** |
 | PR8-R11 | `conflict_detected` 可用 | 雇主冲突记录 API + candidate state | `test_authorized_employer_can_record_conflict_without_fact_verdict` | PR9 读取为 `credibility_risk` | **pass** |
-| PR8-R12 | 前置 PR7/远端交付门禁 | 本地 SSE/Redis 修复已回归 | 本地测试通过 | PR8/PR9 改动未提交/推送，远端 Actions 未重跑 | **blocked（外部）** |
+| PR8-R12 | 前置 PR7/远端交付门禁 | 本地 SSE/Redis 修复已回归 | CI 等价静态检查、后端/前端测试均通过 | `44f83d7` 已推送；私有仓库 Actions 结果尚未取得 | **blocked（外部）** |
 
 ## 本回合复验命令
 
@@ -41,7 +41,7 @@ PR8 的本地功能、PostgreSQL migration、浏览器链路和专项自动化�
 | PostgreSQL PR8/PR9/security | **52 passed** |
 | 隔离 PG migration | `upgrade → downgrade(pr7_constraints) → upgrade(head)`，head=`pr9_potential_simulation`，ledger=9 |
 | Browser E2E | **1 passed**：包含 Candidate Passport UI、雇主 Claim snapshot、完整招聘链路 |
-| 远端 CI / 推送 | **待办**：当前改动未提交/推送，无法证明新的远端 Actions 全绿 |
+| 远端 CI / 推送 | `44f83d7` 已推送到 `origin/integration/phase-4-full`；新的私有仓库 Actions 结果待核验 |
 
 ## 人工验收（抽样）
 
@@ -55,8 +55,7 @@ PR8 的本地功能、PostgreSQL migration、浏览器链路和专项自动化�
 
 ## 尚未完成（阻断「完成」）
 
-1. **PR7 / PR8 的远端 GitHub Actions 全绿**仍未取得；本环境无法代替仓库所有者推送并核验私有仓库运行记录。
-2. PR8 实现尚未进入 `origin/integration/phase-4-full`（尚未提交/推送）。
+1. **PR7 / PR8 的远端 GitHub Actions 全绿**仍未取得；本环境不能在未获凭据授权的情况下核验私有仓库运行记录。
 
 ## 兼容与回滚
 
