@@ -467,7 +467,7 @@ export default function AppliedJobs() {
                 items={[{
                   key: 'eval',
                   label: currentApplication.evaluation
-                    ? `${currentApplication.evaluation.match_score} 分 · 潜力 ${currentApplication.evaluation.potential_score}`
+                    ? `${currentApplication.evaluation.match_score} 分 · 可提升空间 ${currentApplication.evaluation.potential_score}`
                     : '展开查看',
                   children: <MatchEvaluationPanel evaluation={currentApplication.evaluation} />,
                 }]}

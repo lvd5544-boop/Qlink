@@ -16,6 +16,7 @@ from .models_db import (
     JobApplication,
     JobDescription,
     MatchResult,
+    PotentialSimulationEvent,
     Resume,
     ResumeSuggestion,
     ResumeVariant,
@@ -88,6 +89,9 @@ async def delete_resume_graph(db: AsyncSession, resume_ids: Iterable[object]) ->
     )
     await delete_application_graph(db, app_ids)
     await _delete_audits(db, resume_ids=ids)
+    await db.execute(
+        delete(PotentialSimulationEvent).where(PotentialSimulationEvent.resume_id.in_(ids))
+    )
     await db.execute(delete(InterviewInvitation).where(InterviewInvitation.resume_id.in_(ids)))
     await db.execute(delete(ResumeSuggestion).where(ResumeSuggestion.resume_id.in_(ids)))
     await db.execute(delete(ResumeVariant).where(ResumeVariant.resume_id.in_(ids)))
@@ -106,6 +110,9 @@ async def delete_job_graph(db: AsyncSession, job_ids: Iterable[object]) -> None:
     )
     await delete_application_graph(db, app_ids)
     await _delete_audits(db, job_ids=ids)
+    await db.execute(
+        delete(PotentialSimulationEvent).where(PotentialSimulationEvent.job_id.in_(ids))
+    )
     await db.execute(delete(InterviewInvitation).where(InterviewInvitation.job_id.in_(ids)))
     await db.execute(delete(ResumeSuggestion).where(ResumeSuggestion.job_id.in_(ids)))
     await db.execute(delete(ResumeVariant).where(ResumeVariant.job_id.in_(ids)))

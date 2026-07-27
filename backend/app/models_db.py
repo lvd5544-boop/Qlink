@@ -386,6 +386,161 @@ class Resume(Base):
     variants = relationship("ResumeVariant", back_populates="resume")
 
 
+class ResumeClaim(Base):
+    """Stable, user-owned Passport claim; never a real-world verification verdict."""
+
+    __tablename__ = "resume_claims"
+    __table_args__ = (
+        UniqueConstraint("resume_id", "source_key", name="uq_resume_claim_source_key"),
+        CheckConstraint(
+            "evidence_state IN ('supported_by_user_evidence', 'not_enough_information', 'conflict_detected')",
+            name="ck_resume_claim_evidence_state",
+        ),
+        CheckConstraint(
+            "workflow_state IN ('open', 'answered', 'reviewed', 'withdrawn')",
+            name="ck_resume_claim_workflow_state",
+        ),
+        Index("ix_resume_claim_resume_state", "resume_id", "workflow_state", "updated_at"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    resume_id = Column(String(36), ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False)
+    # Compatibility key from claim_reasoning.  The UUID above is the Passport's stable ID.
+    source_key = Column(String(160), nullable=False)
+    section = Column(String(64), nullable=False)
+    item_index = Column(Integer, nullable=True)
+    field_path = Column(String(255), nullable=False)
+    claim_type = Column(String(48), nullable=False)
+    original_text = Column(Text, nullable=False)
+    current_text = Column(Text, nullable=False)
+    evidence_state = Column(String(48), nullable=False, default="not_enough_information")
+    workflow_state = Column(String(24), nullable=False, default="open")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    resume = relationship("Resume", backref="passport_claims")
+
+
+class ClaimEvidence(Base):
+    __tablename__ = "claim_evidence"
+    __table_args__ = (
+        CheckConstraint(
+            "evidence_type IN ('user_statement', 'metric_context', 'document_reference', 'employer_review')",
+            name="ck_claim_evidence_type",
+        ),
+        CheckConstraint(
+            "verification_status IN ('user_provided', 'employer_reviewed', 'withdrawn')",
+            name="ck_claim_evidence_verification_status",
+        ),
+        Index("ix_claim_evidence_claim_created", "claim_id", "created_at"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    claim_id = Column(
+        String(36), ForeignKey("resume_claims.id", ondelete="CASCADE"), nullable=False
+    )
+    evidence_type = Column(String(32), nullable=False)
+    summary = Column(Text, nullable=True)
+    source = Column(Text, nullable=True)
+    provided_by = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    verification_status = Column(String(32), nullable=False, default="user_provided")
+    withdrawn_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    claim = relationship("ResumeClaim", backref="evidence")
+    provider = relationship("User")
+
+
+class ClaimRevision(Base):
+    __tablename__ = "claim_revisions"
+    __table_args__ = (Index("ix_claim_revision_claim_created", "claim_id", "created_at"),)
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    claim_id = Column(
+        String(36), ForeignKey("resume_claims.id", ondelete="CASCADE"), nullable=False
+    )
+    before_text = Column(Text, nullable=False)
+    after_text = Column(Text, nullable=False)
+    rewrite_mode = Column(String(48), nullable=True)
+    evidence_ids = Column(JSON, nullable=True)
+    model_version = Column(String(128), nullable=True)
+    prompt_version = Column(String(128), nullable=True)
+    rule_version = Column(String(128), nullable=True)
+    fidelity_result = Column(JSON, nullable=True)
+    created_by = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    claim = relationship("ResumeClaim", backref="revisions")
+    actor = relationship("User")
+
+
+class ClaimApplicationLink(Base):
+    __tablename__ = "claim_application_links"
+    __table_args__ = (
+        UniqueConstraint("claim_id", "application_id", name="uq_claim_application_link"),
+        Index("ix_claim_application_link_application", "application_id", "created_at"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    claim_id = Column(
+        String(36), ForeignKey("resume_claims.id", ondelete="RESTRICT"), nullable=False
+    )
+    application_id = Column(
+        String(36), ForeignKey("job_applications.id", ondelete="CASCADE"), nullable=False
+    )
+    text_snapshot = Column(Text, nullable=False)
+    evidence_state_snapshot = Column(String(48), nullable=False)
+    workflow_state_snapshot = Column(String(24), nullable=False)
+    audit_snapshot = Column(JSON, nullable=True)
+    employer_reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    claim = relationship("ResumeClaim", backref="application_links")
+    application = relationship("JobApplication", backref="claim_passport_links")
+
+
+class ClaimEvent(Base):
+    """Append-only provenance event.  No API mutates or deletes this table."""
+
+    __tablename__ = "claim_events"
+    __table_args__ = (Index("ix_claim_event_claim_created", "claim_id", "created_at"),)
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    claim_id = Column(
+        String(36), ForeignKey("resume_claims.id", ondelete="RESTRICT"), nullable=False
+    )
+    event_type = Column(String(64), nullable=False)
+    actor_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    payload = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    claim = relationship("ResumeClaim", backref="events")
+    actor = relationship("User")
+
+
+class PotentialSimulationEvent(Base):
+    """Candidate-visible PR9 simulation audit trail; no employer ranking input."""
+
+    __tablename__ = "potential_simulation_events"
+    __table_args__ = (Index("ix_potential_simulation_resume_created", "resume_id", "created_at"),)
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    resume_id = Column(String(36), ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False)
+    job_id = Column(
+        String(36), ForeignKey("job_descriptions.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    event_type = Column(String(32), nullable=False)
+    strategy_ids = Column(JSON, nullable=True)
+    result_snapshot = Column(JSON, nullable=False)
+    rule_version = Column(String(64), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    resume = relationship("Resume")
+    job = relationship("JobDescription")
+    user = relationship("User")
+
+
 class ResumeVariant(Base):
     """岗位定制版简历副本（resume_variants）。"""
 

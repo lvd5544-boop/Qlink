@@ -150,6 +150,20 @@ test('full hiring chain in browser', async ({ page }) => {
   expect(appList.length).toBeGreaterThan(0);
   const applicationId = String(appList[0].id);
 
+  // PR8: Passport has stable candidate claims and an employer-only immutable snapshot.
+  const claims = await api('POST', `/resumes/${resumeId}/claims/sync`, { token: candidateToken });
+  expect(claims.claims.length).toBeGreaterThan(0);
+  const passportSnapshot = await api('GET', `/applications/${applicationId}/claim-passport`, {
+    token: employerToken,
+  });
+  expect(passportSnapshot.claims.length).toBeGreaterThan(0);
+  await page.goto('/candidate/my-resumes');
+  await page.getByRole('button', { name: '进入工作台' }).first().click();
+  await expect(page.getByText('履历主张（Claim Passport）')).toBeVisible({ timeout: 30000 });
+  await expect(page.getByText('可提升空间模拟')).toBeVisible({ timeout: 30000 });
+  await page.getByRole('button', { name: '按所选策略重新模拟' }).click();
+  await expect(page.getByText('模型内模拟，不代表面试或录用承诺。')).toBeVisible();
+
   // 5) Employer clarification then candidate reply in UI (API fallback)
   await api('POST', `/applications/${applicationId}/clarification-requests`, {
     token: employerToken,

@@ -52,6 +52,7 @@ from .resume_suggestion_store import (
     mark_suggestion_status,
     sync_suggestions_for_source,
 )
+from .resume_apply import field_path_from_patch, value_at_field_path
 from .resume_coach_service import run_resume_coach
 from .claim_reasoning import generate_claim_followup_pack, reason_about_claims
 from .evidence_followup import (
@@ -72,6 +73,15 @@ from .application_routes import router as application_router
 from .analytics_routes import router as analytics_router
 from .billing_routes import router as billing_router
 from .interview_routes import router as interview_router
+from .claim_passport_routes import router as claim_passport_router
+from .potential_simulation_routes import router as potential_simulation_router
+from .claim_passport import (
+    add_evidence as passport_add_evidence,
+    claims_for_field_path,
+    record_revision,
+    sync_resume_claims,
+    upsert_field_claim,
+)
 from .billing_accounts import reserve_feature_entitlement
 from .job_sources import job_source_label, job_source_type
 from .usage_metering import (
@@ -183,9 +193,11 @@ app.include_router(auth_router)
 
 app.include_router(invitation_router)
 app.include_router(application_router)
+app.include_router(potential_simulation_router)
 app.include_router(analytics_router)
 app.include_router(billing_router)
 app.include_router(interview_router)
+app.include_router(claim_passport_router)
 
 UPLOAD_DIR = os.getenv("UPLOAD_DIR") or (
     "/data/uploads"
@@ -224,6 +236,10 @@ async def _refresh_resume_matches(
     llm_rerank_top: int = 3,
 ) -> dict:
     """Queue match refresh off the web worker; tests run inline via TESTING."""
+    if _is_testing():
+        # Unit/API tests must not depend on a host Redis instance.  Full queue
+        # delivery is covered by the isolated compose/browser gate instead.
+        return {"queued": False, "reason": "testing"}
     return await enqueue_job(
         redis_client,
         job_type="match_generate",
@@ -298,6 +314,13 @@ async def parse_resume(
         user_id=str(current_user.id), raw_text=text, parsed_json=resume_data.model_dump()
     )
     db.add(resume_record)
+    await db.flush()
+    await sync_resume_claims(
+        db,
+        resume_record,
+        actor_id=str(current_user.id),
+        reason="resume_parsed",
+    )
     await db.commit()
     await db.refresh(resume_record)
 
@@ -560,6 +583,12 @@ async def update_resume(
         raise HTTPException(status_code=403, detail="无权修改该简历")
     cleaned = {k: v for k, v in update.parsed_json.items() if not k.startswith("_")}
     resume.parsed_json = cleaned
+    await sync_resume_claims(
+        db,
+        resume,
+        actor_id=str(current_user.id),
+        reason="candidate_resume_update",
+    )
     await db.commit()
 
     health = await _run_and_save_health_check(db, resume)
@@ -761,7 +790,72 @@ async def apply_resume_suggestion(
             }
         )
         new_json["_fidelity_history"] = history[-100:]
+    revision_field_path = field_path_from_patch(safe_patch)
+    # Ensure a first-time Passport write captures the pre-rewrite text before
+    # the resume JSON is replaced; otherwise the new text would be mistaken
+    # for the Claim's original text and no revision could be recorded.
+    await sync_resume_claims(
+        db,
+        resume,
+        actor_id=str(current_user.id),
+        reason="suggestion_apply_before",
+    )
+    field_revision_claim = None
+    if revision_field_path:
+        field_revision_claim = await upsert_field_claim(
+            db,
+            resume,
+            field_path=revision_field_path,
+            text=value_at_field_path(old_json, revision_field_path),
+            actor_id=str(current_user.id),
+            reason="suggestion_apply_before",
+        )
+    previous_claim_texts = {}
+    if revision_field_path:
+        previous_claim_texts = {
+            str(claim.id): claim.current_text
+            for claim in await claims_for_field_path(db, resume_id, revision_field_path)
+        }
     resume.parsed_json = new_json
+    # Persist a Passport revision for every stable claim at this edited field.
+    # The fidelity proof has already bound the exact before/after writeback.
+    await sync_resume_claims(
+        db,
+        resume,
+        actor_id=str(current_user.id),
+        reason="suggestion_apply",
+    )
+    if field_revision_claim and revision_field_path:
+        after_text = value_at_field_path(new_json, revision_field_path)
+        before_text = field_revision_claim.current_text
+        if before_text != after_text:
+            await record_revision(
+                db,
+                field_revision_claim,
+                actor_id=str(current_user.id),
+                before_text=before_text,
+                after_text=after_text,
+                rewrite_mode="suggestion_apply",
+                evidence_ids=(fidelity_payload or {}).get("evidence_references") or [],
+                fidelity_result=(fidelity_payload or {}).get("fidelity_result") or {},
+            )
+    if revision_field_path:
+        for passport_claim in await claims_for_field_path(db, resume_id, revision_field_path):
+            if passport_claim.claim_type == "field_revision":
+                continue
+            before_text = previous_claim_texts.get(str(passport_claim.id))
+            if before_text == passport_claim.current_text:
+                continue
+            await record_revision(
+                db,
+                passport_claim,
+                actor_id=str(current_user.id),
+                before_text=before_text or passport_claim.original_text,
+                after_text=passport_claim.current_text,
+                rewrite_mode="suggestion_apply",
+                evidence_ids=(fidelity_payload or {}).get("evidence_references") or [],
+                fidelity_result=(fidelity_payload or {}).get("fidelity_result") or {},
+            )
     await db.commit()
     health = await _run_and_save_health_check(db, resume)
     await _refresh_resume_matches(db, resume_id, llm_rerank_top=3)
@@ -1046,6 +1140,26 @@ async def evidence_followup_regenerate(
         fidelity_result=result.get("fidelity_result") or {},
         evidence_references=result.get("evidence_references") or [],
     )
+    answer_summary = "；".join(
+        answer.answer.strip() for answer in body.answers if answer.answer and answer.answer.strip()
+    )
+    if answer_summary:
+        await sync_resume_claims(
+            db,
+            resume,
+            actor_id=str(current_user.id),
+            reason="evidence_followup",
+        )
+        for passport_claim in await claims_for_field_path(db, resume_id, str(result["field_path"])):
+            await passport_add_evidence(
+                db,
+                passport_claim,
+                actor_id=str(current_user.id),
+                evidence_type="user_statement",
+                summary=answer_summary,
+                source="evidence_followup",
+            )
+        await db.commit()
     return {
         "resume_id": resume_id,
         **result,

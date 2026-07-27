@@ -93,3 +93,19 @@ def field_path_from_patch(patch: dict) -> Optional[str]:
     if field:
         return f"{section}.{field}"
     return section
+
+
+def value_at_field_path(parsed_json: dict, field_path: str) -> str:
+    """Read a text field using the same grammar used by suggestion writeback."""
+    section, index, field = parse_field_path(field_path)
+    value: Any
+    if index is None:
+        value = (parsed_json or {}).get(section)
+        if field and isinstance(value, dict):
+            value = value.get(field)
+    else:
+        entries = (parsed_json or {}).get(section) or []
+        value = entries[index] if isinstance(entries, list) and index < len(entries) else None
+        if field and isinstance(value, dict):
+            value = value.get(field)
+    return str(value or "").strip()

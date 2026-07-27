@@ -62,7 +62,7 @@ export function ClickableScoreTag({ type, score, version = 2, color, style }) {
         }}
         icon={<InfoCircleOutlined />}
       >
-        {isPotential ? `潜力 ${score} 分` : `当前 ${score} 分`}
+        {isPotential ? `可提升空间 ${score} 分` : `当前 ${score} 分`}
       </Tag>
     </Popover>
   );

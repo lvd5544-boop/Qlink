@@ -17,6 +17,8 @@ EXPECTED_MIGRATIONS = (
     "20260725_pr5_1_interview_results",
     "20260725_pr5_5_remove_legacy_cost_estimates",
     "20260726_pr7_constraints",
+    "20260726_pr8_claim_passport",
+    "20260726_pr9_potential_simulation",
 )
 
 # Alembic version_num is VARCHAR(32); keep short revision ids mapped 1:1.
@@ -28,6 +30,8 @@ LEDGER_TO_ALEMBIC = {
     "20260725_pr5_1_interview_results": "pr5_1_interview_results",
     "20260725_pr5_5_remove_legacy_cost_estimates": "pr5_5_drop_cost_estimates",
     "20260726_pr7_constraints": "pr7_constraints",
+    "20260726_pr8_claim_passport": "pr8_claim_passport",
+    "20260726_pr9_potential_simulation": "pr9_potential_simulation",
 }
 ALEMBIC_HEAD = LEDGER_TO_ALEMBIC[EXPECTED_MIGRATIONS[-1]]
 

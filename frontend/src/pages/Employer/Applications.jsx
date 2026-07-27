@@ -10,6 +10,7 @@ import api from '../../api';
 import { getApiErrorMessage } from '../../utils/apiError';
 import ResumeCredibilityPanel from '../../components/ResumeCredibilityPanel';
 import ApplicationMessageBubble from '../../components/ApplicationMessageBubble';
+import ApplicationClaimPassportPanel from '../../components/ApplicationClaimPassportPanel';
 import {
   CLARIFICATION_QUICK_FILTERS,
   EMPLOYER_STATUS_OPTIONS,
@@ -558,6 +559,7 @@ export default function Applications() {
               candidateName={currentApplication.candidate_name}
               onClarificationSent={handleClarificationSent}
             />
+            <ApplicationClaimPassportPanel applicationId={currentApplication.id} />
           </Col>
         </Row>
       )}

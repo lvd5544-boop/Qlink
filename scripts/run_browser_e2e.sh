@@ -2,6 +2,10 @@
 # Local/CI helper: migrate + API + worker + frontend proxy, then Playwright.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PYTHON_BIN="${PYTHON_BIN:-python}"
+if [[ "${PYTHON_BIN}" == "python" && -x "${ROOT}/backend/.venv/bin/python" ]]; then
+  PYTHON_BIN="${ROOT}/backend/.venv/bin/python"
+fi
 export PYTHONPATH="${ROOT}/backend"
 export DATABASE_URL="${DATABASE_URL:?DATABASE_URL required}"
 export REDIS_URL="${REDIS_URL:-redis://127.0.0.1:6379/0}"
@@ -11,6 +15,9 @@ export SECRET_KEY="${SECRET_KEY:-ci-only-access-secret-at-least-32-bytes}"
 export FIDELITY_PROOF_SECRET_KEY="${FIDELITY_PROOF_SECRET_KEY:-ci-only-proof-secret-at-least-32-bytes}"
 export CORS_ORIGINS="${CORS_ORIGINS:-http://127.0.0.1:4173}"
 export MODEL_REQUIRED=false
+# E2E must be deterministic and must not consume a developer's provider key
+# from backend/.env. The parser has a rules-only fallback for this exact mode.
+export DEEPSEEK_API_KEY=""
 export REQUIRE_BACKGROUND_HEARTBEATS=false
 export EMPLOYER_INVITE_CODE="${EMPLOYER_INVITE_CODE:-e2e-employer-invite}"
 export E2E_API_ORIGIN="${E2E_API_ORIGIN:-http://127.0.0.1:8000}"
@@ -21,11 +28,11 @@ export UPLOAD_DIR="${UPLOAD_DIR:-${ROOT}/backend/uploads/e2e}"
 mkdir -p "${UPLOAD_DIR}"
 
 cd "${ROOT}/backend"
-python scripts/migrate.py
+"${PYTHON_BIN}" scripts/migrate.py
 
-uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+"${PYTHON_BIN}" -m uvicorn app.main:app --host 127.0.0.1 --port 8000 &
 API_PID=$!
-python -m app.background_jobs &
+"${PYTHON_BIN}" -m app.background_jobs &
 WORKER_PID=$!
 
 cleanup() {

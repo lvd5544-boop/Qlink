@@ -64,6 +64,16 @@ from .usage_metering import finalize_quota
 from .provider_costs import record_metering_cost_if_called
 from .billing_accounts import reserve_feature_entitlement
 from .email_service import send_email
+from .claim_passport import (
+    add_evidence as passport_add_evidence,
+    application_claim_snapshot_summary,
+    claim_for_source_key,
+    mark_application_claim_reviewed,
+    note_clarification_requested,
+    record_application_conflict,
+    snapshot_application_claims,
+    sync_resume_claims,
+)
 
 router = APIRouter(prefix="/applications", tags=["岗位申请"])
 
@@ -72,6 +82,11 @@ class ApplyRequest(BaseModel):
     job_id: str
     resume_id: str
     cover_letter: Optional[str] = None
+
+
+class ConflictReviewRequest(BaseModel):
+    claim_id: str = Field(min_length=1, max_length=160)
+    reason: str = Field(min_length=1, max_length=2000)
 
 
 class MessageRequest(BaseModel):
@@ -258,6 +273,23 @@ async def _send_clarification_for_application(
     ensure_application_has_candidate_authorization(application)
     if application.status in {"accepted", "rejected", "interview_invited"}:
         raise HTTPException(status_code=409, detail="当前申请状态不能发起澄清")
+
+    resume = await db.get(Resume, application.resume_id)
+    if resume:
+        await sync_resume_claims(
+            db,
+            resume,
+            actor_id=str(employer.id),
+            reason="clarification_requested",
+        )
+        passport_claim = await claim_for_source_key(db, str(resume.id), req.claim_id)
+        if passport_claim:
+            await note_clarification_requested(
+                db,
+                passport_claim,
+                application_id=str(application.id),
+                employer_id=str(employer.id),
+            )
 
     questions = [q.strip() for q in req.questions if q and q.strip()]
     if not questions:
@@ -467,6 +499,12 @@ async def _credibility_audit_response(
             resume.parsed_json,
             job.parsed_json if job else None,
         )
+        if application:
+            report["claim_passport"] = {
+                "scope": "application_submission_snapshot",
+                "provenance_only": True,
+                "claims": await application_claim_snapshot_summary(db, str(application.id)),
+            }
         metering = report.pop("_metering", {})
         record = await _persist_credibility_audit(
             db,
@@ -632,6 +670,12 @@ async def apply_job(
     )
     db.add(application)
     await db.flush()
+    await snapshot_application_claims(
+        db,
+        application,
+        resume,
+        actor_id=str(current_user.id),
+    )
 
     if req.cover_letter:
         db.add(
@@ -1281,6 +1325,18 @@ async def send_clarification_response(
             application_id=application_id,
             job_title=job.title if job else "",
         )
+        # Bridge legacy clarification threads to the Passport's formal evidence
+        # record. A claim key may be absent on old records; those remain legacy.
+        passport_claim = await claim_for_source_key(db, str(resume.id), claim_id)
+        if passport_claim:
+            await passport_add_evidence(
+                db,
+                passport_claim,
+                actor_id=str(current_user.id),
+                evidence_type="user_statement",
+                summary=req.body,
+                source=f"application:{application_id}:clarification_response",
+            )
 
     await db.commit()
     await db.refresh(msg)
@@ -1386,6 +1442,14 @@ async def mark_application_reviewed_endpoint(
             from .claim_threads import mark_claim_reviewed
 
             mark_claim_reviewed(app, body.claim_id)
+            passport_claim = await claim_for_source_key(db, str(app.resume_id), body.claim_id)
+            if passport_claim:
+                await mark_application_claim_reviewed(
+                    db,
+                    application_id=str(app.id),
+                    claim_id=str(passport_claim.id),
+                    employer_id=str(current_user.id),
+                )
         else:
             mark_application_reviewed(app)
     except ValueError as exc:
@@ -1393,6 +1457,41 @@ async def mark_application_reviewed_endpoint(
     await db.commit()
     await db.refresh(app)
     return {"status": "ok", "application": _application_payload(app, job)}
+
+
+@router.post("/{application_id}/claim-conflicts")
+async def mark_application_claim_conflict_endpoint(
+    application_id: str,
+    body: ConflictReviewRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Authorized employer records a discrepancy for follow-up, not a fraud verdict."""
+    if current_user.role != "employer":
+        raise HTTPException(status_code=403, detail="仅招聘方可记录复核冲突")
+    app = await db.get(JobApplication, application_id)
+    if not app:
+        raise HTTPException(status_code=404, detail="申请不存在或无权访问")
+    job = await db.get(JobDescription, app.job_id)
+    if not job or job.employer_id != str(current_user.id):
+        raise HTTPException(status_code=404, detail="申请不存在或无权访问")
+    ensure_application_has_candidate_authorization(app)
+    claim = await claim_for_source_key(db, str(app.resume_id), body.claim_id)
+    if not claim:
+        raise HTTPException(status_code=404, detail="主张不存在或不属于当前申请")
+    await record_application_conflict(
+        db,
+        claim,
+        application_id=str(app.id),
+        employer_id=str(current_user.id),
+        reason=body.reason,
+    )
+    await db.commit()
+    return {
+        "status": "conflict_recorded",
+        "claim_id": str(claim.id),
+        "message": "已记录待澄清冲突，不代表对事实作出判定。",
+    }
 
 
 @router.get("/{application_id}/events")

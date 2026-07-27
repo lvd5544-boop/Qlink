@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Card, List, Button, Modal, Tag, Space, message, Spin, Row, Col, Typography, Divider, Alert,
 } from 'antd';
@@ -12,6 +12,8 @@ import ResumeDocumentView from '../../components/ResumeDocumentView';
 import ResumeEditForm from '../../components/ResumeEditForm';
 import ResumeCoachPanel from '../../components/ResumeCoachPanel';
 import ResumeVariantsPanel from '../../components/ResumeVariantsPanel';
+import ClaimPassportPanel from '../../components/ClaimPassportPanel';
+import ImprovementSimulationPanel from '../../components/ImprovementSimulationPanel';
 import { notifyDashboardRefresh } from '../../utils/dashboardSync';
 
 const { Text, Paragraph } = Typography;
@@ -27,6 +29,7 @@ function initEditData(resume) {
 
 export default function MyResumes() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const deepLinkHandled = useRef(false);
   const [resumes, setResumes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -43,6 +46,18 @@ export default function MyResumes() {
 
   const userId = localStorage.getItem('user_id');
   const selectedResume = resumes.find((r) => r.id === selectedId) || null;
+
+  const handleSimulationAction = useCallback((option, issue) => {
+    if (option.next_action === 'view_alternative_roles') {
+      navigate('/candidate/browse-jobs');
+      return;
+    }
+    const target = option.next_action === 'preview_rewrite' ? 'resume-coach' : 'claim-passport';
+    document.getElementById(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (target === 'claim-passport') {
+      setClaimHint(issue.claim_ids?.length ? `请为相关 Claim 补充证据或说明：${issue.claim_ids.join(', ')}` : issue.diagnosis);
+    }
+  }, [navigate]);
 
   const fetchResumes = useCallback(async () => {
     setLoading(true);
@@ -392,20 +407,22 @@ export default function MyResumes() {
                 applyingId={applyingId}
               />
             </Card>
-            <ResumeCoachPanel
+            <div id="resume-coach"><ResumeCoachPanel
               resumeId={selectedResume.id}
               defaultJobTitle={editData.expected_job_title}
               onApplySuggestion={(s) => handleApplySuggestion(selectedResume.id, s)}
               onDismissSuggestion={(s) => handleDismissSuggestion(selectedResume.id, s)}
               onSuggestionsUpdated={setPendingSuggestions}
               applyingId={applyingId}
-            />
+            /></div>
             <ResumeVariantsPanel
               resumeId={selectedResume.id}
               defaultJobTitle={editData.expected_job_title}
               topMatches={topMatches}
               onApplyVariant={handleVariantApplied}
             />
+            <div id="claim-passport"><ClaimPassportPanel resumeId={selectedResume.id} /></div>
+            <ImprovementSimulationPanel resumeId={selectedResume.id} jobId={topMatches[0]?.job_id} onAction={handleSimulationAction} />
           </div>
         </Col>
       </Row>

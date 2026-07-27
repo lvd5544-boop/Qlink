@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "test": "node --test src/api/index.test.js src/constants/applicationStatus.test.js src/utils/apiError.test.js src/utils/idempotency.test.js src/utils/interviewWebSocket.test.js",
+    "test": "node --test src/api/index.test.js src/constants/applicationStatus.test.js src/components/claimPassportCopy.test.js src/components/improvementSimulationCopy.test.js src/utils/apiError.test.js src/utils/idempotency.test.js src/utils/interviewWebSocket.test.js",
     "preview": "vite preview",
     "e2e:proxy": "node e2e/proxy-server.mjs",
     "e2e": "playwright test",
