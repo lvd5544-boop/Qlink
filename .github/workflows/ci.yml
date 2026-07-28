@@ -32,6 +32,9 @@ jobs:
         working-directory: backend
     env:
       TEST_DATABASE_URL: postgresql+asyncpg://appuser:apppassword@localhost:5432/jobplatform_test_ci
+      # pytest reads TEST_DATABASE_URL, while the production migration entrypoint
+      # intentionally reads DATABASE_URL.  They must target the same CI service.
+      DATABASE_URL: postgresql+asyncpg://appuser:apppassword@localhost:5432/jobplatform_test_ci
       REQUIRE_SCHEMA_VERSION: "0"
       PYTHONPATH: .
     steps:
