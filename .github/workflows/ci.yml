@@ -160,9 +160,11 @@ jobs:
           python - <<'PY'
           import json
           data = json.load(open("/tmp/ready.json"))
+          # Public /ready is a coarse gate only; detailed checks live on
+          # /admin/readiness (admin-auth). Smoke must match that contract.
           assert data["status"] == "ready", data
-          assert data["checks"]["schema"]["ok"] is True, data
-          assert data["checks"]["database"]["ok"] is True, data
+          assert data["model_mode"] == "rules_only", data
+          assert "checks" not in data, data
           print("ready smoke ok")
           PY
 
