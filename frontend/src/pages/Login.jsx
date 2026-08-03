@@ -1,11 +1,19 @@
 import { Form, Input, Button, message } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useEffect } from 'react';
 import AuthLayout from '../components/AuthLayout';
 import api from '../api';
 
 export default function Login() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams.get('reason') === 'session_expired') {
+      message.warning('登录已过期，请重新登录后继续');
+    }
+  }, [searchParams]);
 
   const onFinish = async (values) => {
     try {
@@ -14,11 +22,18 @@ export default function Login() {
       localStorage.setItem('role', res.data.role);
       localStorage.setItem('user_id', res.data.user_id);
       message.success('登录成功');
-      if (res.data.role === 'candidate') {
-        navigate('/candidate/dashboard');
-      } else {
-        navigate('/employer/dashboard');
-      }
+      const defaultPath = res.data.role === 'candidate'
+        ? '/candidate/dashboard'
+        : res.data.role === 'admin'
+          ? '/admin/data-sources'
+          : '/employer/dashboard';
+      const requestedPath = searchParams.get('returnTo');
+      const allowedPrefix = res.data.role === 'candidate'
+        ? '/candidate/'
+        : res.data.role === 'admin'
+          ? '/admin/'
+          : '/employer/';
+      navigate(requestedPath?.startsWith(allowedPrefix) ? requestedPath : defaultPath);
     } catch {
       message.error('登录失败，请检查邮箱和密码');
     }

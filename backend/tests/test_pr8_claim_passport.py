@@ -7,9 +7,79 @@ from sqlalchemy import select
 
 from app.models_db import ClaimEvent, ResumeSuggestion
 from app.models import ResumeInfo
+from app.claim_reasoning import extract_resume_claims
 from app.resume_suggestion_store import sync_suggestions_for_source
 
 pytestmark = pytest.mark.asyncio
+
+
+async def test_claim_extraction_includes_identity_scalar_education_and_projects():
+    claims = extract_resume_claims(
+        {
+            "name": "Jordan Example",
+            "school": "Example University",
+            "degree": "Bachelor of Science",
+            "education": "Computer Science",
+            "projects": [
+                {
+                    "name": "AI Job Platform",
+                    "duration": "2025.01 - 2025.07",
+                    "description": "Built a FastAPI service\nAdded regression tests",
+                }
+            ],
+        }
+    )
+
+    assert any(item["section"] == "name" and item["text"] == "Jordan Example" for item in claims)
+    assert any(
+        item["section"] == "education" and "Example University" in item["text"]
+        for item in claims
+    )
+    assert any(
+        item["section"] == "projects" and item["text"] == "AI Job Platform"
+        for item in claims
+    )
+
+    summarized = extract_resume_claims(
+        {
+            "school": "Example University",
+            "degree": "Bachelor of Science",
+            "education": "Example University · Bachelor of Science",
+        }
+    )
+    education_claim = next(item for item in summarized if item["section"] == "education")
+    assert education_claim["text"] == "Example University · Bachelor of Science"
+
+
+async def test_project_claims_are_hierarchical_and_dates_are_context_not_claims():
+    claims = extract_resume_claims(
+        {
+            "projects": [
+                {
+                    "name": "Air quality forecasting",
+                    "duration": "2024.01 - 2024.06",
+                    "description": (
+                        "Compared machine learning models\n"
+                        "for real-time air quality forecasting.\n"
+                        "Evaluated models via R², MSE, and training efficiency.\n"
+                        "The random forest model turned out to achieve the highest R² and lowest MSE."
+                    ),
+                }
+            ]
+        }
+    )
+
+    project_claims = [item for item in claims if item["section"] == "projects"]
+    parent = next(item for item in project_claims if item["hierarchy_level"] == "entry")
+    details = [item for item in project_claims if item["hierarchy_level"] == "detail"]
+
+    assert parent["text"] == "Air quality forecasting"
+    assert parent["date_context"] == "2024.01 - 2024.06"
+    assert details
+    assert len(details) <= 4
+    assert all(item["parent_claim_id"] == parent["id"] for item in details)
+    assert not any(item["claim_type"] == "time" for item in project_claims)
+    assert not any(item["text"].startswith("for real-time") for item in details)
 
 
 async def _apply(client, auth_header, candidate, resume, job):
@@ -159,6 +229,36 @@ async def test_claim_uuid_survives_same_source_key_text_update(
     assert same_key["original_text"] == action["original_text"]
 
 
+async def test_claim_sync_withdraws_sources_removed_by_reparse(
+    client, auth_header, candidate_a, resume_a, db_session
+):
+    resume_a.parsed_json = {
+        **(resume_a.parsed_json or {}),
+        "projects": [
+            {
+                "name": "Temporary Project",
+                "description": "A source that will be removed by reparse",
+            }
+        ],
+    }
+    await db_session.commit()
+    first = await client.post(
+        f"/resumes/{resume_a.id}/claims/sync",
+        headers=auth_header(candidate_a),
+    )
+    project = next(item for item in first.json()["claims"] if item["section"] == "projects")
+    resume_a.parsed_json = {**resume_a.parsed_json, "projects": []}
+    await db_session.commit()
+
+    second = await client.post(
+        f"/resumes/{resume_a.id}/claims/sync",
+        headers=auth_header(candidate_a),
+    )
+    withdrawn = next(item for item in second.json()["claims"] if item["id"] == project["id"])
+    assert withdrawn["workflow_state"] == "withdrawn"
+    assert any(event["event_type"] == "claim_withdrawn" for event in withdrawn["events"])
+
+
 async def test_parse_resume_creates_passport_claims_immediately(
     client, auth_header, candidate_a, monkeypatch, tmp_path
 ):
@@ -188,6 +288,31 @@ async def test_parse_resume_creates_passport_claims_immediately(
     claims = await client.get(f"/resumes/{resume_id}/claims", headers=auth_header(candidate_a))
     assert claims.status_code == 200
     assert claims.json()["claims"]
+
+
+async def test_claim_sync_repairs_incomplete_parsed_resume_from_raw_text(
+    client, auth_header, candidate_a, resume_a, db_session
+):
+    resume_a.raw_text = (
+        "Jordan Example\njordan@example.com\nEDUCATION BACKGROUND\n"
+        "Example University\nBachelor of Science\nPROJECTS\n001\n"
+        "AI Job Platform: 2025.01 - 2025.07\nBuilt a FastAPI service"
+    )
+    resume_a.parsed_json = {"email": "jordan@example.com", "summary": "incomplete"}
+    await db_session.commit()
+
+    synced = await client.post(
+        f"/resumes/{resume_a.id}/claims/sync",
+        headers=auth_header(candidate_a),
+    )
+
+    assert synced.status_code == 200, synced.text
+    payload = synced.json()
+    assert payload["parsed"]["name"] == "Jordan Example"
+    assert "Example University" in payload["parsed"]["school"]
+    assert payload["parsed"]["projects"]
+    sections = {claim["section"] for claim in payload["claims"]}
+    assert {"name", "education", "projects"} <= sections
 
 
 async def test_evidence_followup_persists_candidate_answers_as_passport_evidence(

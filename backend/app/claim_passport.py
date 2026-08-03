@@ -6,6 +6,7 @@ asserts that a resume statement has been independently verified as true.
 
 from __future__ import annotations
 
+import re
 from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any, Iterable
@@ -15,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .claim_reasoning import extract_resume_claims
 from .models_db import (
+    CareerExperience,
     ClaimApplicationLink,
     ClaimEvidence,
     ClaimEvent,
@@ -37,6 +39,91 @@ def _field_path(item: dict[str, Any]) -> str:
     if section == "education" and index is not None:
         return f"education[{int(index)}]"
     return section or "summary"
+
+
+def _experience_identity(
+    experience_type: str, organization: str | None, title: str | None
+) -> tuple[str, str, str]:
+    normalize = lambda value: re.sub(r"\s+", " ", str(value or "")).strip().casefold()
+    return experience_type, normalize(organization), normalize(title)
+
+
+async def _sync_career_experiences(
+    db: AsyncSession, resume: Resume
+) -> dict[tuple[str, int], CareerExperience]:
+    """Project resume sections into the user's long-lived career memory.
+
+    Claims still belong to the source resume for auditability, while their
+    ``career_experience_id`` links equivalent entries across resume versions.
+    Manual experiences are reused but never overwritten by an import.
+    """
+    if not resume.user_id:
+        return {}
+    parsed = resume.parsed_json or {}
+    imported: list[tuple[str, int, str, str | None, str | None, str | None]] = []
+    for index, item in enumerate(parsed.get("work_experience") or []):
+        imported.append((
+            "work",
+            index,
+            "work_experience",
+            item.get("company"),
+            item.get("position"),
+            item.get("description"),
+        ))
+    for index, item in enumerate(parsed.get("projects") or []):
+        imported.append((
+            "project",
+            index,
+            "projects",
+            None,
+            item.get("name") or item.get("role"),
+            item.get("description"),
+        ))
+    education = str(parsed.get("education") or "").strip()
+    school = str(parsed.get("school") or "").strip() or None
+    degree = str(parsed.get("degree") or "").strip() or None
+    if education or school or degree:
+        imported.append(("education", 0, "education", school, degree or education, education))
+
+    existing = (
+        await db.execute(
+            select(CareerExperience).where(
+                CareerExperience.user_id == str(resume.user_id),
+                CareerExperience.workflow_state != "withdrawn",
+            )
+        )
+    ).scalars().all()
+    by_identity = {
+        _experience_identity(row.experience_type, row.organization, row.title): row
+        for row in existing
+        if row.organization or row.title
+    }
+    result: dict[tuple[str, int], CareerExperience] = {}
+    for experience_type, index, section, organization, title, description in imported:
+        if not (organization or title):
+            continue
+        identity = _experience_identity(experience_type, organization, title)
+        row = by_identity.get(identity)
+        if row is None:
+            row = CareerExperience(
+                user_id=str(resume.user_id),
+                experience_type=experience_type,
+                organization=organization,
+                title=title,
+                description=description,
+                source_kind="resume_import",
+                source_ref=f"resume:{resume.id}:{section}:{index}",
+                workflow_state="active",
+            )
+            db.add(row)
+            await db.flush()
+            by_identity[identity] = row
+        elif row.source_kind == "resume_import":
+            # Refresh imported content, but preserve user-authored records.
+            row.description = description or row.description
+            row.workflow_state = "active"
+        result[(section, index)] = row
+    return result
 
 
 async def _event(
@@ -65,6 +152,7 @@ async def sync_resume_claims(
     reason: str = "resume_sync",
 ) -> list[ResumeClaim]:
     """Upsert extracted claims while preserving Passport UUIDs and original text."""
+    experience_by_section = await _sync_career_experiences(db, resume)
     rows = (
         (await db.execute(select(ResumeClaim).where(ResumeClaim.resume_id == str(resume.id))))
         .scalars()
@@ -72,15 +160,18 @@ async def sync_resume_claims(
     )
     by_source = {row.source_key: row for row in rows}
     result: list[ResumeClaim] = []
+    active_source_keys: set[str] = set()
     for item in extract_resume_claims(resume.parsed_json or {}):
         source_key = str(item["id"])
         current = str(item.get("text") or "").strip()
         if not current:
             continue
+        active_source_keys.add(source_key)
         row = by_source.get(source_key)
         if row is None:
             row = ResumeClaim(
                 resume_id=str(resume.id),
+                user_id=str(resume.user_id) if resume.user_id else None,
                 source_key=source_key,
                 section=str(item.get("section") or "summary"),
                 item_index=item.get("entry_index"),
@@ -88,6 +179,16 @@ async def sync_resume_claims(
                 claim_type=str(item.get("claim_type") or "statement"),
                 original_text=current,
                 current_text=current,
+                origin_kind="resume",
+                source_object_type="resume",
+                source_object_id=str(resume.id),
+                career_experience_id=(
+                    str(experience_by_section[(str(item.get("section")), int(item.get("entry_index")))].id)
+                    if item.get("entry_index") is not None
+                    and (str(item.get("section")), int(item.get("entry_index")))
+                    in experience_by_section
+                    else None
+                ),
             )
             db.add(row)
             await db.flush()
@@ -99,12 +200,20 @@ async def sync_resume_claims(
                 payload={"source_key": source_key, "reason": reason},
             )
         else:
+            if not row.user_id and resume.user_id:
+                row.user_id = str(resume.user_id)
             changed = row.current_text != current
             row.section = str(item.get("section") or row.section)
             row.item_index = item.get("entry_index")
             row.field_path = _field_path(item)
             row.claim_type = str(item.get("claim_type") or row.claim_type)
             row.current_text = current
+            if item.get("entry_index") is not None:
+                experience = experience_by_section.get(
+                    (str(item.get("section")), int(item.get("entry_index")))
+                )
+                if experience is not None:
+                    row.career_experience_id = str(experience.id)
             if changed:
                 await _event(
                     db,
@@ -114,6 +223,17 @@ async def sync_resume_claims(
                     payload={"reason": reason},
                 )
         result.append(row)
+    for source_key, row in by_source.items():
+        if source_key in active_source_keys or row.workflow_state == "withdrawn":
+            continue
+        row.workflow_state = "withdrawn"
+        await _event(
+            db,
+            str(row.id),
+            "claim_withdrawn",
+            actor_id=actor_id,
+            payload={"reason": reason, "source_key": source_key},
+        )
     await db.flush()
     return result
 
@@ -168,6 +288,7 @@ async def upsert_field_claim(
     if row is None:
         row = ResumeClaim(
             resume_id=str(resume.id),
+            user_id=str(resume.user_id) if resume.user_id else None,
             source_key=source_key,
             section=field_path.split("[", 1)[0].split(".", 1)[0],
             item_index=None,
@@ -175,6 +296,9 @@ async def upsert_field_claim(
             claim_type="field_revision",
             original_text=current,
             current_text=current,
+            origin_kind="resume",
+            source_object_type="resume",
+            source_object_id=str(resume.id),
         )
         db.add(row)
         await db.flush()
@@ -470,6 +594,24 @@ def serialize_claim(
     revisions: list[ClaimRevision],
     events: Iterable[ClaimEvent] = (),
 ) -> dict:
+    section_labels = {
+        "work_experience": "工作经历",
+        "projects": "项目经历",
+        "education": "教育背景",
+        "skills": "技能",
+        "name": "基本信息",
+        "summary": "个人简介",
+    }
+    item_number = (claim.item_index + 1) if claim.item_index is not None else None
+    source_locator = section_labels.get(claim.section, claim.section)
+    if item_number is not None:
+        source_locator = f"{source_locator} · 第 {item_number} 项"
+    hierarchy_level = "entry" if claim.claim_type == "entry" else "detail"
+    group_key = (
+        f"{claim.section}:{claim.item_index}"
+        if claim.item_index is not None
+        else f"{claim.section}:root"
+    )
     return {
         "id": str(claim.id),
         "source_key": claim.source_key,
@@ -477,10 +619,19 @@ def serialize_claim(
         "item_index": claim.item_index,
         "field_path": claim.field_path,
         "claim_type": claim.claim_type,
+        "hierarchy_level": hierarchy_level,
+        "group_key": group_key,
+        "source_locator": source_locator,
         "original_text": claim.original_text,
         "current_text": claim.current_text,
         "evidence_state": claim.evidence_state,
         "workflow_state": claim.workflow_state,
+        "confirmation_state": claim.confirmation_state,
+        "confirmed_at": claim.confirmed_at.isoformat() if claim.confirmed_at else None,
+        "career_experience_id": claim.career_experience_id,
+        "origin_kind": claim.origin_kind,
+        "sensitivity_level": claim.sensitivity_level,
+        "default_visibility": claim.default_visibility,
         "evidence": [
             {
                 "id": str(item.id),
@@ -488,6 +639,9 @@ def serialize_claim(
                 "summary": item.summary,
                 "source": item.source,
                 "verification_status": item.verification_status,
+                "artifact_id": item.artifact_id,
+                "relationship": item.relationship,
+                "access_scope": item.access_scope,
                 "created_at": item.created_at.isoformat() if item.created_at else None,
             }
             for item in evidence
@@ -513,3 +667,13 @@ def serialize_claim(
             for item in events
         ],
     }
+_DATE_ONLY_CLAIM = re.compile(
+    r"^\s*(?:(?:19|20)\d{2}(?:[./-]\d{1,2})?"
+    r"(?:\s*(?:-|–|—|to|至)\s*(?:(?:19|20)\d{2}(?:[./-]\d{1,2})?|present|至今))?)\s*$",
+    re.I,
+)
+
+
+def is_context_only_claim(claim: ResumeClaim) -> bool:
+    """Legacy date rows remain auditable in storage but are not product Claims."""
+    return bool(_DATE_ONLY_CLAIM.fullmatch((claim.current_text or "").strip()))

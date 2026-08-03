@@ -6,25 +6,17 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from typing import Dict, Tuple
 
-from openai import OpenAI
+from .llm_client import default_model_name
 
 logger = logging.getLogger(__name__)
 
 MAX_ADJUSTMENT = 1.5
 
 
-def get_openai_client():
-    return OpenAI(
-        api_key=os.getenv("DEEPSEEK_API_KEY"),
-        base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"),
-    )
-
-
 def get_model():
-    return os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+    return default_model_name("generic_chat")
 
 
 def _profile_summary(profile: dict) -> str:

@@ -56,6 +56,13 @@ async def test_empty_strategy_list_means_user_selected_no_actions(
     assert default.json()["selected_strategy_ids"]
     assert cleared.json()["selected_strategy_ids"] == []
     assert cleared.json()["potential_score"] == cleared.json()["current_score"]
+    assert cleared.json()["strategy_status"]["state"] == "strategies_selected"
+    assert cleared.json()["strategy_status"]["selected_count"] == 0
+
+    reloaded = await client.get(path, headers=auth_header(candidate_a))
+    assert reloaded.status_code == 200
+    assert reloaded.json()["selected_strategy_ids"] == []
+    assert reloaded.json()["strategy_status"]["state"] == "strategies_selected"
 
 
 async def test_strategy_lifecycle_events_are_candidate_owned(
@@ -68,8 +75,18 @@ async def test_strategy_lifecycle_events_are_candidate_owned(
         json={"event_type": "rejected", "strategy_ids": []},
     )
     assert response.status_code == 200
+    assert response.json()["strategy_status"]["state"] == "rejected"
+    assert response.json()["selected_strategy_ids"] == []
     event = (await db_session.execute(select(PotentialSimulationEvent))).scalar_one()
     assert event.event_type == "rejected"
+
+    reloaded = await client.get(
+        f"/resumes/{resume_a.id}/jobs/{job_a.id}/improvement-simulation",
+        headers=auth_header(candidate_a),
+    )
+    assert reloaded.status_code == 200
+    assert reloaded.json()["strategy_status"]["state"] == "rejected"
+    assert reloaded.json()["selected_strategy_ids"] == []
 
 
 async def test_pilot_metrics_are_admin_only_and_aggregate_only(
@@ -196,6 +213,53 @@ async def test_counterfactual_recomputes_expression_evidence_and_capability_from
     assert result["capability_delta"] > 0
     assert result["potential_delta"] == round(
         result["expression_delta"] + result["evidence_delta"] + result["capability_delta"], 2
+    )
+    assert {
+        item["status"] for item in result["selection_effects"]
+    } == {"changes_score_if_removed"}
+
+
+async def test_selection_effects_explain_overlap_and_missing_evidence_without_fake_score():
+    resume = {
+        "expected_job_title": "运营专员",
+        "summary": "",
+        "skills": [],
+        "projects": [{"name": "Existing Project", "description": "Built a service"}],
+    }
+    job = {"required_skills": [], "experience_years": 0}
+    default = build_simulation(resume, job, "后端工程师", [])
+    ids = {
+        option["strategy"]: option["strategy_id"]
+        for issue in default["issues"]
+        for option in issue["strategy_options"]
+    }
+
+    evidence_only = build_simulation(
+        resume,
+        job,
+        "后端工程师",
+        [{"id": "claim-1", "current_text": "Built a service", "evidence_state": "not_enough_information"}],
+        [ids["method_and_tradeoff"]],
+    )
+    assert evidence_only["potential_score"] == evidence_only["current_score"]
+    assert evidence_only["selection_effects"] == [
+        {
+            "strategy_id": ids["method_and_tradeoff"],
+            "marginal_delta": 0.0,
+            "status": "needs_supported_evidence",
+        }
+    ]
+
+    overlapping = build_simulation(
+        resume,
+        job,
+        "后端工程师",
+        [],
+        [ids["role_clarity"], ids["relevance_alignment"]],
+    )
+    assert all(
+        item["status"] == "overlaps_or_no_scoring_effect"
+        for item in overlapping["selection_effects"]
     )
 
 

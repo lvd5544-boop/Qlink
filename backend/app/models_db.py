@@ -8,11 +8,14 @@ from sqlalchemy import (
     Text,
     Float,
     JSON,
+    Date,
     DateTime,
+    BigInteger,
     ForeignKey,
     Index,
     UniqueConstraint,
     func,
+    text,
 )  # noqa: F401
 from sqlalchemy.orm import relationship
 from .database import Base
@@ -405,6 +408,21 @@ class ResumeClaim(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     resume_id = Column(String(36), ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    career_experience_id = Column(
+        String(36), ForeignKey("career_experiences.id", ondelete="SET NULL"), nullable=True
+    )
+    origin_kind = Column(String(32), nullable=False, default="resume")
+    source_object_type = Column(String(64), nullable=True)
+    source_object_id = Column(String(36), nullable=True)
+    source_span = Column(JSON, nullable=True)
+    confirmation_state = Column(String(24), nullable=False, default="unconfirmed")
+    confirmed_at = Column(DateTime(timezone=True), nullable=True)
+    sensitivity_level = Column(String(24), nullable=False, default="normal")
+    default_visibility = Column(String(32), nullable=False, default="private")
+    superseded_by_claim_id = Column(
+        String(36), ForeignKey("resume_claims.id", ondelete="SET NULL"), nullable=True
+    )
     # Compatibility key from claim_reasoning.  The UUID above is the Passport's stable ID.
     source_key = Column(String(160), nullable=False)
     section = Column(String(64), nullable=False)
@@ -440,6 +458,17 @@ class ClaimEvidence(Base):
         String(36), ForeignKey("resume_claims.id", ondelete="CASCADE"), nullable=False
     )
     evidence_type = Column(String(32), nullable=False)
+    artifact_id = Column(
+        String(36), ForeignKey("evidence_artifacts.id", ondelete="SET NULL"), nullable=True
+    )
+    source_span = Column(JSON, nullable=True)
+    link_created_by = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"))
+    link_method = Column(String(24), nullable=False, default="manual")
+    model_suggestion_id = Column(String(36), nullable=True)
+    candidate_confirmed = Column(Boolean, nullable=False, default=True)
+    access_scope = Column(String(32), nullable=False, default="private")
+    valid_from = Column(DateTime(timezone=True), nullable=True)
+    valid_until = Column(DateTime(timezone=True), nullable=True)
     summary = Column(Text, nullable=True)
     source = Column(Text, nullable=True)
     provided_by = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
@@ -448,7 +477,8 @@ class ClaimEvidence(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     claim = relationship("ResumeClaim", backref="evidence")
-    provider = relationship("User")
+    provider = relationship("User", foreign_keys=[provided_by])
+    relationship = Column(String(24), nullable=False, default="supports")
 
 
 class ClaimRevision(Base):
@@ -779,6 +809,7 @@ class InterviewResult(Base):
     requested_uses = Column(JSON, nullable=False, default=dict)
     allowed_uses = Column(JSON, nullable=False, default=dict)
     confirmed_at = Column(DateTime(timezone=True), nullable=True)
+    structured_session_id = Column(String(36), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True),
@@ -789,6 +820,294 @@ class InterviewResult(Base):
     user = relationship("User")
     resume = relationship("Resume")
     application = relationship("JobApplication")
+
+
+class InterviewSession(Base):
+    """PR12 structured interviewer session with explicit mode and consent snapshot."""
+
+    __tablename__ = "interview_sessions"
+    __table_args__ = (
+        CheckConstraint(
+            "mode IN ('vault_builder', 'target_gap', 'claim_clarification', 'practice')",
+            name="ck_interview_session_mode",
+        ),
+        CheckConstraint(
+            "status IN ('active', 'completed', 'revoked')",
+            name="ck_interview_session_status",
+        ),
+        Index("ix_interview_sessions_user_status", "user_id", "status", "created_at"),
+        Index("ix_interview_sessions_claim", "claim_id"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    mode = Column(String(32), nullable=False)
+    job_id = Column(String(36), ForeignKey("job_descriptions.id", ondelete="SET NULL"), nullable=True)
+    resume_id = Column(String(36), ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True)
+    claim_id = Column(String(36), ForeignKey("resume_claims.id", ondelete="SET NULL"), nullable=True)
+    status = Column(String(24), nullable=False, default="active")
+    consent_snapshot = Column(JSON, nullable=False, default=dict)
+    policy_version = Column(String(64), nullable=False, default="interview_policy_v1")
+    rubric_version = Column(String(64), nullable=False, default="interview_rubric_v1")
+    prompt_version = Column(String(64), nullable=False, default="interview_prompt_v1")
+    model_version = Column(String(64), nullable=True)
+    ai_enabled = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class InterviewQuestion(Base):
+    __tablename__ = "interview_questions"
+    __table_args__ = (
+        UniqueConstraint("session_id", "sequence_no", name="uq_interview_question_seq"),
+        CheckConstraint("core_or_probe IN ('core', 'probe')", name="ck_interview_question_core_or_probe"),
+        Index("ix_interview_questions_session", "session_id", "sequence_no"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id = Column(
+        String(36), ForeignKey("interview_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    sequence_no = Column(Integer, nullable=False)
+    question_goal = Column(String(64), nullable=False)
+    claim_id = Column(String(36), ForeignKey("resume_claims.id", ondelete="SET NULL"), nullable=True)
+    requirement_id = Column(String(128), nullable=True)
+    competency_id = Column(String(128), nullable=True)
+    core_or_probe = Column(String(16), nullable=False, default="core")
+    question_text = Column(Text, nullable=False)
+    policy_version = Column(String(64), nullable=False, default="interview_policy_v1")
+    generated_by = Column(String(32), nullable=False, default="rules")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class InterviewAnswer(Base):
+    __tablename__ = "interview_answers"
+    __table_args__ = (
+        UniqueConstraint("question_id", name="uq_interview_answer_question"),
+        Index("ix_interview_answers_question", "question_id"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    question_id = Column(
+        String(36), ForeignKey("interview_questions.id", ondelete="CASCADE"), nullable=False
+    )
+    raw_answer_ref = Column(String(255), nullable=True)
+    answer_text_snapshot = Column(Text, nullable=False, default="")
+    user_declined = Column(Boolean, nullable=False, default=False)
+    decline_reason = Column(String(64), nullable=True)
+    confirmed_at = Column(DateTime(timezone=True), nullable=True)
+    allowed_uses = Column(JSON, nullable=False, default=dict)
+    share_with_employer = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class InterviewObservation(Base):
+    __tablename__ = "interview_observations"
+    __table_args__ = (
+        CheckConstraint(
+            "observation_type IN ("
+            "'situation', 'task', 'candidate_action', 'team_action', 'method', "
+            "'result', 'metric', 'evidence', 'reflection', 'preference', 'constraint'"
+            ")",
+            name="ck_interview_observation_type",
+        ),
+        CheckConstraint(
+            "candidate_confirmation_state IN ('pending', 'confirmed', 'rejected')",
+            name="ck_interview_observation_confirm",
+        ),
+        Index(
+            "ix_interview_observations_answer",
+            "answer_id",
+            "candidate_confirmation_state",
+        ),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    answer_id = Column(
+        String(36), ForeignKey("interview_answers.id", ondelete="CASCADE"), nullable=False
+    )
+    observation_type = Column(String(32), nullable=False)
+    text = Column(Text, nullable=False)
+    source_start = Column(Integer, nullable=False)
+    source_end = Column(Integer, nullable=False)
+    claim_id = Column(String(36), ForeignKey("resume_claims.id", ondelete="SET NULL"), nullable=True)
+    candidate_confirmation_state = Column(String(32), nullable=False, default="pending")
+    extractor_version = Column(String(64), nullable=False, default="rules_obs_v1")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class OptimizationIssue(Base):
+    """PR13 persisted, target-job-specific resume diagnosis."""
+
+    __tablename__ = "optimization_issues"
+    __table_args__ = (
+        CheckConstraint(
+            "severity IN ('blocker', 'high', 'medium', 'low')",
+            name="ck_optimization_issue_severity",
+        ),
+        CheckConstraint(
+            "status IN ('open', 'resolved', 'dismissed', 'superseded')",
+            name="ck_optimization_issue_status",
+        ),
+        Index("ix_optimization_issues_diagnostic", "diagnostic_id", "severity", "created_at"),
+        Index("ix_optimization_issues_resume_job", "resume_id", "job_id", "status"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    diagnostic_id = Column(String(36), nullable=False)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    resume_id = Column(String(36), ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False)
+    resume_version_id = Column(
+        String(36), ForeignKey("resume_versions.id", ondelete="CASCADE"), nullable=False
+    )
+    job_id = Column(
+        String(36), ForeignKey("job_descriptions.id", ondelete="CASCADE"), nullable=False
+    )
+    profile_snapshot_id = Column(String(36), nullable=True)
+    issue_key = Column(String(160), nullable=False)
+    issue_type = Column(String(64), nullable=False)
+    target_requirement_id = Column(String(160), nullable=True)
+    diagnosis = Column(Text, nullable=False)
+    severity = Column(String(16), nullable=False)
+    source_refs = Column(JSON, nullable=False, default=list)
+    status = Column(String(24), nullable=False, default="open")
+    rule_version = Column(String(64), nullable=False)
+    model_version = Column(String(128), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class OptimizationIssueClaimLink(Base):
+    __tablename__ = "optimization_issue_claim_links"
+    __table_args__ = (
+        UniqueConstraint(
+            "issue_id", "claim_id", "relation", name="uq_optimization_issue_claim_relation"
+        ),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    issue_id = Column(
+        String(36), ForeignKey("optimization_issues.id", ondelete="CASCADE"), nullable=False
+    )
+    claim_id = Column(
+        String(36), ForeignKey("resume_claims.id", ondelete="RESTRICT"), nullable=False
+    )
+    relation = Column(String(24), nullable=False, default="related")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class OptimizationStrategyOption(Base):
+    __tablename__ = "optimization_strategy_options"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('available', 'selected', 'rejected', 'superseded')",
+            name="ck_optimization_strategy_status",
+        ),
+        Index("ix_optimization_strategies_issue", "issue_id", "recommended"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    issue_id = Column(
+        String(36), ForeignKey("optimization_issues.id", ondelete="CASCADE"), nullable=False
+    )
+    strategy = Column(String(64), nullable=False)
+    title = Column(String(255), nullable=False)
+    why = Column(Text, nullable=False)
+    requires_evidence = Column(Boolean, nullable=False, default=True)
+    can_apply_now = Column(Boolean, nullable=False, default=False)
+    next_action = Column(String(64), nullable=False)
+    affected_dimensions = Column(JSON, nullable=False, default=list)
+    time_horizon = Column(String(32), nullable=False)
+    user_cost = Column(String(32), nullable=False)
+    hallucination_risk = Column(String(16), nullable=False, default="low")
+    recommended = Column(Boolean, nullable=False, default=False)
+    eligibility_reason = Column(Text, nullable=False)
+    counterfactual_snapshot = Column(JSON, nullable=False, default=dict)
+    expression_delta = Column(Float, nullable=False, default=0)
+    evidence_delta = Column(Float, nullable=False, default=0)
+    capability_delta = Column(Float, nullable=False, default=0)
+    status = Column(String(24), nullable=False, default="available")
+    rule_version = Column(String(64), nullable=False)
+    scoring_version = Column(String(64), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ReadinessAction(Base):
+    __tablename__ = "readiness_actions"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('planned', 'in_progress', 'completed', 'abandoned')",
+            name="ck_readiness_action_status",
+        ),
+        Index("ix_readiness_actions_user_job", "user_id", "job_id", "status"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    job_id = Column(
+        String(36), ForeignKey("job_descriptions.id", ondelete="CASCADE"), nullable=False
+    )
+    issue_id = Column(
+        String(36), ForeignKey("optimization_issues.id", ondelete="CASCADE"), nullable=False
+    )
+    strategy_id = Column(
+        String(36), ForeignKey("optimization_strategy_options.id", ondelete="CASCADE"), nullable=False
+    )
+    action_type = Column(String(64), nullable=False)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=False)
+    status = Column(String(24), nullable=False, default="planned")
+    completion_evidence_id = Column(
+        String(36), ForeignKey("evidence_artifacts.id", ondelete="SET NULL"), nullable=True
+    )
+    expected_time_horizon = Column(String(32), nullable=False)
+    user_cost = Column(String(32), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class ResumePatchProposal(Base):
+    __tablename__ = "resume_patch_proposals"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('draft', 'needs_confirmation', 'ready', 'applied', 'rejected', 'expired')",
+            name="ck_resume_patch_status",
+        ),
+        Index("ix_resume_patch_resume_job", "resume_id", "target_job_id", "status"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    resume_id = Column(String(36), ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False)
+    resume_version_id = Column(
+        String(36), ForeignKey("resume_versions.id", ondelete="CASCADE"), nullable=False
+    )
+    target_job_id = Column(
+        String(36), ForeignKey("job_descriptions.id", ondelete="CASCADE"), nullable=False
+    )
+    issue_id = Column(
+        String(36), ForeignKey("optimization_issues.id", ondelete="CASCADE"), nullable=False
+    )
+    strategy_id = Column(
+        String(36), ForeignKey("optimization_strategy_options.id", ondelete="CASCADE"), nullable=False
+    )
+    field_path = Column(String(255), nullable=False)
+    before_text = Column(Text, nullable=False)
+    after_text = Column(Text, nullable=False)
+    atomic_changes = Column(JSON, nullable=False, default=list)
+    source_claim_ids = Column(JSON, nullable=False, default=list)
+    source_evidence_ids = Column(JSON, nullable=False, default=list)
+    source_answer_ids = Column(JSON, nullable=False, default=list)
+    fidelity_result = Column(JSON, nullable=False, default=dict)
+    status = Column(String(32), nullable=False, default="draft")
+    prompt_version = Column(String(64), nullable=True)
+    model_version = Column(String(128), nullable=True)
+    rule_version = Column(String(64), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    applied_at = Column(DateTime(timezone=True), nullable=True)
+    applied_resume_version_id = Column(
+        String(36), ForeignKey("resume_versions.id", ondelete="SET NULL"), nullable=True
+    )
 
 
 class UsageEvent(Base):
@@ -1108,3 +1427,583 @@ class HiredProfileSubmission(Base):
 
     user = relationship("User")
     company = relationship("Company")
+
+
+class DataSource(Base):
+    """Registered external/internal data source for profiles and training."""
+
+    __tablename__ = "data_sources"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending_review', 'approved', 'restricted', 'revoked')",
+            name="ck_data_sources_status",
+        ),
+        CheckConstraint(
+            "layer IN ('A', 'B', 'C', 'D', 'E')",
+            name="ck_data_sources_layer",
+        ),
+        Index("ix_data_sources_status_layer", "status", "layer"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String(255), nullable=False)
+    owner_organization = Column(String(255), nullable=True)
+    acquisition_method = Column(String(64), nullable=False, default="manual")
+    license_name = Column(String(255), nullable=True)
+    license_url = Column(Text, nullable=True)
+    contract_ref = Column(Text, nullable=True)
+    allowed_product_uses = Column(JSON, default=list)
+    training_allowed = Column(Boolean, nullable=False, default=False)
+    contains_personal_data = Column(Boolean, nullable=False, default=False)
+    processing_region = Column(String(64), nullable=False, default="cn-beijing")
+    attribution_text = Column(Text, nullable=True)
+    deletion_contact = Column(Text, nullable=True)
+    status = Column(String(32), nullable=False, default="pending_review")
+    layer = Column(String(8), nullable=False, default="E")
+    # The production bootstrap creates the current ORM schema before replaying
+    # historical SQL migrations.  PR10's immutable seed predates this PR14
+    # column, so the database default is required for that insert to remain
+    # valid on a clean database.
+    scope = Column(
+        JSON,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'"),
+    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    versions = relationship("DataSourceVersion", back_populates="source")
+
+
+class DataSourceVersion(Base):
+    __tablename__ = "data_source_versions"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending_validation', 'published', 'superseded', 'revoked')",
+            name="ck_data_source_version_status",
+        ),
+        Index("ix_data_source_versions_source", "source_id", "created_at"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    source_id = Column(
+        String(36),
+        ForeignKey("data_sources.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    external_version = Column(String(128), nullable=False)
+    retrieved_at = Column(DateTime(timezone=True), nullable=True)
+    effective_at = Column(DateTime(timezone=True), nullable=True)
+    checksum = Column(String(128), nullable=True)
+    raw_object_ref = Column(Text, nullable=True)
+    parser_version = Column(String(64), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    validation_report = Column(JSON, nullable=True)
+    superseded_by_version_id = Column(String(36), nullable=True)
+    status = Column(String(32), nullable=False, default="pending_validation")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    source = relationship("DataSource", back_populates="versions")
+
+
+class TargetRoleProfileSnapshot(Base):
+    """Immutable PR14 four-layer target-role profile."""
+
+    __tablename__ = "target_role_profile_snapshots"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('draft', 'employer_confirmed', 'superseded')",
+            name="ck_target_role_profile_status",
+        ),
+        UniqueConstraint(
+            "job_id",
+            "snapshot_hash",
+            name="uq_target_role_profile_job_hash",
+        ),
+        Index(
+            "ix_target_role_profile_job_status",
+            "job_id",
+            "status",
+            "created_at",
+        ),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    job_id = Column(
+        String(36),
+        ForeignKey("job_descriptions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_by = Column(
+        String(36),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    jd_snapshot_hash = Column(String(64), nullable=False)
+    snapshot_hash = Column(String(64), nullable=False)
+    profile_schema_version = Column(String(64), nullable=False)
+    parser_version = Column(String(64), nullable=False)
+    rule_version = Column(String(64), nullable=False)
+    model_version = Column(String(128), nullable=True)
+    taxonomy_version = Column(String(128), nullable=False)
+    status = Column(String(32), nullable=False, default="draft")
+    occupation_profile = Column(JSON, nullable=False, default=dict)
+    company_context_profile = Column(JSON, nullable=False, default=dict)
+    market_signal_profile = Column(JSON, nullable=False, default=dict)
+    source_manifest = Column(JSON, nullable=False, default=list)
+    freshness_expires_at = Column(DateTime(timezone=True), nullable=True)
+    confirmed_by = Column(
+        String(36),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    confirmed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class JobRequirement(Base):
+    """One employer-JD requirement attached to an immutable profile snapshot."""
+
+    __tablename__ = "job_requirements"
+    __table_args__ = (
+        CheckConstraint(
+            "requirement_type IN ("
+            "'task','skill','experience','education','certificate','location',"
+            "'salary','work_mode','other'"
+            ")",
+            name="ck_job_requirement_type",
+        ),
+        CheckConstraint(
+            "requirement_level IN ('required','preferred','context')",
+            name="ck_job_requirement_level",
+        ),
+        Index(
+            "ix_job_requirements_snapshot",
+            "profile_snapshot_id",
+            "requirement_type",
+            "importance",
+        ),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    profile_snapshot_id = Column(
+        String(36),
+        ForeignKey("target_role_profile_snapshots.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    requirement_type = Column(String(32), nullable=False)
+    raw_text = Column(Text, nullable=False)
+    canonical_id = Column(String(160), nullable=True)
+    canonical_label = Column(String(255), nullable=True)
+    importance = Column(Integer, nullable=False, default=50)
+    requirement_level = Column(String(24), nullable=False, default="required")
+    is_hard_constraint = Column(Boolean, nullable=False, default=False)
+    employer_confirmed = Column(Boolean, nullable=False, default=False)
+    source_offset = Column(JSON, nullable=True)
+    source_id = Column(String(128), nullable=True)
+    source_version_id = Column(String(128), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class AdvisorMessage(Base):
+    """Persisted grounded advisor message and its user-visible response trace."""
+
+    __tablename__ = "advisor_messages"
+    __table_args__ = (
+        CheckConstraint(
+            "role IN ('user','advisor')",
+            name="ck_advisor_message_role",
+        ),
+        Index(
+            "ix_advisor_messages_user_job",
+            "user_id",
+            "job_id",
+            "created_at",
+        ),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    job_id = Column(
+        String(36),
+        ForeignKey("job_descriptions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    profile_snapshot_id = Column(
+        String(36),
+        ForeignKey("target_role_profile_snapshots.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    role = Column(String(16), nullable=False)
+    content = Column(Text, nullable=False)
+    statements = Column(JSON, nullable=False, default=list)
+    response_trace = Column(JSON, nullable=False, default=dict)
+    prompt_version = Column(String(64), nullable=True)
+    model_version = Column(String(128), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class AIInvocation(Base):
+    """Task-level AI invocation metadata; no raw resume/evidence bodies."""
+
+    __tablename__ = "ai_invocations"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('succeeded', 'failed', 'canceled', 'skipped', 'unknown')",
+            name="ck_ai_invocations_status",
+        ),
+        Index("ix_ai_invocations_created_task", "created_at", "task_type"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    task_type = Column(String(64), nullable=False)
+    provider = Column(String(64), nullable=False)
+    model_alias = Column(String(128), nullable=True)
+    model_id = Column(String(128), nullable=False)
+    prompt_version = Column(String(64), nullable=True)
+    schema_version = Column(String(64), nullable=True)
+    input_snapshot_hash = Column(String(128), nullable=False)
+    data_region = Column(String(64), nullable=False, default="cn-beijing")
+    token_input = Column(Integer, nullable=True)
+    token_output = Column(Integer, nullable=True)
+    cost_microunits = Column(Integer, nullable=True)
+    latency_ms = Column(Integer, nullable=True)
+    status = Column(String(32), nullable=False)
+    error_category = Column(String(64), nullable=True)
+    user_id = Column(String(36), nullable=True)
+    org_id = Column(String(36), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class CareerExperience(Base):
+    __tablename__ = "career_experiences"
+    __table_args__ = (
+        CheckConstraint(
+            "experience_type IN ('work','project','education','volunteer','freelance','award','other')",
+            name="ck_career_experience_type",
+        ),
+        CheckConstraint(
+            "date_precision IN ('day','month','year','unknown')",
+            name="ck_career_experience_precision",
+        ),
+        CheckConstraint(
+            "workflow_state IN ('active','archived','withdrawn')",
+            name="ck_career_experience_state",
+        ),
+        Index("ix_career_experiences_user_time", "user_id", "start_date", "created_at"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    experience_type = Column(String(24), nullable=False)
+    organization = Column(String(255), nullable=True)
+    title = Column(String(255), nullable=True)
+    start_date = Column(Date, nullable=True)
+    end_date = Column(Date, nullable=True)
+    date_precision = Column(String(16), nullable=False, default="unknown")
+    description = Column(Text, nullable=True)
+    source_kind = Column(String(32), nullable=False, default="manual")
+    source_ref = Column(Text, nullable=True)
+    workflow_state = Column(String(24), nullable=False, default="active")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class EvidenceArtifact(Base):
+    __tablename__ = "evidence_artifacts"
+    __table_args__ = (
+        CheckConstraint(
+            "artifact_type IN ('document','link','code','sample','certificate','image','user_statement','other')",
+            name="ck_evidence_artifact_type",
+        ),
+        CheckConstraint(
+            "verification_status IN ('user_provided','third_party_verified','rejected','withdrawn')",
+            name="ck_evidence_artifact_verification",
+        ),
+        Index("ix_evidence_artifacts_owner_created", "owner_user_id", "created_at"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    owner_user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    artifact_type = Column(String(32), nullable=False)
+    title = Column(String(255), nullable=False)
+    object_ref = Column(Text, nullable=True)
+    source_url = Column(Text, nullable=True)
+    content_hash = Column(String(64), nullable=True)
+    mime_type = Column(String(255), nullable=True)
+    size_bytes = Column(BigInteger, nullable=True)
+    extracted_text_ref = Column(Text, nullable=True)
+    issuer = Column(String(255), nullable=True)
+    occurred_at = Column(DateTime(timezone=True), nullable=True)
+    verification_status = Column(String(32), nullable=False, default="user_provided")
+    verification_ref = Column(Text, nullable=True)
+    allowed_uses = Column(JSON, nullable=False, default=list)
+    default_visibility = Column(String(32), nullable=False, default="private")
+    retention_until = Column(DateTime(timezone=True), nullable=True)
+    withdrawn_at = Column(DateTime(timezone=True), nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class ResumeVersion(Base):
+    __tablename__ = "resume_versions"
+    __table_args__ = (
+        UniqueConstraint("resume_id", "version_number", name="uq_resume_version_number"),
+        Index("ix_resume_versions_user_created", "user_id", "created_at"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    resume_id = Column(String(36), ForeignKey("resumes.id", ondelete="RESTRICT"), nullable=False)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    version_number = Column(Integer, nullable=False)
+    parsed_json_snapshot = Column(JSON, nullable=False)
+    raw_text_snapshot = Column(Text, nullable=True)
+    content_hash = Column(String(64), nullable=False)
+    created_reason = Column(String(32), nullable=False)
+    parent_version_id = Column(
+        String(36), ForeignKey("resume_versions.id", ondelete="SET NULL"), nullable=True
+    )
+    created_by = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ResumeVersionClaimLink(Base):
+    __tablename__ = "resume_version_claim_links"
+    __table_args__ = (
+        UniqueConstraint(
+            "resume_version_id", "claim_id", "field_path",
+            name="uq_resume_version_claim_field",
+        ),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    resume_version_id = Column(
+        String(36), ForeignKey("resume_versions.id", ondelete="CASCADE"), nullable=False
+    )
+    claim_id = Column(String(36), ForeignKey("resume_claims.id", ondelete="RESTRICT"), nullable=False)
+    claim_revision_id = Column(
+        String(36), ForeignKey("claim_revisions.id", ondelete="SET NULL"), nullable=True
+    )
+    field_path = Column(String(255), nullable=False)
+    text_snapshot = Column(Text, nullable=False)
+    evidence_ids_snapshot = Column(JSON, nullable=False, default=list)
+    fidelity_result_snapshot = Column(JSON, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class MigrationOrphanReport(Base):
+    __tablename__ = "migration_orphan_reports"
+    __table_args__ = (
+        UniqueConstraint("migration_version", "entity_type", "entity_id", name="uq_migration_orphan"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    migration_version = Column(String(128), nullable=False)
+    entity_type = Column(String(64), nullable=False)
+    entity_id = Column(String(36), nullable=False)
+    reason = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ApiIdempotencyKey(Base):
+    """Replay ledger for PR11 Career Passport / Evidence Vault write APIs."""
+
+    __tablename__ = "api_idempotency_keys"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "scope",
+            "idempotency_key",
+            name="uq_api_idempotency_user_scope_key",
+        ),
+        Index("ix_api_idempotency_expires", "expires_at"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    scope = Column(String(96), nullable=False)
+    idempotency_key = Column(String(128), nullable=False)
+    request_fingerprint = Column(String(64), nullable=False)
+    response_status = Column(Integer, nullable=False)
+    response_body = Column(JSON, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class DecisionTrace(Base):
+    """User-visible structured decision basis; never stores chain-of-thought."""
+
+    __tablename__ = "decision_traces"
+    __table_args__ = (
+        Index(
+            "ix_decision_traces_subject",
+            "subject_type",
+            "subject_id",
+            "created_at",
+        ),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    decision_type = Column(String(64), nullable=False)
+    subject_type = Column(String(64), nullable=False)
+    subject_id = Column(String(36), nullable=False)
+    observed_source_refs = Column(JSON, nullable=False, default=list)
+    rules_fired = Column(JSON, nullable=False, default=list)
+    findings = Column(JSON, nullable=False, default=list)
+    alternative_explanations = Column(JSON, nullable=False, default=list)
+    uncertainties = Column(JSON, nullable=False, default=list)
+    recommended_next_actions = Column(JSON, nullable=False, default=list)
+    human_review_required = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ScreeningRun(Base):
+    """Employer batch screening run pinned to an immutable profile snapshot."""
+
+    __tablename__ = "screening_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('draft', 'configured', 'running', 'completed', 'failed')",
+            name="ck_screening_run_status",
+        ),
+        Index(
+            "ix_screening_runs_employer_job",
+            "employer_id",
+            "job_id",
+            "created_at",
+        ),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    job_id = Column(
+        String(36),
+        ForeignKey("job_descriptions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    employer_id = Column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    profile_snapshot_id = Column(
+        String(36),
+        ForeignKey("target_role_profile_snapshots.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    profile_snapshot_hash = Column(String(64), nullable=False)
+    status = Column(String(32), nullable=False, default="draft")
+    candidate_count = Column(Integer, nullable=False, default=0)
+    rules_version = Column(String(64), nullable=False, default="screening_rules_v1")
+    keyword_version = Column(String(64), nullable=False, default="keyword_v1")
+    model_version = Column(String(128), nullable=True)
+    created_by = Column(
+        String(36),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    executed_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class ScreeningRule(Base):
+    """Hard / keyword / taxonomy rule attached to a screening run."""
+
+    __tablename__ = "screening_rules"
+    __table_args__ = (
+        CheckConstraint(
+            "rule_type IN ('hard_constraint', 'keyword', 'taxonomy')",
+            name="ck_screening_rule_type",
+        ),
+        Index("ix_screening_rules_run_order", "run_id", "order_no", "created_at"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    run_id = Column(
+        String(36),
+        ForeignKey("screening_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    rule_type = Column(String(32), nullable=False)
+    field = Column(String(64), nullable=False)
+    operator = Column(String(32), nullable=False)
+    value = Column(JSON, nullable=False, default=dict)
+    job_requirement_id = Column(
+        String(36),
+        ForeignKey("job_requirements.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    employer_confirmed = Column(Boolean, nullable=False, default=False)
+    legal_basis_note = Column(Text, nullable=True)
+    order_no = Column(Integer, nullable=False, default=0)
+    enabled = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ScreeningResult(Base):
+    """Per-application screening outcome; never auto-rejects the application."""
+
+    __tablename__ = "screening_results"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id",
+            "application_id",
+            name="uq_screening_result_run_application",
+        ),
+        CheckConstraint(
+            "hard_filter_status IN ('pass', 'fail', 'unknown')",
+            name="ck_screening_hard_filter",
+        ),
+        CheckConstraint(
+            "status IN ('pending_review', 'reviewed', 'clarification_requested')",
+            name="ck_screening_result_status",
+        ),
+        Index("ix_screening_results_run_status", "run_id", "status", "created_at"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    run_id = Column(
+        String(36),
+        ForeignKey("screening_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    application_id = Column(
+        String(36),
+        ForeignKey("job_applications.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    hard_filter_status = Column(String(16), nullable=False)
+    hard_filter_reasons = Column(JSON, nullable=False, default=list)
+    keyword_hits = Column(JSON, nullable=False, default=list)
+    evidence_summary = Column(JSON, nullable=False, default=list)
+    gap_findings = Column(JSON, nullable=False, default=list)
+    consistency_findings = Column(JSON, nullable=False, default=list)
+    alternative_explanations = Column(JSON, nullable=False, default=list)
+    suggested_followups = Column(JSON, nullable=False, default=list)
+    status = Column(String(32), nullable=False, default="pending_review")
+    resume_version_id = Column(String(128), nullable=True)
+    resume_content_hash = Column(String(128), nullable=False)
+    requirement_refs = Column(JSON, nullable=False, default=list)
+    claim_refs = Column(JSON, nullable=False, default=list)
+    decision_trace_id = Column(
+        String(36),
+        ForeignKey("decision_traces.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    reviewer_id = Column(
+        String(36),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

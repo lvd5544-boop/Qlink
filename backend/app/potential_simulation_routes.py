@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import Literal
@@ -24,6 +25,49 @@ class SimulationRequest(BaseModel):
 class SimulationEventRequest(BaseModel):
     event_type: Literal["rejected", "adopted", "completed"]
     strategy_ids: list[str] = Field(default_factory=list, max_length=30)
+
+
+_STRATEGY_STATE_EVENTS = ("strategies_selected", "rejected", "adopted", "completed")
+
+
+async def _latest_strategy_event(
+    db: AsyncSession,
+    *,
+    resume_id: str,
+    job_id: str,
+    user_id: str,
+) -> PotentialSimulationEvent | None:
+    return (
+        (
+            await db.execute(
+                select(PotentialSimulationEvent)
+                .where(
+                    PotentialSimulationEvent.resume_id == str(resume_id),
+                    PotentialSimulationEvent.job_id == str(job_id),
+                    PotentialSimulationEvent.user_id == str(user_id),
+                    PotentialSimulationEvent.event_type.in_(_STRATEGY_STATE_EVENTS),
+                )
+                .order_by(PotentialSimulationEvent.created_at.desc())
+                .limit(1)
+            )
+        )
+        .scalars()
+        .first()
+    )
+
+
+def _strategy_status(
+    event_type: str | None,
+    strategy_ids: list[str],
+    *,
+    updated_at=None,
+) -> dict:
+    return {
+        "state": event_type or "default",
+        "strategy_ids": list(strategy_ids),
+        "selected_count": len(strategy_ids),
+        "updated_at": updated_at.isoformat() if updated_at else None,
+    }
 
 
 def _pilot_metrics(events: list[PotentialSimulationEvent]) -> dict:
@@ -118,7 +162,29 @@ async def get_improvement_simulation(
     current_user: User = Depends(require_candidate),
     db: AsyncSession = Depends(get_db),
 ):
-    resume, job, result = await _simulate(db, resume_id, job_id, current_user, None)
+    latest = await _latest_strategy_event(
+        db,
+        resume_id=resume_id,
+        job_id=job_id,
+        user_id=str(current_user.id),
+    )
+    selected_ids = list(latest.strategy_ids or []) if latest else None
+    try:
+        resume, job, result = await _simulate(
+            db, resume_id, job_id, current_user, selected_ids
+        )
+    except HTTPException as exc:
+        if not latest or exc.status_code != 422:
+            raise
+        # Resume/JD changes can invalidate a previously recorded strategy ID.
+        # Fall back to the new recommendation set instead of breaking the page.
+        latest = None
+        resume, job, result = await _simulate(db, resume_id, job_id, current_user, None)
+    result["strategy_status"] = _strategy_status(
+        latest.event_type if latest else None,
+        result["selected_strategy_ids"],
+        updated_at=latest.created_at if latest else None,
+    )
     db.add(
         PotentialSimulationEvent(
             resume_id=str(resume.id),
@@ -143,18 +209,24 @@ async def select_improvement_strategies(
     db: AsyncSession = Depends(get_db),
 ):
     resume, job, result = await _simulate(db, resume_id, job_id, current_user, body.strategy_ids)
-    db.add(
-        PotentialSimulationEvent(
-            resume_id=str(resume.id),
-            job_id=str(job.id),
-            user_id=str(current_user.id),
-            event_type="strategies_selected",
-            strategy_ids=result["selected_strategy_ids"],
-            result_snapshot=result,
-            rule_version=RULE_VERSION,
-        )
+    event = PotentialSimulationEvent(
+        resume_id=str(resume.id),
+        job_id=str(job.id),
+        user_id=str(current_user.id),
+        event_type="strategies_selected",
+        strategy_ids=result["selected_strategy_ids"],
+        result_snapshot=result,
+        rule_version=RULE_VERSION,
+        created_at=datetime.now(timezone.utc),
     )
+    db.add(event)
     await db.commit()
+    await db.refresh(event)
+    result["strategy_status"] = _strategy_status(
+        "strategies_selected",
+        result["selected_strategy_ids"],
+        updated_at=event.created_at,
+    )
     return result
 
 
@@ -167,19 +239,29 @@ async def record_improvement_simulation_event(
     db: AsyncSession = Depends(get_db),
 ):
     resume, job, result = await _simulate(db, resume_id, job_id, current_user, body.strategy_ids)
-    db.add(
-        PotentialSimulationEvent(
-            resume_id=str(resume.id),
-            job_id=str(job.id),
-            user_id=str(current_user.id),
-            event_type=body.event_type,
-            strategy_ids=result["selected_strategy_ids"],
-            result_snapshot=result,
-            rule_version=RULE_VERSION,
-        )
+    event = PotentialSimulationEvent(
+        resume_id=str(resume.id),
+        job_id=str(job.id),
+        user_id=str(current_user.id),
+        event_type=body.event_type,
+        strategy_ids=result["selected_strategy_ids"],
+        result_snapshot=result,
+        rule_version=RULE_VERSION,
+        created_at=datetime.now(timezone.utc),
     )
+    db.add(event)
     await db.commit()
-    return {"event_type": body.event_type, "recorded": True}
+    await db.refresh(event)
+    return {
+        **result,
+        "event_type": body.event_type,
+        "recorded": True,
+        "strategy_status": _strategy_status(
+            body.event_type,
+            result["selected_strategy_ids"],
+            updated_at=event.created_at,
+        ),
+    }
 
 
 @router.get("/admin/potential-simulation/pilot-metrics")

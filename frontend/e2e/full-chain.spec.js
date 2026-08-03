@@ -90,8 +90,10 @@ test('full hiring chain in browser', async ({ page }) => {
   await page.getByPlaceholder('粘贴岗位描述...').fill(
     '岗位：后端工程师\n要求：Python FastAPI PostgreSQL\n地点：上海\n职责：开发招聘平台 API',
   );
-  await page.getByRole('button', { name: '提交文本' }).click();
+  await page.getByRole('button', { name: '提取岗位信息' }).click();
   await expect(page.getByText('岗位名称')).toBeVisible({ timeout: 60000 });
+  await page.getByRole('button', { name: '确认要求并发布岗位' }).click();
+  await expect(page).toHaveURL(/\/employer\/screening/, { timeout: 60000 });
 
   const jobs = await api('GET', '/jobs/mine', { token: employerToken });
   const jobList = Array.isArray(jobs) ? jobs : [];

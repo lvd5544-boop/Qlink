@@ -213,7 +213,7 @@ export default function ResumeHealthPanel({
                 )}
               </>
             )}
-            description="下方按类别列出全部诊断结果，可预览修改建议后采纳或忽略；缺少量化数据时可使用「AI 追问」补充真实数据"
+            description="这里只展示当前最值得处理的少量重点，不要求每句话都补充。可先改写再采纳或忽略；真实数据不足时再使用「AI 追问」。"
           />
 
           {(consistencyIssues.length > 0 || consistencyActions.length > 0) && (

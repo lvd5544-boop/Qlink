@@ -412,16 +412,12 @@ def _semantic_llm_analysis(
         "provider_usage": None,
         "model_output_used": False,
     }
-    if not os.getenv("DEEPSEEK_API_KEY"):
+    from .llm_client import default_model_name, model_api_key, sync_chat_completion
+
+    if not model_api_key():
         return [], metering
 
-    from openai import OpenAI
-
-    client = OpenAI(
-        api_key=os.getenv("DEEPSEEK_API_KEY"),
-        base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"),
-    )
-    model = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+    model = default_model_name("consistency_alternative_explanations")
 
     job_ctx = ""
     if job_json:
@@ -458,13 +454,14 @@ clarification_questions(数组)
 """
     try:
         metering["model_called"] = True
-        resp = client.chat.completions.create(
+        resp = sync_chat_completion(
             model=model,
             messages=[
                 {"role": "system", "content": "你只输出合法 JSON 数组。不指控造假。"},
                 {"role": "user", "content": prompt},
             ],
             temperature=0.2,
+            task="consistency_alternative_explanations",
         )
         metering["provider_status"] = "succeeded"
         metering["provider_usage"] = extract_provider_usage(

@@ -115,7 +115,20 @@ export default function Dashboard() {
       <Spin spinning={loading}>
         <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
           <Col xs={24} sm={8}>
-            <Card className="stat-card stat-card-accent">
+            <Card
+              className="stat-card stat-card-accent"
+              hoverable
+              onClick={() => navigate('/candidate/my-resumes')}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  navigate('/candidate/my-resumes');
+                }
+              }}
+              aria-label="打开我的简历"
+            >
               <Statistic title="我的简历" value={summary?.resume_count ?? 0} prefix={<FileTextOutlined />} />
             </Card>
           </Col>

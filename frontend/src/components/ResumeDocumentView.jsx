@@ -28,20 +28,20 @@ export default function ResumeDocumentView({ parsed, highlightSections = [] }) {
 
       <Divider style={{ margin: '12px 0' }} />
 
-      <div style={sectionStyle('basic')}>
+      <div id="resume-anchor-basic" style={sectionStyle('basic')}>
         <Text strong>联系方式</Text>
         <div>{parsed.email || '—'} · {parsed.phone || '—'}</div>
       </div>
 
       {parsed.summary && (
-        <div style={{ marginTop: 12, ...sectionStyle('summary') }}>
+        <div id="resume-anchor-summary" style={{ marginTop: 12, ...sectionStyle('summary') }}>
           <Text strong>个人简介</Text>
           <Paragraph style={{ marginBottom: 0 }}>{parsed.summary}</Paragraph>
         </div>
       )}
 
       {(parsed.skills || []).length > 0 && (
-        <div style={{ marginTop: 12, ...sectionStyle('skills') }}>
+        <div id="resume-anchor-skills" style={{ marginTop: 12, ...sectionStyle('skills') }}>
           <Text strong>技能</Text>
           <div style={{ marginTop: 6 }}>
             <Space wrap>
@@ -59,6 +59,7 @@ export default function ResumeDocumentView({ parsed, highlightSections = [] }) {
           {(parsed.work_experience || []).map((exp, idx) => (
             <div
               key={idx}
+              id={`resume-anchor-work_experience-${idx}`}
               style={{
                 marginTop: 8,
                 padding: 8,
@@ -97,6 +98,7 @@ export default function ResumeDocumentView({ parsed, highlightSections = [] }) {
           {(parsed.projects || []).map((proj, idx) => (
             <div
               key={idx}
+              id={`resume-anchor-projects-${idx}`}
               style={{
                 marginTop: 8,
                 padding: 8,
@@ -118,7 +120,7 @@ export default function ResumeDocumentView({ parsed, highlightSections = [] }) {
       )}
 
       {(parsed.education || parsed.school || parsed.degree) && (
-        <div style={{ marginTop: 12, ...sectionStyle('education') }}>
+        <div id="resume-anchor-education" style={{ marginTop: 12, ...sectionStyle('education') }}>
           <Text strong>教育背景</Text>
           <div>
             {parsed.school || ''} {parsed.education || ''} {parsed.degree || ''}

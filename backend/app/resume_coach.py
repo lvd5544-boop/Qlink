@@ -3,25 +3,81 @@ import os
 import logging
 from typing import Any, Dict, List, Optional
 
-from openai import OpenAI
-
 from .company_registry import infer_role_family, normalize_skill_name
 from .insight_nlp import school_tier_disclaimer
+from .llm_client import default_model_name
 from .market_analytics import get_company_profile
 from .provider_costs import extract_provider_usage
+from .ai.data_sources import is_forum_layer_e
 
 logger = logging.getLogger(__name__)
 
 
-def get_openai_client():
-    return OpenAI(
-        api_key=os.getenv("DEEPSEEK_API_KEY"),
-        base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"),
+def _polish_existing_sentence(text: str) -> str:
+    """Make an existing fact easier to read without adding a new fact."""
+    cleaned = " ".join(str(text or "").split()).strip("；;。 ")
+    if not cleaned:
+        return ""
+    if cleaned.startswith(("负责", "参与", "主导", "协助", "完成", "推动")):
+        return f"{cleaned}。"
+    return f"主要工作包括：{cleaned}。"
+
+
+def build_rule_based_rewrite_suggestions(resume_json: dict) -> list[dict]:
+    """Return faithful before/after examples when the model is unavailable.
+
+    These examples only reorganize text already present in the resume. They do
+    not insert metrics, skills, scope or outcomes that the candidate did not
+    provide.
+    """
+    suggestions: list[dict] = []
+    summary = str(resume_json.get("summary") or "").strip()
+    if summary:
+        after = _polish_existing_sentence(summary)
+        if after and after != summary:
+            suggestions.append(
+                {
+                    "section": "个人简介",
+                    "field_path": "summary",
+                    "priority": "中",
+                    "issue": "个人简介可以改成更完整、顺畅的一句话。",
+                    "advice": "这版只整理你已经写下的内容；如需进一步增强，请补充真实的职责范围和结果。",
+                    "example_before": summary,
+                    "example_after": after,
+                }
+            )
+
+    section_specs = (
+        ("工作经历", "work_experience", "company"),
+        ("项目经历", "projects", "name"),
     )
+    for section_label, section_key, name_key in section_specs:
+        for index, item in enumerate(resume_json.get(section_key) or []):
+            if not isinstance(item, dict):
+                continue
+            before = str(item.get("description") or "").strip()
+            after = _polish_existing_sentence(before)
+            if not before or not after or after == before:
+                continue
+            item_name = str(item.get(name_key) or f"第 {index + 1} 条").strip()
+            suggestions.append(
+                {
+                    "section": section_label,
+                    "field_path": f"{section_key}[{index}].description",
+                    "priority": "中",
+                    "issue": f"「{item_name}」的描述读起来不够完整。",
+                    "advice": "先把原有事实整理成完整句；如果有真实数据或成果，可通过证据追问后再补充。",
+                    "example_before": before,
+                    "example_after": after,
+                }
+            )
+            if len(suggestions) >= 3:
+                return suggestions
+    return suggestions
 
 
 def get_model():
-    return os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+    return default_model_name("advisor_answer")
 
 
 def _resume_skill_set(resume_json: dict) -> set:
@@ -39,17 +95,13 @@ def _freq_keys(freq: dict) -> List[str]:
 
 
 def compute_gap_analysis(resume_json: dict, jd_insight: dict, hired_benchmark: dict) -> dict:
-    """规则层差距分析，供 LLM 与前端展示"""
-    use_stat = hired_benchmark.get("source") in ("statistical_forum", "demo_preview")
+    """Gap vs employer JD insight. Forum/demo benchmarks are layer E qualitative only."""
+    forum_layer_e = is_forum_layer_e(hired_benchmark.get("source"))
     resume_skills = _resume_skill_set(resume_json)
-    if use_stat:
-        target_skills = set(_freq_keys(hired_benchmark.get("skill_freq")))
-        target_soft = set(_freq_keys(hired_benchmark.get("soft_skill_freq")))
-        target_leadership = set(_freq_keys(hired_benchmark.get("leadership_freq")))
-    else:
-        target_skills = set()
-        target_soft = set()
-        target_leadership = set()
+    # Formal skill targets come from JD insight only — never forum statistical profiles.
+    target_skills = set(_freq_keys(jd_insight.get("skill_freq")))
+    target_soft = set(_freq_keys(jd_insight.get("soft_skill_freq")))
+    target_leadership = set(_freq_keys(jd_insight.get("leadership_freq")))
 
     resume_soft = set(resume_json.get("soft_skills") or [])
     resume_text = " ".join(
@@ -67,20 +119,14 @@ def compute_gap_analysis(resume_json: dict, jd_insight: dict, hired_benchmark: d
     leadership_missing = [s for s in target_leadership if s not in resume_text]
     skills_missing = [s for s in target_skills if s not in resume_skills][:12]
 
-    school_tiers = _freq_keys(hired_benchmark.get("school_tier_dist")) if use_stat else []
-    user_tier = resume_json.get("school_tier") or ""
     education_gap = None
-    if school_tiers and not user_tier:
+    if forum_layer_e:
         education_gap = (
-            f"公开经验帖中较常提及的院校层次包括：{', '.join(school_tiers[:4])}。"
-            f"{school_tier_disclaimer()}建议在学历栏写清院校与层次。"
+            "网络论坛统计属于 E 层定性线索，不能作为企业录用画像或正式筛选标准；"
+            "请优先参考企业 JD 与已确认岗位要求。"
         )
-    elif hired_benchmark.get("source") == "demo_preview":
-        education_gap = (
-            "录用画像仅含演示语料，不能代表真实筛选标准；请优先参考左侧 JD 并同步公开经验帖。"
-        )
-    elif not use_stat and hired_benchmark.get("source") == "insufficient_forum":
-        education_gap = "录用画像网络样本不足，请优先参考左侧 JD 偏好并同步公开经验数据"
+    elif hired_benchmark.get("source") == "insufficient_forum":
+        education_gap = "录用画像网络样本不足，请优先参考左侧 JD 偏好"
 
     return {
         "skills_missing": skills_missing,
@@ -88,6 +134,8 @@ def compute_gap_analysis(resume_json: dict, jd_insight: dict, hired_benchmark: d
         "leadership_signals_missing": leadership_missing[:8],
         "education_gap": education_gap,
         "skills_matched": list(resume_skills & target_skills)[:10],
+        "forum_layer": "E" if forum_layer_e else None,
+        "forum_qualitative_only": forum_layer_e,
     }
 
 
@@ -296,17 +344,21 @@ async def generate_resume_coach(
             logger.warning("LLM resume coach failed: %s", e)
 
     if coach is None:
-        # 规则降级只给行动提示，不生成可采纳 patch，更不能展示虚构数字。
+        # 规则降级可整理用户已有原句，但不能补写数字、技能、范围或成果。
+        fallback_suggestions = build_rule_based_rewrite_suggestions(resume_json)
         coach = {
-            "summary": "已根据岗位与录用画像完成规则分析，AI 详细建议暂时不可用，请稍后重试。",
+            "summary": (
+                "已完成基础诊断。当前没有可用的 AI 改写结果，"
+                "下面只整理你已经写下的事实，不会补写技能、数字或成果。"
+            ),
             "priority_actions": [
-                "在项目中补充协调范围、推动结果与量化指标",
-                "将目标岗位高频技能用项目经历佐证",
+                "先查看下方的原文与修改版，确认语句是否准确",
+                "如需更有说服力的版本，再补充真实的职责范围、方法和结果",
             ][:2],
-            "suggestions": [],
+            "suggestions": fallback_suggestions,
             "school_advice": gaps.get("education_gap"),
             "soft_skill_advice": (
-                "不要空写「沟通能力强」；请先补充真实的协作对象、范围和结果证据。"
+                "与其写“沟通能力强”，不如说明你和谁协作、解决了什么问题，以及结果如何。"
             ),
         }
 

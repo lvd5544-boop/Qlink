@@ -13,18 +13,21 @@ from app.models import JobInfo, ResumeInfo
 from app.models_db import (
     ApplicationMessage,
     AuditFindingFeedback,
+    ClaimEvent,
     CredibilityAuditRecord,
     InterviewInvitation,
     JobApplication,
     JobDescription,
     MatchResult,
     Resume,
+    ResumeClaim,
     ResumeSuggestion,
     ResumeVariant,
     UsageEvent,
     User,
 )
 from app.auth_routes import _login_attempts
+from app.claim_passport import sync_resume_claims
 from app.main import resolve_cors_origins
 
 
@@ -601,6 +604,12 @@ async def test_job_delete_cascades_private_dependents_transactionally(
 async def test_account_delete_removes_user_private_graph(
     client, auth_header, db_session, candidate_a, resume_a, application_a
 ):
+    await sync_resume_claims(
+        db_session,
+        resume_a,
+        actor_id=str(candidate_a.id),
+        reason="account_delete_test",
+    )
     db_session.add(
         UsageEvent(
             user_id=str(candidate_a.id),
@@ -614,6 +623,8 @@ async def test_account_delete_removes_user_private_graph(
     checks = (
         (User, User.id == str(candidate_a.id)),
         (Resume, Resume.id == str(resume_a.id)),
+        (ResumeClaim, ResumeClaim.resume_id == str(resume_a.id)),
+        (ClaimEvent, ClaimEvent.actor_id == str(candidate_a.id)),
         (JobApplication, JobApplication.id == str(application_a.id)),
         (UsageEvent, UsageEvent.user_id == str(candidate_a.id)),
     )

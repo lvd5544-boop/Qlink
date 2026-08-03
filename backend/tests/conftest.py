@@ -29,6 +29,10 @@ os.environ["TESTING"] = "1"
 os.environ.setdefault("SECRET_KEY", "test-secret-key-for-pytest-only!")
 os.environ.setdefault("METERING_ENABLED", "false")
 os.environ.setdefault("EVIDENCE_FOLLOWUP_STRICT", "true")
+os.environ.setdefault("EVIDENCE_VAULT_DIR", str(_TESTDATA / "evidence_vault"))
+os.environ.setdefault("OBJECT_STORAGE_BACKEND", "local")
+os.environ.setdefault("VIRUS_SCAN_ENABLED", "true")
+os.environ.setdefault("VIRUS_SCAN_FAIL_MODE", "open")
 
 _raw_url = (
     os.environ.get("TEST_DATABASE_URL") or os.environ.get("DATABASE_URL") or _DEFAULT_SQLITE

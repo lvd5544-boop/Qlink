@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .auth import get_current_user
 from .claim_passport import (
     add_evidence,
+    is_context_only_claim,
     serialize_claim,
     sync_resume_claims,
     withdraw_evidence,
@@ -28,6 +29,7 @@ from .models_db import (
     ResumeClaim,
     User,
 )
+from .resume_parser import enrich_resume_from_text
 
 router = APIRouter(tags=["Claim Passport"])
 
@@ -57,6 +59,7 @@ async def _claims_payload(db: AsyncSession, resume_id: str) -> list[dict]:
         .scalars()
         .all()
     )
+    claims = [row for row in claims if not is_context_only_claim(row)]
     claim_ids = [str(row.id) for row in claims]
     evidence_by_claim: dict[str, list] = defaultdict(list)
     revisions_by_claim: dict[str, list] = defaultdict(list)
@@ -107,11 +110,18 @@ async def sync_claims_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     resume = await _owned_resume(db, resume_id, current_user)
+    enriched = enrich_resume_from_text(resume.parsed_json or {}, resume.raw_text or "")
+    if enriched.model_dump() != (resume.parsed_json or {}):
+        resume.parsed_json = enriched.model_dump()
     await sync_resume_claims(
         db, resume, actor_id=str(current_user.id), reason="candidate_requested_sync"
     )
     await db.commit()
-    return {"resume_id": str(resume.id), "claims": await _claims_payload(db, str(resume.id))}
+    return {
+        "resume_id": str(resume.id),
+        "parsed": resume.parsed_json,
+        "claims": await _claims_payload(db, str(resume.id)),
+    }
 
 
 @router.get("/resumes/{resume_id}/claims")

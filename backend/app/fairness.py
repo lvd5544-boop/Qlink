@@ -33,7 +33,7 @@ MATCHING_RULES_VERSION = os.getenv("MATCHING_RULES_VERSION", "hybrid-v2")
 CREDIBILITY_RULES_VERSION = os.getenv("CREDIBILITY_RULES_VERSION", "credibility-v1")
 RERANK_MODEL_VERSION = os.getenv(
     "RERANK_MODEL_VERSION",
-    os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
+    os.getenv("DEEPSEEK_MODEL") or os.getenv("AI_MODEL_DEFAULT") or "qwen-plus",
 )
 
 

@@ -46,7 +46,7 @@ function resolveQuestionLines(payload) {
 }
 
 /**
- * 招聘方：履历逻辑一致性 & 可信度筛查
+ * 招聘方：履历逻辑一致性筛查（PR15：不展示风险分；批筛入口见 /employer/screening）
  */
 export default function ResumeCredibilityPanel({
   applicationId: applicationIdProp,
@@ -352,8 +352,8 @@ export default function ResumeCredibilityPanel({
           type="info"
           showIcon
           style={{ marginBottom: 12, fontSize: 12 }}
-          message="履历可信度推理"
-          description="检测时间线自洽性、角色边界、指标口径与职责合理性。输出「需澄清 / 建议复核 / 证据不足」，不判定造假。"
+          message="履历一致性复核"
+          description="检测时间线自洽性、角色边界、指标口径与职责合理性。输出「需澄清 / 建议复核 / 证据不足」，不判定造假，不展示风险分。批量硬条件筛查请使用「批筛复核」。"
         />
 
         <Spin spinning={loading}>
@@ -375,7 +375,6 @@ export default function ResumeCredibilityPanel({
               )}
               <Space wrap>
                 <Tag color={statusCfg.color}>{statusCfg.label}</Tag>
-                <Tag>风险指数 {report.risk_score}/100</Tag>
                 <Tag icon={<ClockCircleOutlined />}>估工龄 {report.work_years_estimate} 年</Tag>
               </Space>
 

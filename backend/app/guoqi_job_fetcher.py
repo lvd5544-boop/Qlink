@@ -1,7 +1,8 @@
 import logging
 import httpx
 import re
-from sqlalchemy import delete
+from datetime import datetime, timezone
+from sqlalchemy import select
 from .database import AsyncSessionLocal
 from .models_db import JobDescription, User
 
@@ -102,7 +103,23 @@ async def fetch_guoqi_jobs(keywords: list = None):
             db.add(system_employer)
             await db.flush()
 
-        await db.execute(delete(JobDescription).where(JobDescription.employer_id == "guoqi"))
+        existing = (
+            await db.execute(
+                select(JobDescription).where(JobDescription.employer_id == "guoqi")
+            )
+        ).scalars().all()
+        by_source_id = {
+            str((row.parsed_json or {}).get("source_job_id")): row
+            for row in existing
+            if (row.parsed_json or {}).get("source_job_id")
+        }
+        by_identity = {
+            (
+                str((row.parsed_json or {}).get("company_name") or "").casefold(),
+                str(row.title or "").casefold(),
+            ): row
+            for row in existing
+        }
 
         count = 0
         for job in unique_jobs:
@@ -153,22 +170,35 @@ async def fetch_guoqi_jobs(keywords: list = None):
                     "education": education,
                     "company_name": company_name,
                     "company_type": "soe",
+                    "source_name": "国资央企招聘平台",
+                    "source_job_id": str(job.get("job_id") or ""),
+                    "source_attribution": "岗位来源：国资央企招聘平台；请以发布方最新页面为准。",
+                    "last_seen_at": datetime.now(timezone.utc).isoformat(),
                     "contact_person": contact_person,
                     "contact_info": contact_info,
                     "other_notes": f"来源：国资央企招聘平台 | 公司：{company_name} | 性质：{nature_cn}",
                 }
 
-                jd = JobDescription(
-                    employer_id="guoqi",
-                    title=job_info["title"],
-                    raw_text=contents,
-                    parsed_json=job_info,
+                identity = (company_name.casefold(), title.casefold())
+                row = by_source_id.get(job_info["source_job_id"]) or by_identity.get(
+                    identity
                 )
-                db.add(jd)
+                if row is None:
+                    row = JobDescription(
+                        employer_id="guoqi",
+                        title=job_info["title"],
+                        raw_text=contents,
+                        parsed_json=job_info,
+                    )
+                    db.add(row)
+                else:
+                    row.title = job_info["title"]
+                    row.raw_text = contents
+                    row.parsed_json = job_info
                 count += 1
             except Exception as e:
                 logger.error(f"处理岗位时出错: {e}")
                 continue
 
         await db.commit()
-        logger.info(f"成功导入 {count} 条国资央企招聘信息")
+        logger.info("成功新增或更新 %s 条国资央企岗位；未删除历史岗位", count)

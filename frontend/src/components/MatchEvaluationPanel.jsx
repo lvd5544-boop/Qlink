@@ -1,14 +1,13 @@
-import { Progress, Tag, Space, Typography, Divider, List, Alert } from 'antd';
+import { Tag, Space, Typography, Divider, List, Alert } from 'antd';
 import {
   RocketOutlined,
   BulbOutlined,
   ProjectOutlined,
   BankOutlined,
 } from '@ant-design/icons';
-import { ClickableScoreTag } from './ScoreRulesPopover';
-import { resolveMatchBreakdown, resolveMatchReason, filterSoftSkillsForDisplay } from '../utils/matchBreakdown';
+import { resolveMatchBreakdown, filterSoftSkillsForDisplay } from '../utils/matchBreakdown';
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 
 const DIMENSION_LABELS = {
   skills: '技能匹配',
@@ -23,16 +22,10 @@ const DIMENSION_LABELS = {
   growth_potential: '成长潜力',
 };
 
-function scoreColor(ratio) {
-  if (ratio >= 0.8) return '#10b981';
-  if (ratio >= 0.5) return '#f59e0b';
-  return '#ef4444';
-}
-
-function tierTag(tier) {
-  if (tier === 'high') return <Tag color="success">高匹配</Tag>;
-  if (tier === 'medium') return <Tag color="warning">中匹配</Tag>;
-  return <Tag color="error">低匹配</Tag>;
+function factorTag(ratio) {
+  if (ratio >= 0.8) return { text: '符合', color: 'success' };
+  if (ratio >= 0.5) return { text: '基本符合', color: 'warning' };
+  return { text: '需要确认', color: 'default' };
 }
 
 export default function MatchEvaluationPanel({ evaluation }) {
@@ -40,80 +33,33 @@ export default function MatchEvaluationPanel({ evaluation }) {
     return <Alert type="info" message="暂无评分数据，请确认已上传简历" showIcon />;
   }
 
-  const { breakdown: rawBreakdown, signals, career_suggestions: cs } = evaluation;
+  const { breakdown: rawBreakdown, career_suggestions: cs } = evaluation;
   const apiBreakdown = evaluation.api_breakdown || resolveMatchBreakdown({
     breakdown: evaluation.api_breakdown,
     score_breakdown: rawBreakdown,
   });
-  const version = apiBreakdown?.version ?? rawBreakdown?.version ?? 2;
-  const displayReason = resolveMatchReason({
-    reason: evaluation.reason,
-    score_breakdown: rawBreakdown,
-    score: evaluation.match_score,
-  });
-
   const dimensions = apiBreakdown?.dimensions?.length
     ? apiBreakdown.dimensions.map((d) => ({
         key: d.key,
         label: d.label,
         ratio: d.ratio ?? 0,
-        score: d.score,
-        weight: d.weight,
       }))
     : Object.entries(DIMENSION_LABELS).map(([key, label]) => {
         const dim = rawBreakdown?.[key];
         if (!dim) return null;
         const ratio = dim.ratio ?? 0;
-        return { key, label, ratio, score: dim.score, weight: dim.weight };
+        return { key, label, ratio };
       }).filter(Boolean);
 
   return (
     <div>
-      <Space wrap style={{ marginBottom: 16 }}>
-        <ClickableScoreTag
-          type="current"
-          score={evaluation.match_score}
-          version={version}
-          color="volcano"
-          style={{ fontSize: 15, padding: '4px 10px' }}
-        />
-        {evaluation.potential_score != null && (
-          <ClickableScoreTag
-            type="potential"
-            score={evaluation.potential_score}
-            color="blue"
-            style={{ fontSize: 15, padding: '4px 10px' }}
-          />
-        )}
-        {evaluation.improvement_delta > 0 && (
-          <Tag color="green" style={{ fontSize: 15, padding: '4px 10px' }}>
-            可提升 +{evaluation.improvement_delta}
-          </Tag>
-        )}
-        {tierTag(evaluation.match_tier)}
+      <Divider orientation="left" plain>系统参考了什么</Divider>
+      <Space wrap>
+        {dimensions.map(({ key, label, ratio }) => {
+          const status = factorTag(ratio);
+          return <Tag key={key} color={status.color}>{label}：{status.text}</Tag>;
+        })}
       </Space>
-
-      <Paragraph type="secondary" style={{ marginBottom: 16 }}>
-        {displayReason}
-      </Paragraph>
-
-      <Divider orientation="left" plain>十维评分</Divider>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
-        {dimensions.map(({ key, label, ratio, score, weight }) => (
-          <div key={key}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-              <Text>{label}</Text>
-              <Text type="secondary">{score} / {(rawBreakdown?.[key]?.weight || weight || 0).toFixed(1)}</Text>
-            </div>
-            <Progress
-              percent={Math.round(ratio * 100)}
-              strokeColor={scoreColor(ratio)}
-              size="small"
-              showInfo={false}
-            />
-          </div>
-        ))}
-      </div>
 
       <Divider orientation="left" plain>技能差距</Divider>
       <Space wrap>
@@ -139,30 +85,6 @@ export default function MatchEvaluationPanel({ evaluation }) {
             ))
           : <Text type="secondary">暂无</Text>}
       </Space>
-
-      {signals && (
-        <>
-          <Divider orientation="left" plain>补充信号</Divider>
-          <Space wrap>
-            {signals.stability && (
-              <Tag>稳定性 {Math.round((signals.stability.ratio || 0) * 100)}%</Tag>
-            )}
-            {signals.probabilities && (
-              <>
-                <Tag color="processing">
-                  面试概率 ~{signals.probabilities.interview_probability}%
-                </Tag>
-                <Tag color="purple">
-                  Offer 概率 ~{signals.probabilities.offer_probability}%
-                </Tag>
-              </>
-            )}
-            {signals.upskill_difficulty?.level && (
-              <Tag>补齐难度：{signals.upskill_difficulty.level}</Tag>
-            )}
-          </Space>
-        </>
-      )}
 
       {cs && (
         <>

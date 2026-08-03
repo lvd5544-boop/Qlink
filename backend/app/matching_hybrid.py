@@ -116,10 +116,19 @@ EDUCATION_RANK = {
 }
 
 
-def _extract_skill_names(skill_list) -> Set[str]:
+def _extract_skill_names(skill_list, *, include_planned: bool = False) -> Set[str]:
+    """Extract current capability skill names.
+
+    Skills tagged ``planned`` are future learning intents and must not count as
+    current capability unless ``include_planned`` is explicitly True (used only
+    for counterfactual potential scoring).
+    """
     skills: Set[str] = set()
     for s in skill_list or []:
         if isinstance(s, dict):
+            level = str(s.get("level") or "").strip().lower()
+            if level == "planned" and not include_planned:
+                continue
             name = normalize_skill_name(s.get("name", ""))
         else:
             name = normalize_skill_name(str(s))
@@ -580,17 +589,30 @@ def _estimate_potential_score(
     soft_missing: List[str],
     current_total: float,
 ) -> float:
-    """假设补齐 missing 技能与软实力后的估算分。"""
+    """Counterfactual score if missing skills were acquired.
+
+    Future skills are stored as ``planned`` and never treated as current
+    capability on the real resume. Only this ephemeral scoring copy maps
+    planned → temporary proficiency for the potential number.
+    """
     if not missing_skills and not soft_missing:
         return current_total
 
     hypothetical = dict(resume_json)
     hypo_skills = list(hypothetical.get("skills") or [])
-    existing = _extract_skill_names(hypo_skills)
+    existing = _extract_skill_names(hypo_skills, include_planned=True)
     for sk in missing_skills:
         if sk not in existing:
-            hypo_skills.append({"name": sk, "level": "intermediate"})
-    hypothetical["skills"] = hypo_skills
+            hypo_skills.append({"name": sk, "level": "planned"})
+    scoring_skills = [
+        (
+            {**s, "level": "intermediate"}
+            if isinstance(s, dict) and str(s.get("level") or "").lower() == "planned"
+            else s
+        )
+        for s in hypo_skills
+    ]
+    hypothetical["skills"] = scoring_skills
 
     hypo_soft = list(hypothetical.get("soft_skills") or [])
     for s in soft_missing:
@@ -616,11 +638,15 @@ def _compute_v2_total(
     resume_json: dict,
     job_json: dict,
     job_title: Optional[str],
+    *,
+    include_planned: bool = False,
 ) -> Tuple[float, dict, List[str], List[str], dict]:
     """v2 十维评分。"""
     from .matching_signals import score_industry_match, score_impact, score_growth_potential
 
-    resume_skills = _extract_skill_names(resume_json.get("skills"))
+    resume_skills = _extract_skill_names(
+        resume_json.get("skills"), include_planned=include_planned
+    )
     required_skills = _extract_skill_names(job_json.get("required_skills"))
     required_skills |= _skills_from_responsibilities(job_json)
 
@@ -730,14 +756,20 @@ def hybrid_score_v2(
     resume_json: dict,
     job_json: dict,
     job_title: Optional[str] = None,
+    *,
+    include_planned: bool = False,
 ) -> Tuple[float, Dict, float, str]:
-    """v2 十维混合评分（含 industry / impact / growth）。"""
+    """v2 十维混合评分（含 industry / impact / growth）。
+
+    ``include_planned`` is only for explicit counterfactual scoring (e.g. PR9
+    capability scenarios). Current capability scoring must leave it False.
+    """
     if not resume_json or not job_json:
         empty = {"source": "hybrid_v2", "total": 5.0}
         return 5.0, empty, 5.0, "medium"
 
     total, breakdown, missing_skills, soft_missing, _ = _compute_v2_total(
-        resume_json, job_json, job_title
+        resume_json, job_json, job_title, include_planned=include_planned
     )
     potential = _estimate_potential_score_v2(
         resume_json, job_json, job_title, missing_skills, soft_missing, total
@@ -761,11 +793,19 @@ def _estimate_potential_score_v2(
         return current_total
     hypothetical = dict(resume_json)
     hypo_skills = list(hypothetical.get("skills") or [])
-    existing = _extract_skill_names(hypo_skills)
+    existing = _extract_skill_names(hypo_skills, include_planned=True)
     for sk in missing_skills:
         if sk not in existing:
-            hypo_skills.append({"name": sk, "level": "intermediate"})
-    hypothetical["skills"] = hypo_skills
+            hypo_skills.append({"name": sk, "level": "planned"})
+    # Ephemeral scoring copy only — planned must not become current capability.
+    hypothetical["skills"] = [
+        (
+            {**s, "level": "intermediate"}
+            if isinstance(s, dict) and str(s.get("level") or "").lower() == "planned"
+            else s
+        )
+        for s in hypo_skills
+    ]
     hypo_soft = list(hypothetical.get("soft_skills") or [])
     for s in soft_missing:
         if s not in hypo_soft:
@@ -899,7 +939,7 @@ def extract_breakdown_for_api(score_breakdown: Optional[dict]) -> Optional[dict]
         return None
 
     version = score_breakdown.get("version", 1)
-    labels = DIMENSION_LABELS_V2 if version == 2 else DIMENSION_LABELS_V1
+    labels = DIMENSION_LABELS_V2 if version >= 2 else DIMENSION_LABELS_V1
     dimensions = []
     for key, label in labels:
         dim = score_breakdown.get(key)

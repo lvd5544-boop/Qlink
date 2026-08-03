@@ -11,6 +11,7 @@ import {
   AudioMutedOutlined,
 } from '@ant-design/icons';
 import api, { getWsBaseUrl } from '../../api';
+import StructuredInterviewPanel from '../../components/StructuredInterviewPanel';
 import {
   buildInterviewWsUrl,
   buildWebSocketAuthMessage,
@@ -22,6 +23,7 @@ import {
 const { Text } = Typography;
 
 export default function Interview() {
+  const [channel, setChannel] = useState('structured');
   const [mode, setMode] = useState('profile');
   const [resumeId, setResumeId] = useState(null);
   const [resumes, setResumes] = useState([]);
@@ -273,11 +275,47 @@ export default function Interview() {
     claim_followup: '补齐经历细节；未经确认，不会写入简历或分享给招聘方',
   };
 
+  if (!started && channel === 'structured') {
+    return (
+      <>
+        <Card className="content-card" title="AI 面试官" style={{ marginBottom: 16 }}>
+          <Alert
+            type="info"
+            showIcon
+            message="先选择面试目标，再开始逐题追问"
+            description="结构化面试会先生成问题清单，不会在没有提问的情况下直接结束。每个提取结果都要由你确认后才会写回。"
+            style={{ marginBottom: 16 }}
+          />
+          <Segmented
+            block
+            value={channel}
+            onChange={setChannel}
+            options={[
+              { label: '结构化面试（推荐）', value: 'structured' },
+              { label: '经典对话面试', value: 'legacy' },
+            ]}
+          />
+        </Card>
+        <StructuredInterviewPanel />
+      </>
+    );
+  }
+
   if (!started) {
     return (
       <Card className="content-card" title="AI 虚拟面试官">
         <div className="interview-start-panel" style={{ textAlign: 'center' }}>
           <RobotOutlined style={{ fontSize: 48, color: '#1890ff', marginBottom: 16 }} />
+          <Segmented
+            value={channel}
+            onChange={setChannel}
+            block
+            style={{ maxWidth: 560, margin: '0 auto 20px' }}
+            options={[
+              { label: '结构化面试（推荐）', value: 'structured' },
+              { label: '经典对话面试', value: 'legacy' },
+            ]}
+          />
 
           {pendingResult && (
             <Card
@@ -447,6 +485,20 @@ export default function Interview() {
   }
 
   return (
+    <>
+      <Card className="content-card" title="AI 面试官" style={{ marginBottom: 16 }}>
+        <Segmented
+          block
+          value={channel}
+          onChange={setChannel}
+          options={[
+            { label: '结构化面试（推荐）', value: 'structured' },
+            { label: '经典对话面试', value: 'legacy' },
+          ]}
+        />
+      </Card>
+      {channel === 'structured' ? <StructuredInterviewPanel /> : null}
+      {channel === 'legacy' ? (
     <Card
       className="content-card"
       title={mode === 'claim_followup' ? 'AI 简历追问' : 'AI 虚拟面试官'}
@@ -523,5 +575,7 @@ export default function Interview() {
         />
       </Space.Compact>
     </Card>
+      ) : null}
+    </>
   );
 }

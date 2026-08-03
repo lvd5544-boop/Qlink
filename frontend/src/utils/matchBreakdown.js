@@ -57,7 +57,7 @@ export function extractBreakdownFromScoreBreakdown(scoreBreakdown) {
   if (!scoreBreakdown || typeof scoreBreakdown !== 'object') return null;
 
   const version = scoreBreakdown.version ?? (scoreBreakdown.source === 'hybrid_v2' ? 2 : 1);
-  const labels = version === 2 ? DIMENSION_LABELS_V2 : DIMENSION_LABELS_V1;
+  const labels = version >= 2 ? DIMENSION_LABELS_V2 : DIMENSION_LABELS_V1;
   const dimensions = [];
 
   for (const [key, label] of labels) {
@@ -94,7 +94,7 @@ export function buildMatchReasonFromBreakdown(scoreBreakdown, score) {
   if (!scoreBreakdown) return null;
 
   const version = scoreBreakdown.version ?? (scoreBreakdown.source === 'hybrid_v2' ? 2 : 1);
-  const dimLabels = version === 2 ? REASON_DIM_LABELS_V2 : REASON_DIM_LABELS_V1;
+  const dimLabels = version >= 2 ? REASON_DIM_LABELS_V2 : REASON_DIM_LABELS_V1;
   const parts = [];
 
   for (const [key, label] of Object.entries(dimLabels)) {

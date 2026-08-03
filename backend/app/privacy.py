@@ -10,6 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .models_db import (
     ApplicationMessage,
     AuditFindingFeedback,
+    ClaimApplicationLink,
+    ClaimEvidence,
+    ClaimEvent,
+    ClaimRevision,
     CredibilityAuditRecord,
     HiredProfileSubmission,
     InterviewInvitation,
@@ -18,6 +22,7 @@ from .models_db import (
     MatchResult,
     PotentialSimulationEvent,
     Resume,
+    ResumeClaim,
     ResumeSuggestion,
     ResumeVariant,
     UsageEvent,
@@ -82,6 +87,10 @@ async def delete_resume_graph(db: AsyncSession, resume_ids: Iterable[object]) ->
     ids = _ids(resume_ids)
     if not ids:
         return
+    # Serialize graph erasure with background matching. Without a parent-row
+    # lock, a worker can insert a new match_result after the child delete and
+    # immediately before the resume delete, causing a foreign-key failure.
+    await db.execute(select(Resume.id).where(Resume.id.in_(ids)).with_for_update())
     app_ids = _ids(
         (
             await db.execute(select(JobApplication.id).where(JobApplication.resume_id.in_(ids)))
@@ -89,6 +98,20 @@ async def delete_resume_graph(db: AsyncSession, resume_ids: Iterable[object]) ->
     )
     await delete_application_graph(db, app_ids)
     await _delete_audits(db, resume_ids=ids)
+    claim_ids = _ids(
+        (await db.execute(select(ResumeClaim.id).where(ResumeClaim.resume_id.in_(ids)))).scalars()
+    )
+    if claim_ids:
+        # Claim events and application snapshots intentionally use RESTRICT so
+        # claims cannot disappear accidentally. Explicit user deletion is the
+        # authorized graph-erasure path and must remove those dependents first.
+        await db.execute(
+            delete(ClaimApplicationLink).where(ClaimApplicationLink.claim_id.in_(claim_ids))
+        )
+        await db.execute(delete(ClaimEvent).where(ClaimEvent.claim_id.in_(claim_ids)))
+        await db.execute(delete(ClaimEvidence).where(ClaimEvidence.claim_id.in_(claim_ids)))
+        await db.execute(delete(ClaimRevision).where(ClaimRevision.claim_id.in_(claim_ids)))
+        await db.execute(delete(ResumeClaim).where(ResumeClaim.id.in_(claim_ids)))
     await db.execute(
         delete(PotentialSimulationEvent).where(PotentialSimulationEvent.resume_id.in_(ids))
     )

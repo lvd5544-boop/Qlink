@@ -262,6 +262,9 @@ async def _send_clarification_for_application(
     application: JobApplication,
     employer: User,
     req: ClarificationRequest,
+    *,
+    commit: bool = True,
+    notify: bool = True,
 ) -> dict:
     job = await db.get(JobDescription, application.job_id)
     if (
@@ -330,31 +333,18 @@ async def _send_clarification_for_application(
         actor_id=str(employer.id),
         source="clarification_request",
     )
-    await db.commit()
-    await db.refresh(msg)
-    await db.refresh(application)
-
-    await event_bus.publish(
-        application_id=str(application.id),
-        event_type="clarification_request",
-        payload={
-            "claim_id": req.claim_id,
-            "message_id": str(msg.id),
-            "status": application.status,
-        },
-        candidate_id=application.candidate_id,
-        employer_id=str(employer.id),
-    )
-    try:
-        candidate = await db.get(User, application.candidate_id)
-        if candidate and candidate.email:
-            await send_email(
-                candidate.email,
-                f"岗位「{job.title}」需要您补充说明",
-                "<p>招聘方就履历主张发起了澄清请求，请登录「已申请岗位」回复。</p>",
+    if commit:
+        await db.commit()
+        await db.refresh(msg)
+        await db.refresh(application)
+        if notify:
+            await _notify_clarification_requested(
+                db,
+                application=application,
+                employer=employer,
+                message_id=str(msg.id),
+                claim_id=req.claim_id,
             )
-    except Exception:
-        pass
 
     return {
         "status": "ok",
@@ -364,6 +354,42 @@ async def _send_clarification_for_application(
         "application_id": str(application.id),
         **claim_threads_summary(application),
     }
+
+
+async def _notify_clarification_requested(
+    db: AsyncSession,
+    *,
+    application: JobApplication,
+    employer: User,
+    message_id: str,
+    claim_id: str | None,
+) -> None:
+    """Best-effort notifications after the business transaction commits."""
+    job = await db.get(JobDescription, application.job_id)
+    try:
+        await event_bus.publish(
+            application_id=str(application.id),
+            event_type="clarification_request",
+            payload={
+                "claim_id": claim_id,
+                "message_id": str(message_id),
+                "status": application.status,
+            },
+            candidate_id=application.candidate_id,
+            employer_id=str(employer.id),
+        )
+    except Exception:
+        pass
+    try:
+        candidate = await db.get(User, application.candidate_id)
+        if candidate and candidate.email:
+            await send_email(
+                candidate.email,
+                f"岗位「{job.title if job else ''}」需要您补充说明",
+                "<p>招聘方就履历主张发起了澄清请求，请登录「已申请岗位」回复。</p>",
+            )
+    except Exception:
+        pass
 
 
 class _SnapshotResume:
@@ -425,9 +451,9 @@ def _application_payload(app: JobApplication, job: JobDescription | None = None)
 def _redact_report_for_storage(report: dict) -> dict:
     if not isinstance(report, dict):
         return {}
+    # PR15: never persist risk_score on new audits (omit entirely; do not write 0).
     return {
         "overall_status": report.get("overall_status"),
-        "risk_score": report.get("risk_score"),
         "status_label": report.get("status_label"),
         "findings": report.get("findings") or [],
         "claim_reasoning": {
@@ -436,6 +462,25 @@ def _redact_report_for_storage(report: dict) -> dict:
         },
         "disclaimer": report.get("disclaimer"),
     }
+
+
+def _omit_risk_score(payload: dict) -> dict:
+    """PR15: new credibility API responses must omit risk_score entirely."""
+    if not isinstance(payload, dict):
+        return payload
+    cleaned = dict(payload)
+    cleaned.pop("risk_score", None)
+    report = cleaned.get("report")
+    if isinstance(report, dict):
+        report = dict(report)
+        report.pop("risk_score", None)
+        claim = report.get("claim_reasoning")
+        if isinstance(claim, dict):
+            claim = dict(claim)
+            claim.pop("risk_score", None)
+            report["claim_reasoning"] = claim
+        cleaned["report"] = report
+    return cleaned
 
 
 async def _persist_credibility_audit(
@@ -457,7 +502,8 @@ async def _persist_credibility_audit(
         resume_id=str(resume.id),
         application_id=str(application.id) if application else None,
         overall_status=report.get("overall_status"),
-        risk_score=report.get("risk_score"),
+        # PR15 hard constraint: new rows may only store NULL (never 0 or any score).
+        risk_score=None,
         report=stored_report,
     )
     db.add(record)
@@ -574,22 +620,24 @@ async def _credibility_audit_response(
     )
     # METERING_ENABLED=false 时 finalize 是 no-op；审计业务记录仍必须提交。
     await db.commit()
-    return {
-        "job_id": str(job.id),
-        "resume_id": str(resume.id),
-        "application_id": str(application.id) if application else None,
-        "has_application": application is not None,
-        "application_status": application.status if application else None,
-        "job_title": job.title if job else "",
-        "candidate_name": (resume.parsed_json or {}).get("name") or "匿名",
-        "audit_record_id": str(record.id),
-        "application_resume_version_id": (resume_snapshot or {}).get("version_id"),
-        "snapshot_captured_at": (resume_snapshot or {}).get("captured_at"),
-        "snapshot_source": (resume_snapshot or {}).get("source"),
-        "snapshot_status": (resume_snapshot or {}).get("snapshot_status"),
-        "report": report,
-        "claim_threads": claim_threads_summary(application) if application else None,
-    }
+    return _omit_risk_score(
+        {
+            "job_id": str(job.id),
+            "resume_id": str(resume.id),
+            "application_id": str(application.id) if application else None,
+            "has_application": application is not None,
+            "application_status": application.status if application else None,
+            "job_title": job.title if job else "",
+            "candidate_name": (resume.parsed_json or {}).get("name") or "匿名",
+            "audit_record_id": str(record.id),
+            "application_resume_version_id": (resume_snapshot or {}).get("version_id"),
+            "snapshot_captured_at": (resume_snapshot or {}).get("captured_at"),
+            "snapshot_source": (resume_snapshot or {}).get("source"),
+            "snapshot_status": (resume_snapshot or {}).get("snapshot_status"),
+            "report": report,
+            "claim_threads": claim_threads_summary(application) if application else None,
+        }
+    )
 
 
 async def _ensure_participant(app: JobApplication, user: User):
@@ -627,7 +675,7 @@ async def apply_job(
         raise HTTPException(status_code=403, detail="仅求职者可申请岗位")
 
     job = await db.get(JobDescription, req.job_id)
-    if not job:
+    if not job or (job.parsed_json or {}).get("_publication_status") == "draft":
         raise HTTPException(status_code=404, detail="岗位不存在")
 
     resume = await db.get(Resume, req.resume_id)
@@ -847,6 +895,102 @@ async def employer_inbox_summary(
         "pending_review_count": pending_review,
         "clarified_count": clarified_count,
         "open_applications": len(apps),
+    }
+
+
+@router.get("/employer/all")
+async def employer_all_applications(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """招聘方：跨岗位查看全部申请，作为统一申请审阅入口。"""
+    if current_user.role != "employer":
+        raise HTTPException(status_code=403, detail="仅招聘方可查看")
+
+    stmt = (
+        select(JobApplication)
+        .where(JobApplication.employer_id == str(current_user.id))
+        .order_by(JobApplication.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    payload = []
+    for app in result.scalars().all():
+        job = await db.get(JobDescription, app.job_id)
+        snapshot = get_resume_snapshot(app) or {}
+        parsed = snapshot.get("parsed_json") or {}
+        payload.append(
+            {
+                **_application_payload(app, job),
+                "candidate_name": parsed.get("name") or "匿名候选人",
+                "expected_title": parsed.get("expected_job_title") or "未填写",
+            }
+        )
+    return payload
+
+
+async def _snapshot_material(
+    db: AsyncSession,
+    snapshot: dict,
+    *,
+    version_id: Optional[str] = None,
+) -> dict:
+    data = deepcopy(snapshot or {})
+    resume_id = data.get("resume_id")
+    raw_text = data.get("raw_text") or ""
+    if not raw_text and resume_id:
+        resume = await db.get(Resume, resume_id)
+        raw_text = resume.raw_text if resume else ""
+    return {
+        "version_id": version_id or data.get("version_id"),
+        "resume_id": resume_id,
+        "parsed_json": deepcopy(
+            data.get("parsed_json")
+            or data.get("snapshot_json")
+            or {}
+        ),
+        "raw_text": raw_text or "",
+        "captured_at": data.get("captured_at") or data.get("created_at"),
+        "source": data.get("source"),
+        "content_hash": data.get("content_hash"),
+        "snapshot_status": data.get("snapshot_status", "reliable"),
+    }
+
+
+@router.get("/{application_id}/materials")
+async def application_materials(
+    application_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """申请参与方查看已授权的投递原文和不可变简历版本。"""
+    application = await db.get(JobApplication, application_id)
+    if not application:
+        raise HTTPException(status_code=404, detail="申请不存在")
+    await _ensure_participant(application, current_user)
+
+    meta = application.pipeline_meta if isinstance(application.pipeline_meta, dict) else {}
+    initial = meta.get("initial_submission_snapshot") or meta.get("resume_snapshot") or {}
+    versions = []
+    for version in meta.get("resume_versions") or []:
+        if isinstance(version, dict):
+            versions.append(
+                await _snapshot_material(
+                    db,
+                    version,
+                    version_id=version.get("version_id"),
+                )
+            )
+    current = get_resume_snapshot(application) or initial
+    if not versions and initial:
+        versions.append(await _snapshot_material(db, initial, version_id="v1"))
+
+    return {
+        "application_id": str(application.id),
+        "initial_submission": await _snapshot_material(db, initial, version_id="v1"),
+        "current_submission": await _snapshot_material(db, current),
+        "current_resume_version_id": meta.get("current_resume_version_id") or "v1",
+        "versions": versions,
+        "disclaimer": "仅展示候选人对本次申请明确授权的投递快照；后续私密修改不会自动同步。",
     }
 
 
@@ -1612,13 +1756,16 @@ async def application_audit_history(
     )
     result = await db.execute(stmt)
     records = result.scalars().all()
+    # PR15: employer-facing history omits risk_score; legacy DB values remain readable in DB only.
     return [
-        {
-            "id": str(r.id),
-            "overall_status": r.overall_status,
-            "risk_score": r.risk_score,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-            "report": r.report,
-        }
+        _omit_risk_score(
+            {
+                "id": str(r.id),
+                "overall_status": r.overall_status,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "report": r.report,
+                "legacy_risk_score_present": r.risk_score is not None,
+            }
+        )
         for r in records
     ]

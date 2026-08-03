@@ -53,26 +53,34 @@ export default function MyJobs() {
       <Spin spinning={loading}>
         <List
           dataSource={jobs}
-          renderItem={(item) => (
+          renderItem={(item) => {
+            const isDraft = item.parsed?._publication_status === 'draft';
+            return (
             <List.Item
               extra={
                 <Space wrap>
                   <Button icon={<EyeOutlined />} onClick={() => handleView(item)}>查看</Button>
                   <Link to={`/employer/edit-job/${item.id}`}>
-                    <Button icon={<EditOutlined />}>编辑</Button>
+                    <Button type={isDraft ? 'primary' : 'default'} icon={<EditOutlined />}>
+                      {isDraft ? '继续发布' : '编辑'}
+                    </Button>
                   </Link>
-                  <Link to={`/employer/applications/${item.id}`}>
-                    <Button type="primary" icon={<FileTextOutlined />}>申请记录</Button>
-                  </Link>
-                  <Link to={`/employer/candidates/${item.id}`}>
-                    <Button>匹配候选人</Button>
-                  </Link>
+                  {!isDraft && (
+                    <>
+                      <Link to={`/employer/applications/${item.id}`}>
+                        <Button type="primary" icon={<FileTextOutlined />}>申请记录</Button>
+                      </Link>
+                      <Link to={`/employer/candidates/${item.id}`}>
+                        <Button>匹配候选人</Button>
+                      </Link>
+                    </>
+                  )}
                   <Button danger icon={<DeleteOutlined />} onClick={() => handleDelete(item.id)}>删除</Button>
                 </Space>
               }
             >
               <List.Item.Meta
-                title={item.title}
+                title={<Space>{item.title}<Tag color={isDraft ? 'default' : 'green'}>{isDraft ? '草稿' : '招聘中'}</Tag></Space>}
                 description={
                   <span>
                     {item.parsed?.location && `地点：${item.parsed.location} · `}
@@ -81,7 +89,8 @@ export default function MyJobs() {
                 }
               />
             </List.Item>
-          )}
+            );
+          }}
           locale={{ emptyText: '暂无岗位' }}
         />
       </Spin>

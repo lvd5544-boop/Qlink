@@ -78,3 +78,8 @@ class JobInfo(BaseModel):
     company_name: Optional[str] = None
     contact_person: Optional[str] = None
     contact_info: Optional[str] = None
+
+
+class PostJobResponse(JobInfo):
+    job_id: str
+    publication_status: str = "draft"

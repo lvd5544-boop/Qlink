@@ -26,7 +26,9 @@ async def test_readiness_reports_rules_only_without_leaking_secrets(
     monkeypatch,
 ):
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("AI_PRIMARY_API_KEY", raising=False)
     monkeypatch.setenv("MODEL_REQUIRED", "false")
+    monkeypatch.setenv("AI_ENABLED", "true")
 
     class HealthyRedis:
         async def ping(self):
@@ -43,6 +45,8 @@ async def test_readiness_reports_rules_only_without_leaking_secrets(
         "ok": True,
         "mode": "rules_only",
         "required": False,
+        "ai_enabled": True,
+        "reason": "api_key_missing",
     }
     assert model_runtime_mode() == "rules_only"
     assert "DEEPSEEK_API_KEY" not in str(result)

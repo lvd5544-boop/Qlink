@@ -1,15 +1,20 @@
 """
 岗位定制版简历：resume_variants + 5 种风格模板。
+PR10: 无 AI 时不虚构技能/成果；经 Model Gateway 调用模型。
 """
 
 from __future__ import annotations
 
 import copy
+import html
 import json
 import logging
-import os
 import re
 from typing import Dict, List, Optional
+
+from .ai.config import provider_configured
+from .ai.errors import AIUnavailableError, SchemaValidationError
+from .ai.gateway import InvocationContext, gateway_run
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +57,7 @@ def list_style_templates() -> List[dict]:
 
 
 def _variant_label(target_job_title: str, style_id: str) -> str:
-    title = (target_job_title or "通用").strip()
+    title = html.unescape(target_job_title or "通用").strip()
     style_label = STYLE_TEMPLATES.get(style_id, {}).get("label", style_id)
     return f"{title}版（{style_label}）"
 
@@ -62,71 +67,44 @@ def _slugify(text: str) -> str:
     return slug[:60] or "variant"
 
 
-def _get_openai_client():
-    from openai import OpenAI
-
-    return OpenAI(
-        api_key=os.getenv("DEEPSEEK_API_KEY"),
-        base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"),
-    )
-
-
-def _get_model() -> str:
-    return os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
-
-
-def _fallback_variant(
+def _safe_reorder_only(
     resume_json: dict,
     target_job_title: str,
     style_id: str,
-    job_json: Optional[dict] = None,
 ) -> dict:
-    """无 LLM 时的规则化岗位定制。"""
+    """Rules-only path: reorder/truncate existing text; never invent facts."""
     data = copy.deepcopy(resume_json or {})
     title = (target_job_title or data.get("expected_job_title") or "目标岗位").strip()
-    style = STYLE_TEMPLATES.get(style_id, STYLE_TEMPLATES["balanced"])
-
     data["expected_job_title"] = title
-    summary = (data.get("summary") or "").strip()
-    if summary:
-        data["summary"] = f"专注{title}方向。{summary}"
-    else:
-        data["summary"] = f"具备{title}相关经验，擅长核心业务开发与交付。"
-
-    job_skills = []
-    if job_json:
-        for s in job_json.get("required_skills") or []:
-            name = s.get("name") if isinstance(s, dict) else str(s)
-            if name:
-                job_skills.append(name)
-
-    existing = {
-        (s.get("name") if isinstance(s, dict) else str(s)).lower()
-        for s in (data.get("skills") or [])
-    }
-    for skill in job_skills[:5]:
-        if skill.lower() not in existing:
-            data.setdefault("skills", []).append({"name": skill, "level": "intermediate"})
-            existing.add(skill.lower())
-
-    if style_id == "project_focus":
-        projects = data.get("projects") or []
-        if projects and not any(
-            (p.get("description") or "").strip() for p in projects if isinstance(p, dict)
-        ):
-            for p in projects:
-                if isinstance(p, dict) and not (p.get("description") or "").strip():
-                    p["description"] = (
-                        f"负责{p.get('name', '核心模块')}开发与优化，交付关键功能并达成可量化成果"
-                    )
 
     if style_id == "concise":
         for exp in data.get("work_experience") or []:
             if isinstance(exp, dict) and exp.get("description"):
                 desc = exp["description"]
                 exp["description"] = desc[:80] + ("…" if len(desc) > 80 else "")
-
     return data
+
+
+def _unavailable_result(
+    *,
+    variant_key: str,
+    label: str,
+    title: str,
+    style_id: str,
+    style: dict,
+    resume_json: dict,
+) -> dict:
+    return {
+        "variant_key": variant_key,
+        "label": label,
+        "target_job_title": title,
+        "style_template": style_id,
+        "style_label": style["label"],
+        "parsed_json": _safe_reorder_only(resume_json, title, style_id),
+        "source": "ai_unavailable",
+        "error_code": "ai_unavailable",
+        "message": "AI 暂不可用。未新增任何经历、技能或成果；规则重排仍可用。",
+    }
 
 
 async def generate_resume_variant(
@@ -135,6 +113,7 @@ async def generate_resume_variant(
     style_template: str = "balanced",
     job_json: Optional[dict] = None,
     job_title: str = "",
+    user_id: str | None = None,
 ) -> dict:
     """
     生成岗位定制版 parsed_json。
@@ -142,23 +121,21 @@ async def generate_resume_variant(
     """
     style_id = style_template if style_template in STYLE_TEMPLATES else "balanced"
     style = STYLE_TEMPLATES[style_id]
-    title = (
+    title = html.unescape(
         target_job_title or job_title or resume_json.get("expected_job_title") or "通用岗位"
     ).strip()
     label = _variant_label(title, style_id)
     variant_key = _slugify(f"{title}_{style_id}")
 
-    if not os.getenv("DEEPSEEK_API_KEY"):
-        parsed = _fallback_variant(resume_json, title, style_id, job_json)
-        return {
-            "variant_key": variant_key,
-            "label": label,
-            "target_job_title": title,
-            "style_template": style_id,
-            "style_label": style["label"],
-            "parsed_json": parsed,
-            "source": "rule_fallback",
-        }
+    if not provider_configured():
+        return _unavailable_result(
+            variant_key=variant_key,
+            label=label,
+            title=title,
+            style_id=style_id,
+            style=style,
+            resume_json=resume_json,
+        )
 
     job_context = ""
     if job_json:
@@ -175,10 +152,11 @@ async def generate_resume_variant(
 {style["prompt_hint"]}
 
 【原则】
-1. 不编造用户没有的经历或公司
-2. 可调整 summary、技能排序、经历描述侧重点以匹配目标岗位
-3. 描述尽量含量化指标；若原文无数字，保留原文表述
-4. 输出与输入相同的 JSON Schema（name, email, phone, expected_job_title, summary, skills, work_experience, projects, education, school, degree, soft_skills 等）
+1. 不编造用户没有的经历、公司、技能、数字或成果
+2. 可调整 summary 措辞侧重、技能排序、经历描述侧重点以匹配目标岗位
+3. 若原文无数字，保留原文表述，不得新增量化指标
+4. 不得从 JD 复制技能到候选人 skills，除非原文已有
+5. 输出与输入相同的 JSON Schema（name, email, phone, expected_job_title, summary, skills, work_experience, projects, education, school, degree, soft_skills 等）
 
 {job_context}
 
@@ -189,23 +167,24 @@ async def generate_resume_variant(
 """
 
     try:
-        from .llm_client import async_chat_completion, model_api_key
-
-        if not model_api_key():
-            raise RuntimeError("no_api_key")
-        response = await async_chat_completion(
-            messages=[
-                {"role": "system", "content": "你只输出合法 JSON 对象，字段名英文。"},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.35,
+        result = await gateway_run(
+            task="faithful_rewrite",
+            payload={
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "你只输出合法 JSON 对象，字段名英文。禁止虚构经历与技能。",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                "temperature": 0.35,
+                "max_tokens": 4000,
+            },
+            schema=None,
+            context=InvocationContext(user_id=user_id),
+            require_json=True,
         )
-        content = (response.choices[0].message.content or "{}").strip()
-        if content.startswith("```"):
-            content = content.split("```")[1]
-            if content.startswith("json"):
-                content = content[4:]
-        parsed = json.loads(content)
+        parsed = result.parsed if isinstance(result.parsed, dict) else json.loads(result.raw_text)
         parsed["expected_job_title"] = title
         return {
             "variant_key": variant_key,
@@ -216,15 +195,23 @@ async def generate_resume_variant(
             "parsed_json": parsed,
             "source": "llm",
         }
-    except Exception as e:
-        logger.warning("LLM resume variant failed: %s", e)
-        parsed = _fallback_variant(resume_json, title, style_id, job_json)
-        return {
-            "variant_key": variant_key,
-            "label": label,
-            "target_job_title": title,
-            "style_template": style_id,
-            "style_label": style["label"],
-            "parsed_json": parsed,
-            "source": "rule_fallback",
-        }
+    except (AIUnavailableError, SchemaValidationError) as exc:
+        logger.warning("resume variant AI unavailable/invalid: %s", type(exc).__name__)
+        return _unavailable_result(
+            variant_key=variant_key,
+            label=label,
+            title=title,
+            style_id=style_id,
+            style=style,
+            resume_json=resume_json,
+        )
+    except Exception as exc:
+        logger.warning("LLM resume variant failed: %s", type(exc).__name__)
+        return _unavailable_result(
+            variant_key=variant_key,
+            label=label,
+            title=title,
+            style_id=style_id,
+            style=style,
+            resume_json=resume_json,
+        )

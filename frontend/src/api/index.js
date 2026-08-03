@@ -7,6 +7,33 @@ const api = axios.create({
   baseURL: httpBase,
 });
 
+const AUTH_STORAGE_KEYS = ['token', 'role', 'user_id'];
+
+export function handleUnauthorizedSession(
+  error,
+  storage = window.localStorage,
+  location = window.location,
+) {
+  const status = error?.response?.status;
+  const requestUrl = error?.config?.url || '';
+  if (
+    status !== 401
+    || requestUrl.includes('/auth/login')
+    || !storage.getItem('token')
+  ) {
+    return false;
+  }
+
+  AUTH_STORAGE_KEYS.forEach((key) => storage.removeItem(key));
+  const returnTo = `${location.pathname || '/'}${location.search || ''}`;
+  const params = new URLSearchParams({
+    reason: 'session_expired',
+    returnTo,
+  });
+  location.assign(`/login?${params.toString()}`);
+  return true;
+}
+
 /** 从 HTTP API 地址推导 WebSocket 根地址 */
 export function getWsBaseUrl() {
   if (httpBase.startsWith('/')) {
@@ -36,6 +63,7 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     error.apiError = normalizeApiError(error);
+    handleUnauthorizedSession(error);
     return Promise.reject(error);
   },
 );

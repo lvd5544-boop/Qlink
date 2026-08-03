@@ -3,14 +3,17 @@ import {
 } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
 import {
-  Button, Card, Col, Input, List, message, Modal, Row, Select, Space, Spin, Tag, Typography, Segmented, Alert,
+  Alert, Button, Card, Col, Divider, Input, List, message, Modal, Row, Select, Space, Spin, Tag, Typography, Segmented,
 } from 'antd';
-import { MessageOutlined, BellOutlined, CheckOutlined, SendOutlined, CloseOutlined } from '@ant-design/icons';
+import {
+  AuditOutlined, BellOutlined, CheckOutlined, CloseOutlined, FileTextOutlined, MessageOutlined, SendOutlined,
+} from '@ant-design/icons';
 import api from '../../api';
 import { getApiErrorMessage } from '../../utils/apiError';
 import ResumeCredibilityPanel from '../../components/ResumeCredibilityPanel';
 import ApplicationMessageBubble from '../../components/ApplicationMessageBubble';
 import ApplicationClaimPassportPanel from '../../components/ApplicationClaimPassportPanel';
+import ApplicationResumeMaterials from '../../components/ApplicationResumeMaterials';
 import {
   CLARIFICATION_QUICK_FILTERS,
   EMPLOYER_STATUS_OPTIONS,
@@ -53,6 +56,10 @@ export default function Applications() {
   const [closeReason, setCloseReason] = useState('');
   const [highlightMessageId, setHighlightMessageId] = useState(null);
   const [reviewedIds, setReviewedIds] = useState(new Set());
+  const [clarificationOpen, setClarificationOpen] = useState(false);
+  const [clarificationClaim, setClarificationClaim] = useState('');
+  const [clarificationQuestion, setClarificationQuestion] = useState('');
+  const [submittingClarification, setSubmittingClarification] = useState(false);
   const messagesEndRef = useRef(null);
   const deepLinkHandled = useRef(false);
 
@@ -66,14 +73,30 @@ export default function Applications() {
     [allApplications, quickFilter],
   );
   const allowedStatusOptions = useMemo(
-    () => EMPLOYER_STATUS_OPTIONS.filter((option) => (
-      option.value === currentApplication?.status
-      || allowedFor(
-        currentApplication,
-        'employer',
-        STATUS_ACTION[option.value],
-      )
-    )),
+    () => {
+      const options = EMPLOYER_STATUS_OPTIONS.filter((option) => (
+        option.value === currentApplication?.status
+        || allowedFor(
+          currentApplication,
+          'employer',
+          STATUS_ACTION[option.value],
+        )
+      ));
+      if (
+        currentApplication?.status
+        && !options.some((option) => option.value === currentApplication.status)
+      ) {
+        return [
+          {
+            value: currentApplication.status,
+            label: getStatusConfig(currentApplication.status, 'employer').text,
+            disabled: true,
+          },
+          ...options,
+        ];
+      }
+      return options;
+    },
     [currentApplication],
   );
 
@@ -191,6 +214,35 @@ export default function Applications() {
     }
   };
 
+  const quickDecision = (application, newStatus) => {
+    const label = newStatus === 'accepted' ? '录用' : '拒绝';
+    Modal.confirm({
+      title: `确认${label}该申请？`,
+      content: newStatus === 'accepted'
+        ? '确认后申请将进入“已录用”终态。'
+        : '确认后申请将进入“已拒绝”终态。',
+      okText: `确认${label}`,
+      okButtonProps: newStatus === 'rejected' ? { danger: true } : {},
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          const res = await api.patch(`/applications/${application.id}/status`, { status: newStatus });
+          const updated = res.data.application;
+          setAllApplications((prev) => prev.map((item) => (
+            item.id === updated.id ? { ...item, ...updated } : item
+          )));
+          setCurrentApplication((prev) => (
+            prev?.id === updated.id ? { ...prev, ...updated } : prev
+          ));
+          message.success(`已${label}`);
+        } catch (err) {
+          message.error(getApiErrorMessage(err, `${label}失败，请重试`));
+          throw err;
+        }
+      },
+    });
+  };
+
   const closeClarification = async () => {
     const appId = closeTargetId;
     const reason = closeReason.trim();
@@ -237,6 +289,35 @@ export default function Applications() {
   const scrollToAuditPanel = () => {
     document.getElementById('employer-credibility-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     message.info('可在右侧审计面板再次发起澄清');
+  };
+
+  const submitClarification = async () => {
+    const claimText = clarificationClaim.trim();
+    const question = clarificationQuestion.trim();
+    if (!currentApplication?.id || !claimText || !question) {
+      message.warning('请填写需要澄清的内容和问题');
+      return;
+    }
+    setSubmittingClarification(true);
+    try {
+      const res = await api.post(
+        `/applications/${currentApplication.id}/clarification-requests`,
+        {
+          claim_text: claimText,
+          questions: [question],
+          evidence_suggestions: [],
+        },
+      );
+      setClarificationOpen(false);
+      setClarificationClaim('');
+      setClarificationQuestion('');
+      await handleClarificationSent(res.data);
+      message.success('澄清问题已发送给候选人');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, '发起澄清失败'));
+    } finally {
+      setSubmittingClarification(false);
+    }
   };
 
   const handleClarificationSent = async (result) => {
@@ -368,15 +449,31 @@ export default function Applications() {
               return (
                 <List.Item
                   extra={(
-                    <Button
-                      type={item.status === 'clarified' ? 'primary' : 'default'}
-                      icon={<MessageOutlined />}
-                      onClick={() => loadMessages(item, {
-                        scrollToLatestResponse: item.status === 'clarified',
-                      })}
-                    >
-                      {item.status === 'clarified' ? '查看回复' : '对话'}
-                    </Button>
+                    <Space wrap>
+                      <Button
+                        type={item.status === 'clarified' ? 'primary' : 'default'}
+                        icon={<FileTextOutlined />}
+                        onClick={() => loadMessages(item, {
+                          scrollToLatestResponse: item.status === 'clarified',
+                        })}
+                      >
+                        {item.status === 'clarified' ? '审阅回复' : '审阅申请'}
+                      </Button>
+                      <Button
+                        danger
+                        disabled={!allowedFor(item, 'employer', 'reject')}
+                        onClick={() => quickDecision(item, 'rejected')}
+                      >
+                        拒绝
+                      </Button>
+                      <Button
+                        type="primary"
+                        disabled={!allowedFor(item, 'employer', 'accept')}
+                        onClick={() => quickDecision(item, 'accepted')}
+                      >
+                        录用
+                      </Button>
+                    </Space>
                   )}
                 >
                   <List.Item.Meta
@@ -420,7 +517,7 @@ export default function Applications() {
           <Col xs={24} lg={14}>
             <Card
               className="content-card"
-              title={`和 ${currentApplication.candidate_name} 对话`}
+              title={`审阅 ${currentApplication.candidate_name} 的申请`}
               extra={(
                 <Space>
                   <Tag color={getStatusConfig(currentApplication.status, 'employer').color}>
@@ -438,6 +535,37 @@ export default function Applications() {
                 </Space>
               )}
             >
+              <Space wrap style={{ marginBottom: 12 }}>
+                <Button
+                  icon={<AuditOutlined />}
+                  onClick={scrollToAuditPanel}
+                >
+                  运行履历审计
+                </Button>
+                <Button
+                  icon={<MessageOutlined />}
+                  disabled={!allowedFor(currentApplication, 'employer', 'request_clarification')}
+                  onClick={() => setClarificationOpen(true)}
+                >
+                  发起澄清
+                </Button>
+                <Button
+                  danger
+                  disabled={!allowedFor(currentApplication, 'employer', 'reject')}
+                  onClick={() => quickDecision(currentApplication, 'rejected')}
+                >
+                  拒绝
+                </Button>
+                <Button
+                  type="primary"
+                  disabled={!allowedFor(currentApplication, 'employer', 'accept')}
+                  onClick={() => quickDecision(currentApplication, 'accepted')}
+                >
+                  录用
+                </Button>
+              </Space>
+              <ApplicationResumeMaterials applicationId={currentApplication.id} />
+              <Divider orientation="left">澄清与消息</Divider>
               {currentApplication.status === 'clarified' && (
                 <Alert
                   type="info"
@@ -589,6 +717,39 @@ export default function Applications() {
           value={closeReason}
           onChange={(event) => setCloseReason(event.target.value)}
           placeholder="请填写关闭原因"
+        />
+      </Modal>
+      <Modal
+        title="向候选人发起澄清"
+        open={clarificationOpen}
+        okText="发送问题"
+        cancelText="取消"
+        confirmLoading={submittingClarification}
+        okButtonProps={{ disabled: !clarificationClaim.trim() || !clarificationQuestion.trim() }}
+        onOk={submitClarification}
+        onCancel={() => setClarificationOpen(false)}
+      >
+        <Alert
+          type="info"
+          showIcon
+          message="候选人的说明不等于事实认证；问题与回复会保留在该申请的审计记录中。"
+          style={{ marginBottom: 12 }}
+        />
+        <Text strong>需要澄清的履历内容</Text>
+        <Input.TextArea
+          rows={3}
+          value={clarificationClaim}
+          onChange={(event) => setClarificationClaim(event.target.value)}
+          placeholder="例如：负责将接口延迟降低 40%"
+          style={{ margin: '8px 0 12px' }}
+        />
+        <Text strong>希望候选人回答的问题</Text>
+        <Input.TextArea
+          rows={3}
+          value={clarificationQuestion}
+          onChange={(event) => setClarificationQuestion(event.target.value)}
+          placeholder="例如：请说明统计口径、本人职责和可提供的佐证。"
+          style={{ marginTop: 8 }}
         />
       </Modal>
     </Space>

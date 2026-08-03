@@ -209,13 +209,16 @@ async def _run_match_generate(payload: dict) -> dict:
 async def _run_job_sources_sync(_payload: dict) -> dict:
     from .foreign_job_fetcher import fetch_foreign_jobs
     from .guoqi_job_fetcher import fetch_guoqi_jobs
-    from .market_analytics import run_full_analytics_rebuild
 
     await fetch_foreign_jobs()
     await fetch_guoqi_jobs()
-    await run_full_analytics_rebuild()
     return {
-        "sources": ["国企-国资央企", "外企-Remotive/Arbeitnow", "录用画像-网络论坛统计"],
+        "sources": [
+            "国企-国资央企",
+            "国际岗位-Remotive/Arbeitnow/Remote OK",
+            "企业公开招聘板-Greenhouse",
+            "USAJOBS（配置密钥后启用）",
+        ],
     }
 
 
@@ -223,7 +226,6 @@ async def _run_analytics_rebuild(payload: dict) -> dict:
     from .company_registry import seed_companies
     from .forum_insight_pipeline import sync_forum_insights_to_db
     from .market_analytics import (
-        rebuild_hired_benchmarks_statistical,
         rebuild_market_insights,
         run_full_analytics_rebuild,
     )
@@ -235,9 +237,13 @@ async def _run_analytics_rebuild(payload: dict) -> dict:
     async with AsyncSessionLocal() as db:
         if payload.get("seed_companies"):
             await seed_companies(db)
-        forum_stats = await sync_forum_insights_to_db(db)
-        jd_count = await rebuild_market_insights(db)
-        hb_count = await rebuild_hired_benchmarks_statistical(db)
+    forum_stats = (
+        await sync_forum_insights_to_db(db)
+        if payload.get("forum_qualitative")
+        else {"skipped": "E-layer forum data requires an explicit qualitative-only run"}
+    )
+    jd_count = await rebuild_market_insights(db)
+    hb_count = 0
     return {
         "rebuilt": True,
         "forum": forum_stats,
@@ -248,25 +254,28 @@ async def _run_analytics_rebuild(payload: dict) -> dict:
 
 async def _run_forum_sync(_payload: dict) -> dict:
     from .forum_insight_pipeline import sync_forum_insights_to_db
-    from .market_analytics import rebuild_hired_benchmarks_statistical
 
     async with AsyncSessionLocal() as db:
         synced = await sync_forum_insights_to_db(db)
-        written = await rebuild_hired_benchmarks_statistical(db)
-    return {"synced": synced, "benchmarks_written": written}
+    return {
+        "synced": synced,
+        "layer": "E",
+        "formal_profile_eligible": False,
+        "benchmarks_written": 0,
+    }
 
 
 async def _run_llm_parse(payload: dict) -> dict:
     """Parse resume or job text via LLM off the web process."""
     from .job_parser import parse_job_with_llm
-    from .llm_client import run_in_thread
     from .resume_parser import parse_with_llm
 
     kind = str(payload.get("kind") or "resume")
     text = str(payload.get("text") or "")
     if kind == "job":
-        parsed = await run_in_thread(parse_job_with_llm, text)
+        parsed = await parse_job_with_llm(text)
     else:
+        from .llm_client import run_in_thread
         parsed = await run_in_thread(parse_with_llm, text)
     return {"kind": kind, "parsed": parsed}
 

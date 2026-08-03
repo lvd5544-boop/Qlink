@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from .models_db import Resume, JobDescription, MatchResult
 from .matching_hybrid import hybrid_score_v2, build_match_reason_v2
+from .matching_preference import apply_preference_policy
 from .matching_rerank import llm_rerank_match
 
 logger = logging.getLogger(__name__)
@@ -18,7 +19,12 @@ async def fetch_all_resumes(db: AsyncSession) -> List[Resume]:
 
 async def fetch_all_jobs(db: AsyncSession) -> List[JobDescription]:
     result = await db.execute(select(JobDescription))
-    return result.scalars().all()
+    return [
+        job
+        for job in result.scalars().all()
+        if (job.parsed_json or {}).get("_publication_status") != "draft"
+        and not (job.parsed_json or {}).get("advisor_private")
+    ]
 
 
 def rule_based_filter(resume_json: dict, job_json: dict) -> bool:
@@ -34,12 +40,32 @@ def rule_based_filter(resume_json: dict, job_json: dict) -> bool:
 
 
 def _evaluate_hybrid(resume_json: dict, job_json: dict, job_title: str) -> tuple[float, dict, str]:
-    """hybrid v2 评分，返回 (score, breakdown, reason)。"""
+    """Human-first v3: selection policy first, statistical dimensions second."""
     score, breakdown, potential, tier = hybrid_score_v2(resume_json, job_json, job_title)
+    base_score = score
     breakdown["potential_score"] = potential
     breakdown["match_tier"] = tier
     breakdown["improvement_delta"] = round(potential - score, 1)
-    reason = build_match_reason_v2(breakdown, score)
+    base_reason = build_match_reason_v2(breakdown, score)
+    score, breakdown, policy_reason = apply_preference_policy(
+        resume_json, job_json, job_title, score, breakdown
+    )
+    if (breakdown.get("preference_policy") or {}).get("eligible"):
+        reason = f"{policy_reason}。{base_reason}"
+    else:
+        reason = policy_reason
+    breakdown["match_tier"] = (
+        "high" if score >= 8 else ("medium" if score >= 5 else "low")
+    )
+    eligible = (breakdown.get("preference_policy") or {}).get("eligible", True)
+    breakdown["potential_score"] = (
+        min(10.0, round(score + max(float(potential) - float(base_score), 0), 1))
+        if eligible
+        else score
+    )
+    breakdown["improvement_delta"] = round(
+        breakdown["potential_score"] - score, 1
+    )
     return score, breakdown, reason
 
 
@@ -107,7 +133,7 @@ async def generate_matches(
             existing_match = existing.scalars().first()
 
             if existing_match and not force_refresh:
-                if (existing_match.score_breakdown or {}).get("source") == "hybrid_v2":
+                if (existing_match.score_breakdown or {}).get("source") == "human_preference_v3":
                     matches_by_resume[rid].append(existing_match)
                     continue
 
@@ -136,7 +162,12 @@ async def generate_matches(
         for resume in resumes:
             rid = str(resume.id)
             profile = resume.parsed_json or {}
-            ranked = sorted(matches_by_resume.get(rid, []), key=lambda m: m.score, reverse=True)
+            eligible_matches = [
+                value
+                for value in matches_by_resume.get(rid, [])
+                if (value.score_breakdown or {}).get("preference_policy", {}).get("eligible", True)
+            ]
+            ranked = sorted(eligible_matches, key=lambda m: m.score, reverse=True)
             for match in ranked[:llm_rerank_top]:
                 job = job_map.get(str(match.job_id))
                 if not job:

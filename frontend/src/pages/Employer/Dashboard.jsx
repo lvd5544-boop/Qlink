@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Card, Statistic, Row, Col, Typography } from 'antd';
-import { FileTextOutlined, TeamOutlined, FileAddOutlined, FolderOpenOutlined } from '@ant-design/icons';
+import {
+  Button, Card, Statistic, Row, Col, Typography,
+} from 'antd';
+import {
+  FileTextOutlined, TeamOutlined, FolderOpenOutlined, SolutionOutlined,
+} from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/PageHeader';
 import BillingSummaryCard from '../../components/BillingSummaryCard';
@@ -10,20 +14,20 @@ const { Text } = Typography;
 
 const QUICK_ACTIONS = [
   {
-    title: '发布岗位',
-    desc: '上传 JD 或粘贴描述',
-    icon: <FileAddOutlined />,
-    color: '#eef2ff',
-    iconColor: '#4f46e5',
-    path: '/employer/post-job',
-  },
-  {
     title: '我的岗位',
     desc: '管理已发布的职位',
     icon: <FolderOpenOutlined />,
+    color: '#eef2ff',
+    iconColor: '#4f46e5',
+    path: '/employer/my-jobs',
+  },
+  {
+    title: '申请与审阅',
+    desc: '查看申请、简历与澄清',
+    icon: <SolutionOutlined />,
     color: '#ecfdf5',
     iconColor: '#10b981',
-    path: '/employer/my-jobs',
+    path: '/employer/applications',
   },
 ];
 
@@ -54,11 +58,26 @@ export default function Dashboard() {
         <Col xs={24} sm={12}>
           <Card className="stat-card stat-card-accent">
             <Statistic title="发布岗位" value={stats.jobs} prefix={<FileTextOutlined />} />
+            <Button
+              type="primary"
+              block
+              style={{ marginTop: 16 }}
+              onClick={() => navigate('/employer/post-job')}
+            >
+              发布新岗位
+            </Button>
           </Card>
         </Col>
         <Col xs={24} sm={12}>
           <Card className="stat-card stat-card-success">
             <Statistic title="匹配候选人" value={stats.candidates} prefix={<TeamOutlined />} />
+            <Button
+              block
+              style={{ marginTop: 16 }}
+              onClick={() => navigate('/employer/candidates')}
+            >
+              进入匹配候选人
+            </Button>
           </Card>
         </Col>
       </Row>

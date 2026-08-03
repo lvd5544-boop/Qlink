@@ -126,7 +126,13 @@ def _append_claim_text(hypothetical: dict, claims: list[dict], *, numeric_only: 
 
 
 def _rescore(resume: dict, job: dict, job_title: str) -> float:
-    score, _, _, _ = hybrid_score_v2(resume, job, job_title)
+    has_planned = any(
+        isinstance(item, dict) and str(item.get("level") or "").lower() == "planned"
+        for item in (resume.get("skills") or [])
+    )
+    score, _, _, _ = hybrid_score_v2(
+        resume, job, job_title, include_planned=has_planned
+    )
     return score
 
 
@@ -615,6 +621,38 @@ def build_simulation(
     evidence_score = _rescore(evidence_input, job, job_title)
     potential = _rescore(hypothetical, job, job_title)
     selected_options = [allowed[sid] for sid in sorted(selected)]
+    evidence_strategies = {
+        "evidence_strengthening",
+        "method_and_tradeoff",
+        "outcome_expression",
+        "quantification",
+        "scope_and_complexity",
+        "portfolio_or_work_sample",
+    }
+    has_supported_evidence = any(
+        claim.get("evidence_state") == "supported_by_user_evidence" for claim in claims
+    )
+    selection_effects = []
+    for strategy_id in sorted(selected):
+        reduced = selected - {strategy_id}
+        _, _, reduced_hypothetical = _apply_selected_counterfactual(
+            resume, job, job_title, claims, reduced, allowed
+        )
+        marginal_delta = round(potential - _rescore(reduced_hypothetical, job, job_title), 2)
+        option = allowed[strategy_id]
+        if abs(marginal_delta) >= 0.005:
+            effect_status = "changes_score_if_removed"
+        elif option["strategy"] in evidence_strategies and not has_supported_evidence:
+            effect_status = "needs_supported_evidence"
+        else:
+            effect_status = "overlaps_or_no_scoring_effect"
+        selection_effects.append(
+            {
+                "strategy_id": strategy_id,
+                "marginal_delta": marginal_delta,
+                "status": effect_status,
+            }
+        )
     # A total counterfactual is intentionally *not* apportioned across options:
     # dimensions overlap, so addition would invent precision and double-count.
     # The only authoritative delta is the one re-scored full counterfactual below.
@@ -642,6 +680,7 @@ def build_simulation(
         "issues": issues,
         "selected_strategy_ids": sorted(selected),
         "selected_actions": selected_options,
+        "selection_effects": selection_effects,
         "rule_version": RULE_VERSION,
         "taxonomy_version": TAXONOMY_VERSION,
         "target_role_profile": profile,

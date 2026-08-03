@@ -27,7 +27,7 @@ from .models_db import (
     HiredProfileBenchmark,
     HiredProfileSubmission,
 )
-from .forum_insight_pipeline import sync_forum_insights_to_db, load_extractions_grouped
+from .forum_insight_pipeline import load_extractions_grouped
 from .statistical_benchmark import (
     aggregate_extractions_to_bucket,
     build_statistical_benchmark_payload,
@@ -277,12 +277,10 @@ async def rebuild_hired_benchmarks_statistical(db: AsyncSession) -> int:
 async def run_full_analytics_rebuild():
     async with AsyncSessionLocal() as db:
         await seed_companies(db)
-        try:
-            await sync_forum_insights_to_db(db)
-        except Exception as e:
-            logger.warning("论坛数据同步失败: %s", e)
         await rebuild_market_insights(db)
-        await rebuild_hired_benchmarks_statistical(db)
+        logger.info(
+            "正式市场分析仅从岗位数据重建；E 层论坛内容不进入岗位画像或录用判断"
+        )
 
 
 def insight_to_dict(insight: MarketInsight) -> dict:
@@ -320,6 +318,63 @@ def benchmark_to_dict(b: HiredProfileBenchmark) -> dict:
     }
 
 
+async def build_role_market_fallback(
+    db: AsyncSession,
+    role_family: str | None,
+) -> dict[str, Any] | None:
+    """Aggregate open JDs across companies when one company has too few samples."""
+
+    if not role_family:
+        return None
+    jobs = (await db.execute(select(JobDescription))).scalars().all()
+    bucket = {
+        "jd_sample_size": 0,
+        "skill_freq": {},
+        "education_freq": {},
+        "school_tier_freq": {},
+        "soft_skill_freq": {},
+        "leadership_freq": {},
+        "communication_freq": {},
+    }
+    companies: set[str] = set()
+    for job in jobs:
+        parsed = job.parsed_json or {}
+        collected = _collect_from_job(parsed, job.title)
+        if collected["role_family"] != role_family:
+            continue
+        bucket["jd_sample_size"] += 1
+        company_name = str(parsed.get("company_name") or "").strip()
+        if company_name:
+            companies.add(company_name)
+        for skill in collected["skills"]:
+            increment_freq(bucket["skill_freq"], normalize_skill_name(skill))
+        increment_freq(bucket["education_freq"], collected["education"][:80])
+        for key, values in (
+            ("school_tier_freq", collected["school_tiers"]),
+            ("soft_skill_freq", collected["soft_skills"]),
+            ("leadership_freq", collected["leadership"]),
+            ("communication_freq", collected["communication"]),
+        ):
+            for value in values:
+                increment_freq(bucket[key], value)
+    if not bucket["jd_sample_size"]:
+        return None
+    return {
+        "role_family": role_family,
+        "jd_sample_size": bucket["jd_sample_size"],
+        "company_count": len(companies),
+        "skill_freq": top_n_freq(bucket["skill_freq"]),
+        "education_freq": top_n_freq(bucket["education_freq"], 8),
+        "school_tier_freq": top_n_freq(bucket["school_tier_freq"]),
+        "soft_skill_freq": top_n_freq(bucket["soft_skill_freq"]),
+        "leadership_freq": top_n_freq(bucket["leadership_freq"]),
+        "communication_freq": top_n_freq(bucket["communication_freq"]),
+        "scope": "role_market_open_jd",
+        "scope_label": "同岗位方向的跨公司公开 JD",
+        "caveat": "这是岗位市场共性，不代表所选公司的招聘偏好。",
+    }
+
+
 async def get_company_profile(
     db: AsyncSession, company_id: str, role_family: Optional[str] = None
 ) -> Dict[str, Any]:
@@ -345,4 +400,5 @@ async def get_company_profile(
         },
         "jd_insights": [insight_to_dict(i) for i in insights],
         "hired_benchmarks": [benchmark_to_dict(b) for b in benchmarks],
+        "role_market_fallback": await build_role_market_fallback(db, role_family),
     }

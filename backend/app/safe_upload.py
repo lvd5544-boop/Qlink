@@ -22,7 +22,18 @@ ALLOWED_MIME = {
         "application/octet-stream",
     },
     ".txt": {"text/plain", "application/octet-stream"},
+    ".md": {"text/markdown", "text/plain", "application/octet-stream"},
+    ".py": {"text/x-python", "text/plain", "application/octet-stream"},
+    ".ipynb": {"application/json", "text/plain", "application/octet-stream"},
+    ".js": {"text/javascript", "application/javascript", "text/plain", "application/octet-stream"},
+    ".ts": {"text/typescript", "text/plain", "application/octet-stream"},
+    ".java": {"text/x-java-source", "text/plain", "application/octet-stream"},
+    ".go": {"text/x-go", "text/plain", "application/octet-stream"},
+    ".rs": {"text/plain", "application/octet-stream"},
+    ".sql": {"application/sql", "text/plain", "application/octet-stream"},
+    ".csv": {"text/csv", "text/plain", "application/octet-stream"},
 }
+RESUME_ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
 
 
 def _limit(name: str, default: int) -> int:
@@ -38,14 +49,14 @@ def _validate_magic(path: Path, extension: str) -> None:
         raise HTTPException(status_code=415, detail="文件内容与 PDF 格式不匹配")
     if extension == ".docx" and not header.startswith(b"PK\x03\x04"):
         raise HTTPException(status_code=415, detail="文件内容与 DOCX 格式不匹配")
-    if extension == ".txt":
+    if extension not in {".pdf", ".docx"}:
         sample = path.read_bytes()[:8192]
         if b"\x00" in sample:
-            raise HTTPException(status_code=415, detail="TXT 文件包含无效二进制内容")
+            raise HTTPException(status_code=415, detail="文本或代码文件包含无效二进制内容")
         try:
             sample.decode("utf-8")
         except UnicodeDecodeError as exc:
-            raise HTTPException(status_code=415, detail="TXT 文件必须使用 UTF-8 编码") from exc
+            raise HTTPException(status_code=415, detail="文本或代码文件必须使用 UTF-8 编码") from exc
 
 
 def _validate_container_limits_sync(path: Path, extension: str) -> None:
@@ -145,11 +156,18 @@ async def _run_file_worker(
     return message[1]
 
 
-async def save_upload_safely(upload: UploadFile, directory: str) -> tuple[Path, str]:
+async def save_upload_safely(
+    upload: UploadFile,
+    directory: str,
+    *,
+    allowed_extensions: set[str] | None = None,
+) -> tuple[Path, str]:
     original_name = Path(upload.filename or "").name
     extension = Path(original_name).suffix.lower()
-    if extension not in ALLOWED_MIME:
-        raise HTTPException(status_code=415, detail="仅支持 PDF、DOCX、TXT 格式")
+    allowed = allowed_extensions or RESUME_ALLOWED_EXTENSIONS
+    if extension not in allowed or extension not in ALLOWED_MIME:
+        supported = "、".join(sorted(item.lstrip(".").upper() for item in allowed))
+        raise HTTPException(status_code=415, detail=f"仅支持 {supported} 格式")
     content_type = (upload.content_type or "application/octet-stream").lower()
     if content_type not in ALLOWED_MIME[extension]:
         raise HTTPException(status_code=415, detail="文件 MIME 类型与扩展名不匹配")

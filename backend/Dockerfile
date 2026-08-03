@@ -7,8 +7,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 RUN groupadd --gid 10001 app \
     && useradd --uid 10001 --gid app --create-home app \
-    && mkdir -p /data/uploads \
-    && chown -R app:app /data/uploads
+    && mkdir -p /data/uploads /data/evidence-vault \
+    && chown -R app:app /data/uploads /data/evidence-vault
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

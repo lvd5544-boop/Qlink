@@ -102,7 +102,7 @@ export default function ResumeCoachPanel({
         type="info"
         showIcon
         style={{ marginBottom: 12, fontSize: 13 }}
-        message="对照目标公司 JD 与录用画像，生成可采纳的改写对照（含 field_path 精确定位）"
+        message="选择目标公司和岗位后，系统会指出具体问题，并给出可以逐条确认的改写前后对照。"
       />
       <Row gutter={8}>
         <Col span={24}>
@@ -192,9 +192,9 @@ export default function ResumeCoachPanel({
             {coachSuggestions.length > 0 && (
               <>
                 <Divider style={{ margin: '12px 0' }} />
-                <Text strong style={{ fontSize: 14 }}>诊断建议 · 对照采纳</Text>
+                <Text strong style={{ fontSize: 14 }}>逐条查看修改建议</Text>
                 <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
-                  每条建议含 field_path，采纳后精确写回对应字段
+                  每条建议都会说明修改原因，并只更新对应的简历内容。
                 </Text>
                 {coachSuggestions.map((item) => (
                   <SuggestionDiffCard
@@ -214,8 +214,8 @@ export default function ResumeCoachPanel({
                 style={{ marginTop: 12 }}
                 type="warning"
                 showIcon
-                message="暂无带改写示例的建议"
-                description="AI 未返回 example_before/after，可调整意向职位后重试"
+                message="目前无法安全生成改写稿"
+                description="系统没有从你的简历中找到足够的原文和事实。请先补充一段真实的工作或项目描述，再重新诊断；不建议只靠切换职位反复重试。"
               />
             )}
           </div>

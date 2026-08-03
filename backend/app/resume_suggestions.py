@@ -596,21 +596,40 @@ def build_actionable_suggestions(parsed_json: dict, health_check: Optional[dict]
 
     actions.extend(build_consistency_actionable_suggestions(data, health))
 
-    for label in (health.get("completeness") or {}).get("missing") or []:
+    # A resume is not improved by turning every empty field into an alarm. Show
+    # only the most consequential missing fields; the editor still exposes all
+    # remaining fields without framing them as problems.
+    missing_priority = {
+        "姓名": 0,
+        "邮箱": 0,
+        "电话": 0,
+        "期望职位": 1,
+        "个人简介": 2,
+        "项目经历": 2,
+        "学历": 3,
+        "院校": 3,
+        "学位": 4,
+        "期望地点": 5,
+    }
+    missing_fields = sorted(
+        (health.get("completeness") or {}).get("missing") or [],
+        key=lambda label: missing_priority.get(label, 99),
+    )[:3]
+    for label in missing_fields:
         field_map = {
-            "姓名": ("basic", "name", "请填写您的姓名"),
-            "邮箱": ("basic", "email", "example@email.com"),
-            "电话": ("basic", "phone", "13800000000"),
-            "期望职位": ("basic", "expected_job_title", "软件工程师"),
+            "姓名": ("basic", "name", ""),
+            "邮箱": ("basic", "email", ""),
+            "电话": ("basic", "phone", ""),
+            "期望职位": ("basic", "expected_job_title", ""),
             "个人简介": (
                 "summary",
                 None,
-                "具备相关经验，擅长核心业务开发，主导过关键项目并取得可验证成果。",
+                "",
             ),
-            "期望地点": ("basic", "location_preference", "上海"),
-            "学历": ("basic", "education", "本科"),
-            "院校": ("basic", "school", "某某大学"),
-            "学位": ("basic", "degree", "学士"),
+            "期望地点": ("basic", "location_preference", ""),
+            "学历": ("basic", "education", ""),
+            "院校": ("basic", "school", ""),
+            "学位": ("basic", "degree", ""),
             "项目经历": ("projects", None, None),
         }
         if label not in field_map:
@@ -624,17 +643,18 @@ def build_actionable_suggestions(parsed_json: dict, health_check: Optional[dict]
                         "id": "add_project_placeholder",
                         "source": "health_check",
                         "title": "补充项目经历",
-                        "description": "技术岗建议至少 1 个代表性项目",
+                        "description": "技术岗建议至少 1 个代表性项目；请填写真实项目，系统不会预填虚构内容",
                         "priority": "高",
                         "patch": {
                             "action": "add_project",
                             "section": "projects",
                             "value": {
-                                "name": "电商订单系统重构",
-                                "role": "核心开发",
-                                "duration": "2023.01-2023.06",
-                                "description": "负责订单模块重构，请补充您真实的规模与结果数据",
+                                "name": "",
+                                "role": "",
+                                "duration": "",
+                                "description": "",
                             },
+                            "needs_user_input": True,
                         },
                     },
                 )
@@ -647,13 +667,14 @@ def build_actionable_suggestions(parsed_json: dict, health_check: Optional[dict]
                     "id": f"fill_{field or 'summary'}",
                     "source": "health_check",
                     "title": f"补充{label}",
-                    "description": f"当前缺少{label}，填写后可提升完整度",
+                    "description": f"当前缺少{label}，请填写真实信息（不会预填虚构内容）",
                     "priority": "高",
                     "patch": {
                         "action": "fill_field",
                         "section": section,
                         "field": field,
                         "value": placeholder,
+                        "needs_user_input": True,
                     },
                 },
             )
@@ -661,7 +682,9 @@ def build_actionable_suggestions(parsed_json: dict, health_check: Optional[dict]
 
     quant = health.get("quantification") or {}
     quantified_ids = set()
-    for entry in quant.get("unquantified_entries") or []:
+    # Ask about at most two representative experiences at a time. Once one is
+    # handled, a later health check can surface the next useful improvement.
+    for entry in (quant.get("unquantified_entries") or [])[:2]:
         entry_id = entry.get("id") or f"{entry.get('entry_type')}_{entry.get('index')}"
         details = quant.get("details") or []
         detail = next((d for d in details if d.get("id") == entry_id), {})
@@ -791,4 +814,4 @@ def build_actionable_suggestions(parsed_json: dict, health_check: Optional[dict]
                 )
             )
 
-    return actions[:12]
+    return actions[:8]

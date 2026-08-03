@@ -19,3 +19,4 @@ tqdm
 apscheduler
 httpx
 alembic>=1.13,<2
+boto3>=1.35,<2

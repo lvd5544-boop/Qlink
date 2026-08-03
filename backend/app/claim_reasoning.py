@@ -49,6 +49,11 @@ _TECH_KEYWORDS = (
 _HIGH_PCT = re.compile(r"(提升|增长|降低|减少|优化|提高).{0,8}(\d{2,3}%|百分之[八九九十百])")
 _TEAM_SIZE = re.compile(r"(\d+)\s*人")
 _SENIOR_TITLES = ("总监", "VP", "副总裁", "负责人", "CTO", "CEO", "总经理", "架构师")
+_DATE_ONLY = re.compile(
+    r"^\s*(?:(?:19|20)\d{2}(?:[./-]\d{1,2})?"
+    r"(?:\s*(?:-|–|—|to|至)\s*(?:(?:19|20)\d{2}(?:[./-]\d{1,2})?|present|至今))?)\s*$",
+    re.I,
+)
 
 
 def _claim_id(section: str, entry_index: int, claim_type: str, seq: int) -> str:
@@ -82,31 +87,41 @@ def _append_entry_claims(
     if title:
         claims.append(
             {
-                "id": _claim_id(section, idx, title_as, 0),
+                "id": _claim_id(section, idx, "entry", 0),
                 "section": section,
                 "entry_index": idx,
-                "claim_type": title_as,
+                "claim_type": "entry",
                 "text": title,
                 "source_text": title,
                 "company_or_project": company_or_project,
                 "position_or_role": position_or_role,
+                "hierarchy_level": "entry",
+                "parent_claim_id": None,
+                "date_context": duration or None,
             }
         )
-    if duration:
-        claims.append(
-            {
-                "id": _claim_id(section, idx, "time", 0),
-                "section": section,
-                "entry_index": idx,
-                "claim_type": "time",
-                "text": duration,
-                "source_text": duration,
-                "company_or_project": company_or_project,
-                "position_or_role": position_or_role,
-            }
-        )
-    for seq, bullet in enumerate(split_bullets(description)):
+    detail_groups: list[tuple[str, list[str]]] = []
+    for bullet in split_bullets(description):
+        # Dates are entry metadata. They only become a clarification topic when
+        # timeline reasoning finds a conflict; they are never standalone Claims.
+        without_dates = _DATE_ONLY.sub("", bullet).strip(" ,.;，；")
+        if not without_dates:
+            continue
         claim_type = _classify_bullet(bullet, check_tech=check_tech)
+        existing = next(
+            (parts for kind, parts in detail_groups if kind == claim_type),
+            None,
+        )
+        if existing is None:
+            detail_groups.append((claim_type, [bullet]))
+        else:
+            existing.append(bullet)
+
+    # A project is the parent unit. Sentences with the same semantic purpose
+    # become one child Claim so PDF sentence boundaries do not create a dozen
+    # disconnected questions.
+    for seq, (claim_type, parts) in enumerate(detail_groups):
+        bullet = " ".join(parts)
         claims.append(
             {
                 "id": _claim_id(section, idx, claim_type, seq),
@@ -117,6 +132,9 @@ def _append_entry_claims(
                 "source_text": bullet,
                 "company_or_project": company_or_project,
                 "position_or_role": position_or_role,
+                "hierarchy_level": "detail",
+                "parent_claim_id": _claim_id(section, idx, "entry", 0) if title else None,
+                "date_context": duration or None,
             }
         )
 
@@ -125,6 +143,21 @@ def extract_resume_claims(resume_json: dict) -> List[dict]:
     """从简历 JSON 抽取 claim 列表。"""
     claims: List[dict] = []
     resume_json = resume_json or {}
+
+    name = str(resume_json.get("name") or "").strip()
+    if name:
+        claims.append(
+            {
+                "id": _claim_id("name", 0, "identity", 0),
+                "section": "name",
+                "entry_index": None,
+                "claim_type": "identity",
+                "text": name,
+                "source_text": name,
+                "company_or_project": "",
+                "position_or_role": "",
+            }
+        )
 
     for idx, exp in enumerate(resume_json.get("work_experience") or []):
         if not isinstance(exp, dict):
@@ -135,7 +168,7 @@ def extract_resume_claims(resume_json: dict) -> List[dict]:
             claims,
             section="work_experience",
             idx=idx,
-            title=position,
+            title=" · ".join(part for part in (company, position) if part),
             title_as="title",
             duration=(exp.get("duration") or exp.get("period") or ""),
             company_or_project=company,
@@ -181,6 +214,31 @@ def extract_resume_claims(resume_json: dict) -> List[dict]:
                         "position_or_role": degree,
                     }
                 )
+    else:
+        school = str(resume_json.get("school") or "").strip()
+        degree = str(resume_json.get("degree") or "").strip()
+        education = str(edu or "").strip()
+        parts = list(dict.fromkeys(part for part in (school, degree) if part))
+        if education:
+            education_lower = education.lower()
+            if parts and all(part.lower() in education_lower for part in parts):
+                parts = [education]
+            elif education_lower not in " · ".join(parts).lower():
+                parts.append(education)
+        if parts:
+            text = " · ".join(parts)
+            claims.append(
+                {
+                    "id": _claim_id("education", 0, "title", 0),
+                    "section": "education",
+                    "entry_index": None,
+                    "claim_type": "title",
+                    "text": text,
+                    "source_text": text,
+                    "company_or_project": school,
+                    "position_or_role": degree,
+                }
+            )
 
     for idx, skill in enumerate(resume_json.get("skills") or []):
         name = skill.get("name") if isinstance(skill, dict) else str(skill)
@@ -238,7 +296,7 @@ def _reason_timeline_claims(claims: List[dict], events: List[dict]) -> List[dict
             ov = overlap_months(w1["start"], w1["end"], w2["start"], w2["end"])
             if ov > 1:
                 for c in claims:
-                    if c["section"] == "work_experience" and c["claim_type"] == "time":
+                    if c["section"] == "work_experience" and c["claim_type"] == "entry":
                         if c["entry_index"] in (w1["index"], w2["index"]):
                             items.append(
                                 _build_claim_item(
@@ -280,7 +338,7 @@ def _reason_timeline_claims(claims: List[dict], events: List[dict]) -> List[dict
                 if (
                     c["section"] == "projects"
                     and c["entry_index"] == proj_ev["index"]
-                    and c["claim_type"] == "time"
+                    and c["claim_type"] == "entry"
                 ):
                     items.append(
                         _build_claim_item(

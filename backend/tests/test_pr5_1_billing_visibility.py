@@ -233,11 +233,9 @@ async def test_rejected_model_output_refunds_credit_but_keeps_token_cost(
             SimpleNamespace(message=SimpleNamespace(content="主导阿里云订单平台并将业绩提升99%"))
         ],
     )
-    fake_client = SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=lambda **_kwargs: response_object))
-    )
-    monkeypatch.setattr(evidence_followup, "_get_openai_client", lambda: fake_client)
+    monkeypatch.setattr(evidence_followup, "sync_chat_completion", lambda **_kwargs: response_object)
     monkeypatch.setenv("DEEPSEEK_API_KEY", "test-only")
+    monkeypatch.setenv("AI_PRIMARY_API_KEY", "test-only")
     monkeypatch.setenv("EVIDENCE_FOLLOWUP_STRICT", "false")
     monkeypatch.setenv("METERING_ENABLED", "true")
     monkeypatch.setenv("DEEPSEEK_INPUT_PRICE_CNY_PER_MILLION", "2")

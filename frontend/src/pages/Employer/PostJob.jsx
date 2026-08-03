@@ -1,72 +1,119 @@
 import { useState } from 'react';
-import { Card, Upload, Button, Input, message, Descriptions, Tag, Space } from 'antd';
-import { UploadOutlined } from '@ant-design/icons';
+import { Alert, Button, Card, Input, message, Space, Upload } from 'antd';
+import { CheckCircleOutlined, UploadOutlined } from '@ant-design/icons';
+import { Link, useNavigate } from 'react-router-dom';
 import api from '../../api';
+import { getApiErrorMessage } from '../../utils/apiError';
+import JobProfileEditor from '../../components/JobProfileEditor';
+import { confirmationPayload } from '../../components/jobProfileEditorUtils';
 
 export default function PostJob() {
+  const navigate = useNavigate();
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [textInput, setTextInput] = useState('');
 
-  const handleUpload = (file) => {
+  const parseAndCreate = async (request) => {
     setLoading(true);
+    try {
+      const res = await request();
+      setResult(res.data);
+      message.success('岗位草稿已生成，请确认筛选重点后发布');
+    } catch (err) {
+      message.error(`发布失败：${getApiErrorMessage(err, '请检查 JD 后重试')}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpload = (file) => {
     const formData = new FormData();
     formData.append('file', file);
-    api.post('/post-job', formData)
-      .then((res) => {
-        setResult(res.data);
-        message.success('岗位发布成功');
-      })
-      .catch(() => message.error('发布失败'))
-      .finally(() => setLoading(false));
+    parseAndCreate(() => api.post('/post-job', formData));
     return false;
   };
 
   const handleTextSubmit = () => {
-    if (!textInput.trim()) return;
-    setLoading(true);
-    api.post('/post-job', null, {
-      params: { description_text: textInput }
-    })
-      .then((res) => {
-        setResult(res.data);
-        message.success('岗位发布成功');
-      })
-      .catch(() => message.error('发布失败'))
-      .finally(() => setLoading(false));
+    if (!textInput.trim()) {
+      message.warning('请先粘贴岗位描述');
+      return;
+    }
+    parseAndCreate(() => api.post('/post-job', null, {
+      params: { description_text: textInput },
+    }));
+  };
+
+  const handleSave = async (parsed, requirementChoices) => {
+    if (!result?.job_id) return;
+    setSaving(true);
+    try {
+      await api.put(`/jobs/${result.job_id}`, {
+        parsed_json: { ...parsed, _publication_status: 'draft' },
+      });
+      const profile = await api.get(`/advisor/jobs/${result.job_id}/profile`);
+      const requirements = confirmationPayload(profile.data, requirementChoices);
+      await api.post(
+        `/advisor/jobs/${result.job_id}/profile/confirm`,
+        { requirements },
+        {
+          headers: {
+            'Idempotency-Key': `publish-job-${result.job_id}-${Date.now()}`,
+          },
+        },
+      );
+      message.success('岗位已发布，筛选重点已同步到海选工作台');
+      navigate(`/employer/screening?job_id=${result.job_id}`);
+    } catch (err) {
+      message.error(`保存失败：${getApiErrorMessage(err, '请重试')}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <Card className="content-card" title="发布新岗位">
-      <Space orientation="vertical" style={{ width: '100%' }}>
+    <Card
+      className="content-card"
+      title="发布新岗位"
+      extra={<Link to="/employer/my-jobs"><Button>我的岗位</Button></Link>}
+    >
+      <Space orientation="vertical" size={12} style={{ width: '100%' }}>
+        <Alert
+          type="info"
+          showIcon
+          message="粘贴 JD，确认岗位和筛选重点，一次完成发布。"
+          description="系统先生成草稿，不会在你确认前向求职者公开。"
+        />
         <Upload beforeUpload={handleUpload} showUploadList={false} accept=".pdf,.docx,.txt">
           <Button icon={<UploadOutlined />} loading={loading}>上传 JD 文件</Button>
         </Upload>
         <div>或直接填写描述：</div>
-        <Input.TextArea rows={6} value={textInput} onChange={(e) => setTextInput(e.target.value)} placeholder="粘贴岗位描述..." />
-        <Button type="primary" onClick={handleTextSubmit} loading={loading}>提交文本</Button>
+        <Input.TextArea
+          rows={7}
+          value={textInput}
+          onChange={(event) => setTextInput(event.target.value)}
+          placeholder="粘贴岗位描述..."
+        />
+        <Button type="primary" onClick={handleTextSubmit} loading={loading}>提取岗位信息</Button>
       </Space>
 
       {result && (
-        <Descriptions bordered style={{ marginTop: 24 }}>
-          <Descriptions.Item label="岗位名称">{result.title}</Descriptions.Item>
-          <Descriptions.Item label="地点">{result.location || '未指定'}</Descriptions.Item>
-          <Descriptions.Item label="薪资范围">{result.salary_range || '面议'}</Descriptions.Item>
-          <Descriptions.Item label="技能要求" span={2}>
-            <Space wrap>
-              {result.required_skills?.map((s, idx) => (
-                <Tag color="green" key={idx}>{s.name}</Tag>
-              ))}
-            </Space>
-          </Descriptions.Item>
-          <Descriptions.Item label="职责" span={2}>
-            <ul>
-              {result.responsibilities?.map((r, idx) => <li key={idx}>{r}</li>)}
-            </ul>
-          </Descriptions.Item>
-          <Descriptions.Item label="经验要求">{result.experience_years ? `${result.experience_years} 年` : '不限'}</Descriptions.Item>
-          <Descriptions.Item label="学历">{result.education || '不限'}</Descriptions.Item>
-        </Descriptions>
+        <>
+          <Alert
+            type="success"
+            showIcon
+            icon={<CheckCircleOutlined />}
+            message="岗位草稿已生成"
+            description="在下面检查内容并设置筛选重点，点击一次即可正式发布。"
+            style={{ marginTop: 20 }}
+          />
+          <JobProfileEditor
+            key={result.job_id}
+            initialValue={{ ...result, _publication_status: 'draft' }}
+            saving={saving}
+            onSave={handleSave}
+          />
+        </>
       )}
     </Card>
   );

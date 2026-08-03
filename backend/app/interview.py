@@ -9,7 +9,6 @@ from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from openai import OpenAI
 from .models import ProfileFragment
 from .models_db import Resume, JobApplication, InterviewResult
 from .claim_reasoning import generate_claim_followup_questions
@@ -18,6 +17,7 @@ from .interview_fair_use import (
     consume_interview_turn,
     send_fair_use_error,
 )
+from .llm_client import async_chat_completion, default_model_name, model_api_key
 from .provider_costs import extract_provider_usage, record_provider_cost_event
 
 logger = logging.getLogger(__name__)
@@ -76,9 +76,9 @@ async def _reserve_provider_capacity() -> None:
         raise ProviderCapacityExceeded("AI 面试今日平台容量已用完")
 
 
-async def _call_interview_provider(client, **kwargs):
+async def _call_interview_provider(**kwargs):
     await _reserve_provider_capacity()
-    return await asyncio.to_thread(client.chat.completions.create, **kwargs)
+    return await async_chat_completion(task="interview_question_render", **kwargs)
 
 
 async def _ensure_accepted(websocket: WebSocket) -> None:
@@ -86,15 +86,8 @@ async def _ensure_accepted(websocket: WebSocket) -> None:
         await websocket.accept()
 
 
-def get_openai_client():
-    return OpenAI(
-        api_key=os.getenv("DEEPSEEK_API_KEY"),
-        base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"),
-    )
-
-
 def get_model():
-    return os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+    return default_model_name("interview_question_render")
 
 
 SYSTEM_PROMPT = """
@@ -236,7 +229,6 @@ async def _send_interview_result(
 
 async def extract_fragment(
     messages: list,
-    client,
     model,
     *,
     db: AsyncSession,
@@ -255,7 +247,6 @@ async def extract_fragment(
     ]
     try:
         response = await _call_interview_provider(
-            client,
             model=model,
             messages=messages,
             tools=tools,
@@ -300,7 +291,19 @@ async def interview_handler(
 ):
     await _ensure_accepted(websocket)
 
-    client = get_openai_client()
+    if not model_api_key():
+        await websocket.send_text(
+            json.dumps(
+                {
+                    "type": "error",
+                    "error": "ai_unavailable",
+                    "message": "AI 暂不可用，规则与人工功能仍可使用",
+                },
+                ensure_ascii=False,
+            )
+        )
+        await websocket.close(code=1013, reason="ai_unavailable")
+        return
     model = get_model()
     # Redis 可选：有则清空旧会话；无则纯内存
     redis_key = f"chat_history:{user_id}"
@@ -336,7 +339,6 @@ async def interview_handler(
 
             try:
                 response = await _call_interview_provider(
-                    client,
                     model=model,
                     messages=messages,
                     temperature=0.7,
@@ -385,10 +387,7 @@ async def interview_handler(
                 await websocket.send_text("[系统] 面试已完成，感谢你的参与！")
                 history.append({"role": "assistant", "content": reply})
                 try:
-                    fragment = await extract_fragment(
-                        messages,
-                        client,
-                        model,
+                    fragment = await extract_fragment(messages, model,
                         db=db,
                         user_id=user_id,
                     )
@@ -486,7 +485,19 @@ async def claim_followup_handler(
         await websocket.close()
         return
 
-    client = get_openai_client()
+    if not model_api_key():
+        await websocket.send_text(
+            json.dumps(
+                {
+                    "type": "error",
+                    "error": "ai_unavailable",
+                    "message": "AI 暂不可用，规则与人工功能仍可使用",
+                },
+                ensure_ascii=False,
+            )
+        )
+        await websocket.close(code=1013, reason="ai_unavailable")
+        return
     model = get_model()
     q_index = 0
     collected_answers: List[dict] = []
@@ -562,7 +573,6 @@ async def claim_followup_handler(
 
             try:
                 response = await _call_interview_provider(
-                    client,
                     model=model,
                     messages=messages,
                     temperature=0.5,

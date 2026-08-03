@@ -18,11 +18,18 @@ const PostJob = lazy(() => import('./pages/Employer/PostJob'));
 const MyJobs = lazy(() => import('./pages/Employer/MyJobs'));
 const EditJob = lazy(() => import('./pages/Employer/EditJob'));
 const CandidateList = lazy(() => import('./pages/Employer/CandidateList'));
+const CandidateMatchingHub = lazy(() => import('./pages/Employer/CandidateMatchingHub'));
 const Applications = lazy(() => import('./pages/Employer/Applications'));
+const ApplicationCenter = lazy(() => import('./pages/Employer/ApplicationCenter'));
+const Screening = lazy(() => import('./pages/Employer/Screening'));
 const BrowseJobs = lazy(() => import('./pages/Candidate/BrowseJobs'));
 const Invitations = lazy(() => import('./pages/Candidate/Invitations'));
 const Analytics = lazy(() => import('./pages/Candidate/Analytics'));
 const AppliedJobs = lazy(() => import('./pages/Candidate/AppliedJobs'));
+const AdminDataSources = lazy(() => import('./pages/Admin/DataSources'));
+const CareerPassport = lazy(() => import('./pages/Candidate/CareerPassport'));
+const EvidenceVault = lazy(() => import('./pages/Candidate/EvidenceVault'));
+const Advisor = lazy(() => import('./pages/Candidate/Advisor'));
 
 function RouteFallback() {
   return (
@@ -63,6 +70,9 @@ function App() {
             <Route path="my-resumes" element={<MyResumes />} />
             <Route path="invitations" element={<Invitations />} />
             <Route path="analytics" element={<Analytics />} />
+            <Route path="career-passport" element={<CareerPassport />} />
+            <Route path="evidence-vault" element={<EvidenceVault />} />
+            <Route path="advisor" element={<Advisor />} />
             <Route path="help" element={<Help />} />
           </Route>
 
@@ -79,9 +89,21 @@ function App() {
             <Route path="my-jobs" element={<MyJobs />} />
             <Route path="edit-job/:jobId" element={<EditJob />} />
             <Route path="candidates/:jobId" element={<CandidateList />} />
+            <Route path="candidates" element={<CandidateMatchingHub />} />
             <Route path="applications/:jobId" element={<Applications />} />
+            <Route path="applications" element={<ApplicationCenter />} />
+            <Route path="screening" element={<Screening />} />
             <Route path="help" element={<Help />} />
           </Route>
+
+          <Route
+            path="/admin/data-sources"
+            element={
+              <ProtectedRoute role="admin">
+                <AdminDataSources />
+              </ProtectedRoute>
+            }
+          />
 
           <Route path="/" element={<Navigate to="/login" />} />
         </Routes>

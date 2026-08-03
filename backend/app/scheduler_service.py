@@ -15,7 +15,6 @@ from .database import AsyncSessionLocal, engine
 from .foreign_job_fetcher import fetch_foreign_jobs
 from .guoqi_job_fetcher import fetch_guoqi_jobs
 from .market_analytics import (
-    rebuild_hired_benchmarks_statistical,
     run_full_analytics_rebuild,
 )
 from .matching import generate_matches_auto
@@ -30,7 +29,7 @@ async def _weekly_forum_sync() -> None:
 
     async with AsyncSessionLocal() as db:
         await sync_forum_insights_to_db(db)
-        await rebuild_hired_benchmarks_statistical(db)
+    logger.info("论坛数据仅同步为 E 层定性线索，不生成正式录用画像")
 
 
 async def _run_locked(

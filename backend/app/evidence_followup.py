@@ -20,6 +20,7 @@ from .faithful_expansion import (
     is_empty_answer,
 )
 from .provider_costs import extract_provider_usage
+from .llm_client import default_model_name, model_api_key, sync_chat_completion
 
 logger = logging.getLogger(__name__)
 
@@ -31,17 +32,8 @@ def _strict_mode_enabled() -> bool:
     return os.getenv("EVIDENCE_FOLLOWUP_STRICT", "true").lower() in ("1", "true", "yes")
 
 
-def _get_openai_client():
-    from openai import OpenAI
-
-    return OpenAI(
-        api_key=os.getenv("DEEPSEEK_API_KEY"),
-        base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"),
-    )
-
-
 def _get_model() -> str:
-    return os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+    return default_model_name("faithful_rewrite")
 
 
 def get_entry_context(resume_json: dict, entry_type: str, index: int) -> dict:
@@ -303,14 +295,16 @@ def generate_followup_questions(context: dict) -> List[dict]:
 ]
 """
     try:
-        client = _get_openai_client()
-        response = client.chat.completions.create(
+        if not model_api_key():
+            return _fallback_questions(context)
+        response = sync_chat_completion(
             model=_get_model(),
             messages=[
                 {"role": "system", "content": "你只输出合法 JSON 数组，不要 markdown。"},
                 {"role": "user", "content": prompt},
             ],
             temperature=0.3,
+            task="claim_evidence_assess",
         )
         content = (response.choices[0].message.content or "[]").strip()
         if content.startswith("```"):
@@ -621,15 +615,17 @@ def _compose_by_mode(
 只输出一条整合后的描述，不要 JSON、markdown 或英文。
 """
     try:
-        client = _get_openai_client()
+        if not model_api_key():
+            return _strict_compose_evidence(context, answers), metering
         metering["model_called"] = True
-        response = client.chat.completions.create(
+        response = sync_chat_completion(
             model=_get_model(),
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": prompt},
             ],
             temperature=temperature,
+            task="faithful_rewrite",
         )
         metering["provider_status"] = "succeeded"
         metering["provider_usage"] = extract_provider_usage(

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Card, List, Input, Button, Space, Tag, message, Spin, Modal, Descriptions, Typography, Select } from 'antd';
-import { SearchOutlined, EnvironmentOutlined, ClockCircleOutlined, DollarOutlined, SendOutlined, MessageOutlined } from '@ant-design/icons';
+import { Alert, Card, List, Input, Button, Space, Tag, message, Spin, Modal, Descriptions, Typography, Select } from 'antd';
+import { SearchOutlined, EnvironmentOutlined, ClockCircleOutlined, DollarOutlined, SendOutlined, MessageOutlined, ReloadOutlined, LinkOutlined, CompassOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
 import api from '../../api';
 import { getApiErrorMessage } from '../../utils/apiError';
 
@@ -9,7 +10,7 @@ const { Text } = Typography;
 const SOURCE_OPTIONS = [
   { value: '', label: '全部来源' },
   { value: 'soe', label: '国企' },
-  { value: 'foreign', label: '外企' },
+  { value: 'foreign', label: '国际岗位' },
   { value: 'employer', label: '企业直招' },
 ];
 
@@ -20,6 +21,7 @@ function sourceTagColor(source) {
 }
 
 export default function BrowseJobs() {
+  const navigate = useNavigate();
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [keyword, setKeyword] = useState('');
@@ -183,7 +185,18 @@ export default function BrowseJobs() {
   };
 
   return (
-    <Card className="content-card" title="浏览所有岗位">
+    <Card
+      className="content-card"
+      title="岗位发现与选择"
+      extra={<Button icon={<ReloadOutlined />} loading={loading} onClick={fetchJobs}>刷新岗位池</Button>}
+    >
+      <Alert
+        showIcon
+        type="info"
+        style={{ marginBottom: 16 }}
+        message={`当前可选择 ${jobs.length} 个岗位`}
+        description="岗位池合并企业直招、国企公开岗位与 Remotive、Arbeitnow、Remote OK；单个来源暂时失败不会再清空已有岗位。"
+      />
       <Space wrap style={{ marginBottom: 16 }}>
         <Input
           placeholder="关键字搜索"
@@ -232,6 +245,13 @@ export default function BrowseJobs() {
 
       <Spin spinning={loading}>
         <List
+          header={(
+            <Space wrap>
+              <Tag color="red">国企 {jobs.filter((job) => job.source_type === 'soe').length}</Tag>
+              <Tag color="blue">国际岗位 {jobs.filter((job) => job.source_type === 'foreign').length}</Tag>
+              <Tag>企业直招 {jobs.filter((job) => job.source_type === 'employer').length}</Tag>
+            </Space>
+          )}
           dataSource={jobs}
           renderItem={(item) => (
             <List.Item
@@ -257,6 +277,16 @@ export default function BrowseJobs() {
                   >
                     申请岗位
                   </Button>
+                  <Button
+                    size="small"
+                    icon={<CompassOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      navigate(`/candidate/advisor?job_id=${item.id}`);
+                    }}
+                  >
+                    查看岗位画像
+                  </Button>
                 </Space>
               }
             >
@@ -264,7 +294,7 @@ export default function BrowseJobs() {
                   title={
 		    <Space>
 			<span style={{ fontSize: 16 }}>{item.title}</span>
-			<Tag color={sourceTagColor(item.source)}>{item.source}</Tag>
+			<Tag color={sourceTagColor(item.source)}>{item.parsed?.source_name || item.source}</Tag>
 		    </Space>	
 		  }
                 description={
@@ -288,6 +318,13 @@ export default function BrowseJobs() {
         footer={[
           <Button key="close" onClick={() => setSelectedJob(null)}>
             关闭
+          </Button>,
+          <Button
+            key="advisor"
+            icon={<CompassOutlined />}
+            onClick={() => navigate(`/candidate/advisor?job_id=${selectedJob?.id}`)}
+          >
+            岗位画像与顾问
           </Button>,
           <Button
             key="apply"
@@ -324,13 +361,24 @@ export default function BrowseJobs() {
                 </Space>
               </Descriptions.Item>
               <Descriptions.Item label="岗位职责" span={2}>
-                <div
-		  style={{ maxHeight: 300, overflow: 'auto', lineHeight: 1.8 }}
-		  dangerouslySetInnerHTML={{
-		    __html: selectedJob.parsed?.responsibilities?.join('<br/>') || ''
-		  }}
-		/>
+                <div style={{ maxHeight: 300, overflow: 'auto', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
+                  {(selectedJob.parsed?.responsibilities || []).join('\n')}
+                </div>
 	      </Descriptions.Item>
+              {selectedJob.parsed.source_url && (
+                <Descriptions.Item label="原始岗位" span={2}>
+                  <Button
+                    type="link"
+                    icon={<LinkOutlined />}
+                    href={selectedJob.parsed.source_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ padding: 0 }}
+                  >
+                    查看来源并申请
+                  </Button>
+                </Descriptions.Item>
+              )}
 	      {selectedJob.company_name && (
 		<Descriptions.Item label="发布单位">{selectedJob.company_name}</Descriptions.Item>
 )}

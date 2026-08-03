@@ -4,6 +4,7 @@ import copy
 import logging
 import time
 import uuid
+import inspect
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -16,11 +17,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import redis.asyncio as aioredis
 from dotenv import load_dotenv
 from .resume_parser import extract_text_from_pdf, extract_text_from_docx, parse_with_llm
-from .models import ResumeInfo, JobInfo
+from .models import ResumeInfo, PostJobResponse
 from .database import engine, get_db, AsyncSessionLocal
 from .models_db import (
     JobApplication,
@@ -66,6 +67,7 @@ from .evidence_followup import (
 )
 from .resume_variants import generate_resume_variant, list_style_templates
 from .matching_hybrid import full_match_evaluation, extract_breakdown_for_api
+from .matching_preference import infer_candidate_intent
 from .auth import get_current_user, validate_auth_configuration
 from .auth_routes import router as auth_router
 from .invitation_routes import router as invitation_router
@@ -75,6 +77,12 @@ from .billing_routes import router as billing_router
 from .interview_routes import router as interview_router
 from .claim_passport_routes import router as claim_passport_router
 from .potential_simulation_routes import router as potential_simulation_router
+from .data_source_routes import router as data_source_router
+from .career_vault_routes import router as career_vault_router
+from .interview_session_routes import router as interview_session_router
+from .target_job_optimization_routes import router as target_job_optimization_router
+from .advisor_routes import router as advisor_router
+from .screening_routes import router as screening_router
 from .claim_passport import (
     add_evidence as passport_add_evidence,
     claims_for_field_path,
@@ -198,6 +206,12 @@ app.include_router(analytics_router)
 app.include_router(billing_router)
 app.include_router(interview_router)
 app.include_router(claim_passport_router)
+app.include_router(data_source_router)
+app.include_router(career_vault_router)
+app.include_router(interview_session_router)
+app.include_router(target_job_optimization_router)
+app.include_router(advisor_router)
+app.include_router(screening_router)
 
 UPLOAD_DIR = os.getenv("UPLOAD_DIR") or (
     "/data/uploads"
@@ -1314,7 +1328,9 @@ async def create_resume_variant(
     await db.refresh(variant)
 
     return {
-        "status": "ok",
+        "status": "ok" if generated.get("source") != "ai_unavailable" else "ai_unavailable",
+        "message": generated.get("message"),
+        "error_code": generated.get("error_code"),
         "variant": {
             "id": str(variant.id),
             "variant_key": variant.variant_key,
@@ -1326,6 +1342,8 @@ async def create_resume_variant(
             "source": variant.source,
             "job_id": variant.job_id,
             "created_at": variant.created_at.isoformat() if variant.created_at else None,
+            "ai_unavailable": generated.get("source") == "ai_unavailable",
+            "message": generated.get("message"),
         },
     }
 
@@ -1485,7 +1503,7 @@ async def delete_resume(
 
 
 # ------------- 岗位发布 ---------------
-@app.post("/post-job", response_model=JobInfo)
+@app.post("/post-job", response_model=PostJobResponse)
 async def post_job(
     file: Optional[UploadFile] = None,
     description_text: Optional[str] = None,
@@ -1512,16 +1530,29 @@ async def post_job(
             raise HTTPException(status_code=413, detail="岗位描述超过长度限制")
     else:
         raise HTTPException(status_code=400, detail="请上传文件或填写 description_text")
-    job_data = await call_parser_bounded(parse_job_with_llm, text)
+    parser_kwargs = (
+        {"user_id": str(current_user.id)}
+        if "user_id" in inspect.signature(parse_job_with_llm).parameters
+        else {}
+    )
+    parsed_job = parse_job_with_llm(text, **parser_kwargs)
+    job_data = await parsed_job if inspect.isawaitable(parsed_job) else parsed_job
+    parsed_json = job_data.model_dump()
+    parsed_json["_publication_status"] = "draft"
     jd = JobDescription(
         employer_id=str(current_user.id),
         title=job_data.title or "未命名岗位",
         raw_text=text,
-        parsed_json=job_data.model_dump(),
+        parsed_json=parsed_json,
     )
     db.add(jd)
     await db.commit()
-    return job_data
+    await db.refresh(jd)
+    return {
+        **job_data.model_dump(),
+        "job_id": str(jd.id),
+        "publication_status": "draft",
+    }
 
 
 # ------------- 岗位查询 ---------------
@@ -1529,6 +1560,7 @@ def _owned_job_payload(job: JobDescription) -> dict:
     return {
         "id": str(job.id),
         "title": job.title,
+        "raw_text": job.raw_text,
         "parsed": job.parsed_json,
         "created_at": job.created_at.isoformat(),
     }
@@ -1574,7 +1606,7 @@ async def sync_job_sources(
         "msg": "岗位与数据分析同步任务已受理",
         "job_id": accepted["job_id"],
         "status": accepted["status"],
-        "sources": ["国企-国资央企", "外企-Remotive/Arbeitnow", "录用画像-网络论坛统计"],
+        "sources": ["国企-国资央企", "国际岗位-Remotive/Arbeitnow/Remote OK"],
     }
 
 
@@ -1596,7 +1628,12 @@ async def browse_jobs(
             | (JobDescription.raw_text.ilike(like_pattern))
         )
     result = await db.execute(stmt.order_by(JobDescription.created_at.desc()))
-    jobs = result.scalars().all()
+    jobs = [
+        job
+        for job in result.scalars().all()
+        if not (job.parsed_json or {}).get("advisor_private")
+        and (job.parsed_json or {}).get("_publication_status") != "draft"
+    ]
 
     # 地点过滤
     if location:
@@ -1647,9 +1684,9 @@ async def browse_jobs(
     return [
         {
             "id": str(j.id),
-            "title": j.title,
+            "title": public_job_payload({"title": j.title}).get("title", ""),
             "parsed": public_job_payload(j.parsed_json),
-            "company_name": (j.parsed_json or {}).get("company_name", ""),
+            "company_name": public_job_payload(j.parsed_json).get("company_name", ""),
             "created_at": j.created_at.isoformat(),
             "source": job_source_label(j.employer_id, j.parsed_json),
             "source_type": job_source_type(j.employer_id, j.parsed_json),
@@ -1680,12 +1717,20 @@ PUBLIC_JOB_FIELDS = {
     "other_notes",
     "company_name",
     "description",
+    "source_name",
+    "source_url",
+    "source_attribution",
+    "last_seen_at",
 }
 
 
 def public_job_payload(parsed: Optional[dict]) -> dict:
+    from .text_quality import repair_text_tree
+
     source = parsed or {}
-    return {key: source[key] for key in PUBLIC_JOB_FIELDS if key in source}
+    return repair_text_tree(
+        {key: source[key] for key in PUBLIC_JOB_FIELDS if key in source}
+    )
 
 
 @app.put("/jobs/{job_id}")
@@ -1705,13 +1750,17 @@ async def update_job(
 @app.get("/job/{job_id}")
 async def get_job_detail(job_id: str, db: AsyncSession = Depends(get_db)):
     job = await db.get(JobDescription, job_id)
-    if not job:
+    if (
+        not job
+        or (job.parsed_json or {}).get("advisor_private")
+        or (job.parsed_json or {}).get("_publication_status") == "draft"
+    ):
         raise HTTPException(status_code=404, detail="岗位不存在")
     return {
         "id": str(job.id),
-        "title": job.title,
+        "title": public_job_payload({"title": job.title}).get("title", ""),
         "parsed": public_job_payload(job.parsed_json),
-        "company_name": job.parsed_json.get("company_name", "") if job.parsed_json else "",
+        "company_name": public_job_payload(job.parsed_json).get("company_name", ""),
         "created_at": job.created_at.isoformat(),
     }
 
@@ -1834,6 +1883,85 @@ async def match_for_user(
     }
 
 
+class MatchPreferencesBody(BaseModel):
+    target_roles: list[str] = Field(default_factory=list, max_length=5)
+    preferred_industries: list[str] = Field(default_factory=list, max_length=8)
+    excluded_industries: list[str] = Field(default_factory=list, max_length=8)
+    strictness: str = "focused"
+
+
+@app.get("/matching/preferences")
+async def get_matching_preferences(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role != "candidate":
+        raise HTTPException(status_code=403, detail="仅求职者可设置岗位偏好")
+    resume = (
+        await db.execute(
+            select(Resume)
+            .where(Resume.user_id == str(current_user.id))
+            .order_by(Resume.uploaded_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if not resume:
+        return {"preferences": {}, "inferred_intent": None}
+    return {
+        "preferences": (resume.parsed_json or {}).get("match_preferences") or {},
+        "inferred_intent": infer_candidate_intent(resume.parsed_json or {}),
+    }
+
+
+@app.put("/matching/preferences")
+async def update_matching_preferences(
+    body: MatchPreferencesBody,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role != "candidate":
+        raise HTTPException(status_code=403, detail="仅求职者可设置岗位偏好")
+    if body.strictness not in {"focused", "balanced", "explore"}:
+        raise HTTPException(status_code=422, detail="strictness 必须为 focused、balanced 或 explore")
+    resumes = (
+        await db.execute(
+            select(Resume).where(Resume.user_id == str(current_user.id))
+        )
+    ).scalars().all()
+    preferences = {
+        "target_roles": [value.strip() for value in body.target_roles if value.strip()],
+        "preferred_industries": list(dict.fromkeys(body.preferred_industries)),
+        "excluded_industries": list(dict.fromkeys(body.excluded_industries)),
+        "strictness": body.strictness,
+    }
+    for resume in resumes:
+        parsed = dict(resume.parsed_json or {})
+        parsed["match_preferences"] = preferences
+        resume.parsed_json = parsed
+    await db.commit()
+    await enqueue_job(
+        redis_client,
+        job_type="match_generate",
+        payload={
+            "user_id": str(current_user.id),
+            "force_refresh": True,
+            "llm_rerank_top": 5,
+        },
+        idempotency_key=(
+            f"match_generate:user:{current_user.id}:preferences:"
+            f"{uuid.uuid5(uuid.NAMESPACE_URL, str(sorted(preferences.items())))}"
+        ),
+    )
+    inferred = infer_candidate_intent(
+        {**((resumes[0].parsed_json or {}) if resumes else {}), "match_preferences": preferences}
+    )
+    return {
+        "status": "saved",
+        "preferences": preferences,
+        "inferred_intent": inferred,
+    }
+
+
 @app.get("/matches/user/{user_id}")
 async def get_matches_for_user(
     user_id: str,
@@ -1870,10 +1998,25 @@ async def get_matches_for_user(
         select(MatchResult)
         .where(MatchResult.resume_id.in_(resume_ids))
         .order_by(MatchResult.score.desc())
-        .limit(100)  # 最多 100 个
+        .limit(1000)
     )
     result = await db.execute(stmt)
-    matches = result.scalars().all()
+    raw_matches = result.scalars().all()
+    # A candidate may have several resume versions. Show one best eligible
+    # result per job instead of duplicates or policy-rejected cross-role jobs.
+    matches = []
+    seen_job_ids = set()
+    for match in raw_matches:
+        policy = (match.score_breakdown or {}).get("preference_policy") or {}
+        if policy and not policy.get("eligible", True):
+            continue
+        job_key = str(match.job_id)
+        if job_key in seen_job_ids:
+            continue
+        seen_job_ids.add(job_key)
+        matches.append(match)
+        if len(matches) >= 100:
+            break
 
     # 获取关联岗位信息...（与之前相同）
     job_ids = list({m.job_id for m in matches})
@@ -1926,7 +2069,11 @@ async def get_matches_for_resume(
         .order_by(MatchResult.score.desc())
     )
     result = await db.execute(stmt)
-    matches = result.scalars().all()
+    matches = [
+        match
+        for match in result.scalars().all()
+        if (match.score_breakdown or {}).get("preference_policy", {}).get("eligible", True)
+    ]
 
     job_ids = list({m.job_id for m in matches})
     job_map = {}
@@ -2092,6 +2239,9 @@ async def ready():
     return {
         "status": "ready",
         "model_mode": model_runtime_mode(),
+        "checks": {
+            "model": result["checks"]["model"],
+        },
     }
 
 

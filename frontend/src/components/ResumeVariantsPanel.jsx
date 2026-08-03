@@ -7,7 +7,9 @@ import {
 } from '@ant-design/icons';
 import api from '../api';
 import { getApiErrorMessage } from '../utils/apiError';
+import { decodeHtmlEntities } from '../utils/text';
 import ResumeDocumentView from './ResumeDocumentView';
+import AiAvailabilityBanner from './AiAvailabilityBanner';
 
 const { Text, Paragraph } = Typography;
 
@@ -15,11 +17,13 @@ export default function ResumeVariantsPanel({
   resumeId,
   defaultJobTitle = '',
   topMatches = [],
+  targetJobId = null,
+  onTargetJobChange,
   onApplyVariant,
 }) {
   const [templates, setTemplates] = useState([]);
   const [variants, setVariants] = useState([]);
-  const [targetJobTitle, setTargetJobTitle] = useState(defaultJobTitle);
+  const [targetJobTitle, setTargetJobTitle] = useState(decodeHtmlEntities(defaultJobTitle));
   const [styleTemplate, setStyleTemplate] = useState('balanced');
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -47,12 +51,14 @@ export default function ResumeVariantsPanel({
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      setTargetJobTitle(defaultJobTitle || '');
+      setTargetJobTitle(decodeHtmlEntities(defaultJobTitle));
       setVariants([]);
       if (resumeId) fetchVariants();
     }, 0);
     return () => clearTimeout(timer);
   }, [resumeId, defaultJobTitle, fetchVariants]);
+
+  const effectiveJobId = targetJobId || selectedJobId;
 
   const handleGenerate = async () => {
     if (!targetJobTitle.trim()) {
@@ -64,9 +70,13 @@ export default function ResumeVariantsPanel({
       const res = await api.post(`/resumes/${resumeId}/variants/generate`, {
         target_job_title: targetJobTitle.trim(),
         style_template: styleTemplate,
-        job_id: selectedJobId || undefined,
+        job_id: effectiveJobId || undefined,
       });
-      message.success(`已生成「${res.data.variant.label}」`);
+      if (res.data?.status === 'ai_unavailable' || res.data?.variant?.ai_unavailable) {
+        message.warning(res.data?.message || 'AI 暂不可用：未新增虚构内容，仅保留规则重排');
+      } else {
+        message.success(`已生成「${res.data.variant.label}」`);
+      }
       await fetchVariants();
       setPreviewVariant(res.data.variant);
     } catch (err) {
@@ -117,11 +127,12 @@ export default function ResumeVariantsPanel({
   return (
     <>
       <Card size="small" title={<><CopyOutlined /> 岗位定制版</>} style={{ marginTop: 12 }}>
+        <AiAvailabilityBanner style={{ marginBottom: 12 }} />
         <Alert
           type="info"
           showIcon
           style={{ marginBottom: 12, fontSize: 13 }}
-          message="基于同一份简历生成目标岗位版本，如「Java 后端版」"
+          message="基于同一份简历生成目标岗位版本，如「Java 后端版」。无 AI 时不会虚构技能或成果。"
         />
 
         <Space direction="vertical" style={{ width: '100%' }} size={8}>
@@ -148,13 +159,20 @@ export default function ResumeVariantsPanel({
           </div>
           {topMatches.length > 0 && (
             <div>
-              <Text type="secondary" style={{ fontSize: 12 }}>参考匹配岗位（可选）</Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>本次优化使用的岗位</Text>
               <Select
                 allowClear
                 placeholder="选择 Top 匹配岗位"
                 style={{ width: '100%', marginTop: 4 }}
-                value={selectedJobId}
-                onChange={setSelectedJobId}
+                value={effectiveJobId}
+                onChange={(value) => {
+                  setSelectedJobId(value);
+                  const selected = topMatches.find(
+                    (item) => String(item.job_id) === String(value),
+                  );
+                  if (selected?.job_title) setTargetJobTitle(selected.job_title);
+                  onTargetJobChange?.(selected || { job_id: value });
+                }}
                 options={topMatches.map((m) => ({
                   value: m.job_id,
                   label: `${m.job_title} (${Number(m.score).toFixed(1)}分)`,
@@ -174,50 +192,24 @@ export default function ResumeVariantsPanel({
               style={{ marginTop: 12 }}
               dataSource={variants}
               renderItem={(item) => (
-                <List.Item
-                  actions={[
-                    <Button
-                      key="view"
-                      type="link"
-                      size="small"
-                      icon={<EyeOutlined />}
-                      onClick={() => handlePreview(item.id)}
-                    >
-                      预览
-                    </Button>,
-                    <Button
-                      key="apply"
-                      type="link"
-                      size="small"
-                      icon={<SwapOutlined />}
-                      onClick={() => handleApply(item.id)}
-                    >
-                      应用
-                    </Button>,
-                    <Button
-                      key="del"
-                      type="link"
-                      size="small"
-                      danger
-                      icon={<DeleteOutlined />}
-                      onClick={() => handleDelete(item.id)}
-                    />,
-                  ]}
-                >
-                  <List.Item.Meta
-                    title={(
-                      <Space>
-                        <Text strong style={{ fontSize: 13 }}>{item.label}</Text>
-                        <Tag>{item.style_template}</Tag>
-                      </Space>
-                    )}
-                    description={(
-                      <Text type="secondary" style={{ fontSize: 12 }}>
-                        {item.target_job_title}
-                        {item.created_at ? ` · ${new Date(item.created_at).toLocaleString()}` : ''}
+                <List.Item style={{ display: 'block' }}>
+                  <Space direction="vertical" size={4} style={{ width: '100%', minWidth: 0 }}>
+                    <Space wrap>
+                      <Text strong style={{ fontSize: 13, overflowWrap: 'anywhere' }}>
+                        {decodeHtmlEntities(item.label)}
                       </Text>
-                    )}
-                  />
+                      <Tag>{item.style_template}</Tag>
+                    </Space>
+                    <Text type="secondary" style={{ fontSize: 12, overflowWrap: 'anywhere' }}>
+                      {decodeHtmlEntities(item.target_job_title)}
+                      {item.created_at ? ` · ${new Date(item.created_at).toLocaleString()}` : ''}
+                    </Text>
+                    <Space wrap size={4}>
+                      <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handlePreview(item.id)}>预览</Button>
+                      <Button type="link" size="small" icon={<SwapOutlined />} onClick={() => handleApply(item.id)}>应用</Button>
+                      <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => handleDelete(item.id)}>删除</Button>
+                    </Space>
+                  </Space>
                 </List.Item>
               )}
             />

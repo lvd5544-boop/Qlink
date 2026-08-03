@@ -26,10 +26,12 @@ const V1_CRITERIA = [
 export const SCORE_DISCLAIMER = '以上评分由 AI 根据简历和岗位信息自动计算，仅供参考，不代表实际录取结果。';
 
 export function getCurrentScoreRules(version = 2) {
-  const criteria = version === 2 ? V2_CRITERIA : V1_CRITERIA;
+  const criteria = version >= 2 ? V2_CRITERIA : V1_CRITERIA;
   return {
     title: '「当前」评分是怎么算的？',
-    intro: '当前分反映的是你现在和这份岗位的匹配程度。系统会从以下几个角度综合打分，满分 10 分：',
+    intro: version >= 3
+      ? '先按你选择或从经历推断的职业方向、行业偏好与岗位质量做筛选；只有通过门槛的岗位，才从以下角度综合打分：'
+      : '当前分反映的是你现在和这份岗位的匹配程度。系统会从以下几个角度综合打分，满分 10 分：',
     criteria,
     disclaimer: SCORE_DISCLAIMER,
   };

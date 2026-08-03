@@ -11,7 +11,27 @@ const ROLE_LABEL = {
   employer: '招聘方',
 };
 
-export default function AppLayout({ brandTitle, brandSubtitle, menuItems, role }) {
+function findMenuItem(items, pathname) {
+  for (const item of items) {
+    if (item.key === pathname) return item;
+    const nested = item.children && findMenuItem(item.children, pathname);
+    if (nested) return nested;
+  }
+  return null;
+}
+
+function parentKeys(items, pathname, parents = []) {
+  for (const item of items) {
+    if (item.key === pathname) return parents;
+    if (item.children) {
+      const nested = parentKeys(item.children, pathname, [...parents, item.key]);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+
+export default function AppLayout({ brandTitle, brandSubtitle, menuItems, role, journey }) {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -24,7 +44,8 @@ export default function AppLayout({ brandTitle, brandSubtitle, menuItems, role }
     }
   };
 
-  const currentPage = menuItems.find((item) => item.key === location.pathname);
+  const currentPage = findMenuItem(menuItems, location.pathname);
+  const defaultOpenKeys = parentKeys(menuItems, location.pathname) || [];
 
   return (
     <Layout className="app-layout">
@@ -45,8 +66,11 @@ export default function AppLayout({ brandTitle, brandSubtitle, menuItems, role }
           theme="dark"
           mode="inline"
           selectedKeys={[location.pathname]}
+          defaultOpenKeys={defaultOpenKeys}
           items={menuItems}
-          onClick={({ key }) => navigate(key)}
+          onClick={({ key }) => {
+            if (String(key).startsWith('/')) navigate(key);
+          }}
           style={{ borderInlineEnd: 'none' }}
         />
       </Sider>
@@ -66,6 +90,23 @@ export default function AppLayout({ brandTitle, brandSubtitle, menuItems, role }
         </Header>
         <Content className="app-content">
           <div className="app-content-inner">
+            {journey?.length > 0 && (
+              <div className="candidate-journey" aria-label="求职主流程">
+                <Text type="secondary" className="candidate-journey-label">当前主线</Text>
+                <Space wrap size={4}>
+                  {journey.map((step, index) => (
+                    <Button
+                      key={step.path}
+                      type={location.pathname === step.path ? 'primary' : 'text'}
+                      size="small"
+                      onClick={() => navigate(step.path)}
+                    >
+                      {index + 1}. {step.label}
+                    </Button>
+                  ))}
+                </Space>
+              </div>
+            )}
             <Outlet />
           </div>
         </Content>

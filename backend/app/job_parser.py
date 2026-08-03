@@ -1,26 +1,29 @@
-import os
-import json
+import logging
 import re
-from openai import OpenAI
 
-from .llm_client import model_api_key
+from .ai.errors import AIUnavailableError, SchemaValidationError
+from .ai.gateway import InvocationContext, gateway_run
 from .models import JobInfo, SkillRequirement
 
-
-def get_openai_client():
-    return OpenAI(
-        api_key=os.getenv("DEEPSEEK_API_KEY"),
-        base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"),
-    )
-
-
-def get_model():
-    return os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+logger = logging.getLogger(__name__)
 
 
 def parse_job_rules_only(text: str) -> JobInfo:
     """Deterministic fallback when no model key is configured."""
     lines = [line.strip() for line in (text or "").splitlines() if line.strip()]
+
+    def labelled_values(labels: tuple[str, ...]) -> list[str]:
+        values: list[str] = []
+        for line in lines:
+            match = re.match(
+                rf"^(?:{'|'.join(re.escape(label) for label in labels)})\s*[：:]\s*(.+)$",
+                line,
+                flags=re.IGNORECASE,
+            )
+            if match and match.group(1).strip():
+                values.append(match.group(1).strip())
+        return values
+
     title = "未命名岗位"
     for line in lines[:5]:
         for prefix in ("岗位：", "职位：", "title:", "Title:"):
@@ -42,57 +45,52 @@ def parse_job_rules_only(text: str) -> JobInfo:
             skills.append(SkillRequirement(name=token))
         if len(skills) >= 12:
             break
-    responsibilities = [line for line in lines if "职责" in line or line.startswith("-")][:8]
+    responsibilities = labelled_values(("职责", "岗位职责", "工作职责", "responsibilities"))[:8]
+    requirements = labelled_values(
+        ("要求", "任职要求", "必须要求", "任职资格", "资格要求", "requirements")
+    )
+    experience_years = None
+    experience_values = labelled_values(("经验", "工作经验", "经验要求", "experience"))
+    if experience_values:
+        year_match = re.search(r"(\d+)\s*年", experience_values[0])
+        if year_match:
+            experience_years = int(year_match.group(1))
     return JobInfo(
         title=title,
         location=location,
         required_skills=skills,
         responsibilities=responsibilities or lines[1:6],
+        requirements="；".join(requirements) or None,
+        experience_years=experience_years,
         other_notes="parsed_by=rules_only",
     )
 
 
-def parse_job_with_llm(text: str) -> JobInfo:
-    if not model_api_key():
-        return parse_job_rules_only(text)
-
-    client = get_openai_client()
-    model = get_model()
-
-    tools = [
-        {
-            "type": "function",
-            "function": {
-                "name": "extract_job",
-                "description": "提取岗位详细信息",
-                "parameters": JobInfo.model_json_schema(),
-            },
-        }
-    ]
-
-    prompt = f"""你是专业的HR信息提取专家。请从以下岗位描述中提取信息，严格按照 JSON Schema 返回。
-缺失字段用 null 或空数组。
-请额外识别：soft_skills（沟通协作等软实力）、leadership_signals（带团队/项目管理等）、
-communication_signals、education_requirement、school_tier_keywords（如985/211/硕士等）。
-
-岗位描述：
-{text}
-"""
+async def parse_job_with_llm(
+    text: str,
+    *,
+    user_id: str | None = None,
+    org_id: str | None = None,
+) -> JobInfo:
+    """Parse a JD through the task gateway, with a deterministic safe fallback."""
+    prompt = (
+        "从以下岗位描述提取结构化岗位信息。缺失字段使用 null 或空数组。"
+        "不得把职业常识、公司公开材料或市场趋势补成企业岗位要求。\n\n"
+        f"岗位描述：\n{text}"
+    )
     try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": "你是一个精准的岗位解析器，输出JSON。"},
-                {"role": "user", "content": prompt},
-            ],
-            tools=tools,
-            tool_choice={"type": "function", "function": {"name": "extract_job"}},
-            temperature=0.1,
+        result = await gateway_run(
+            task="jd_parse",
+            payload={
+                "messages": [{"role": "user", "content": prompt}],
+                "response_format": {"type": "json_object"},
+            },
+            schema=JobInfo,
+            context=InvocationContext(user_id=user_id, org_id=org_id),
         )
-        msg = response.choices[0].message
-        if msg.tool_calls:
-            args = json.loads(msg.tool_calls[0].function.arguments)
-            return JobInfo(**args)
-        raise ValueError("无法解析岗位信息")
+        return result.parsed
+    except (AIUnavailableError, SchemaValidationError, TimeoutError):
+        return parse_job_rules_only(text)
     except Exception:
+        logger.exception("JD gateway parse failed; using deterministic parser")
         return parse_job_rules_only(text)

@@ -13,11 +13,39 @@ x-backend-environment: &backend-environment
   METERING_ENABLED: "true"
   BILLING_TIMEZONE: Asia/Shanghai
   UPLOAD_DIR: /data/uploads
+  EVIDENCE_VAULT_DIR: /data/evidence-vault
+  OBJECT_STORAGE_BACKEND: ${OBJECT_STORAGE_BACKEND:-local}
+  SIGNED_URL_TTL_SECONDS: ${SIGNED_URL_TTL_SECONDS:-300}
+  EVIDENCE_DOWNLOAD_SIGNING_KEY: ${EVIDENCE_DOWNLOAD_SIGNING_KEY:-}
+  VIRUS_SCAN_ENABLED: ${VIRUS_SCAN_ENABLED:-true}
+  VIRUS_SCAN_FAIL_MODE: ${VIRUS_SCAN_FAIL_MODE:-closed}
+  CLAMAV_HOST: ${CLAMAV_HOST:-clamav}
+  CLAMAV_PORT: ${CLAMAV_PORT:-3310}
+  CLAMAV_TIMEOUT_SECONDS: ${CLAMAV_TIMEOUT_SECONDS:-10}
+  S3_ENDPOINT: ${S3_ENDPOINT:-}
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_BUCKET: ${S3_BUCKET:-}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:-}
   API_ROOT_PATH: /api
   REQUIRE_BACKGROUND_HEARTBEATS: "true"
+  ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-480}
+  AI_ENABLED: ${AI_ENABLED:-true}
+  AI_PRIMARY_PROVIDER: ${AI_PRIMARY_PROVIDER:-openai_compatible}
+  AI_PRIMARY_BASE_URL: ${AI_PRIMARY_BASE_URL:-}
+  AI_PRIMARY_API_KEY: ${AI_PRIMARY_API_KEY:-}
+  AI_DATA_REGION: ${AI_DATA_REGION:-cn-beijing}
+  AI_MODEL_DEFAULT: ${AI_MODEL_DEFAULT:-qwen-plus}
+  AI_MODEL_RESUME_PARSE: ${AI_MODEL_RESUME_PARSE:-}
+  AI_MODEL_INTERVIEW: ${AI_MODEL_INTERVIEW:-}
+  AI_MODEL_REWRITE: ${AI_MODEL_REWRITE:-}
+  AI_MODEL_REASONING: ${AI_MODEL_REASONING:-}
+  AI_REQUEST_TIMEOUT_SECONDS: ${AI_REQUEST_TIMEOUT_SECONDS:-60}
+  AI_MAX_RETRIES: ${AI_MAX_RETRIES:-1}
+  AI_AUDIT_CONTENT_LOGGING: ${AI_AUDIT_CONTENT_LOGGING:-false}
   DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-  DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
-  DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+  DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-}
+  DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-}
   INTERVIEW_GLOBAL_PROVIDER_CALLS_PER_DAY: ${INTERVIEW_GLOBAL_PROVIDER_CALLS_PER_DAY:-5000}
   MODEL_REQUIRED: ${MODEL_REQUIRED:-false}
   DEEPSEEK_INPUT_PRICE_CNY_PER_MILLION: ${DEEPSEEK_INPUT_PRICE_CNY_PER_MILLION:-}
@@ -59,6 +87,12 @@ services:
       timeout: 5s
       retries: 10
 
+  clamav:
+    image: clamav/clamav:1.4.5-debian13-slim
+    restart: unless-stopped
+    volumes:
+      - clamav_data:/var/lib/clamav
+
   migration:
     build:
       context: ./backend
@@ -79,10 +113,13 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      clamav:
+        condition: service_healthy
       migration:
         condition: service_completed_successfully
     volumes:
       - uploads_data:/data/uploads
+      - evidence_vault_data:/data/evidence-vault
     command:
       - uvicorn
       - app.main:app
@@ -147,3 +184,5 @@ volumes:
   postgres_data:
   redis_data:
   uploads_data:
+  evidence_vault_data:
+  clamav_data:

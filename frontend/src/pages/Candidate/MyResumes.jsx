@@ -4,7 +4,7 @@ import {
   Card, List, Button, Modal, Tag, Space, message, Spin, Row, Col, Typography, Divider, Alert,
 } from 'antd';
 import {
-  EditOutlined, DeleteOutlined, MedicineBoxOutlined, StarOutlined, ArrowLeftOutlined,
+  EditOutlined, DeleteOutlined, MedicineBoxOutlined, ArrowLeftOutlined,
 } from '@ant-design/icons';
 import api from '../../api';
 import ResumeHealthPanel from '../../components/ResumeHealthPanel';
@@ -14,6 +14,8 @@ import ResumeCoachPanel from '../../components/ResumeCoachPanel';
 import ResumeVariantsPanel from '../../components/ResumeVariantsPanel';
 import ClaimPassportPanel from '../../components/ClaimPassportPanel';
 import ImprovementSimulationPanel from '../../components/ImprovementSimulationPanel';
+import TargetJobOptimizationPanel from '../../components/TargetJobOptimizationPanel';
+import TopJobMatches from '../../components/TopJobMatches';
 import { notifyDashboardRefresh } from '../../utils/dashboardSync';
 
 const { Text, Paragraph } = Typography;
@@ -37,27 +39,55 @@ export default function MyResumes() {
   const [editData, setEditData] = useState({});
   const [rawText, setRawText] = useState('');
   const [topMatches, setTopMatches] = useState([]);
+  const [targetJobId, setTargetJobId] = useState(null);
   const [matchesLoading, setMatchesLoading] = useState(false);
   const [healthLoadingId, setHealthLoadingId] = useState(null);
   const [applyingId, setApplyingId] = useState(null);
   const [pendingSuggestions, setPendingSuggestions] = useState([]);
   const [saving, setSaving] = useState(false);
   const [claimHint, setClaimHint] = useState('');
+  const [passportFocus, setPassportFocus] = useState(null);
 
   const userId = localStorage.getItem('user_id');
   const selectedResume = resumes.find((r) => r.id === selectedId) || null;
+  const targetJob = topMatches.find((item) => String(item.job_id) === String(targetJobId)) || null;
+
+  const handleTargetJobChange = useCallback((matchOrJob) => {
+    const nextId = matchOrJob?.job_id || matchOrJob?.id || null;
+    setTargetJobId(nextId);
+  }, []);
 
   const handleSimulationAction = useCallback((option, issue) => {
     if (option.next_action === 'view_alternative_roles') {
       navigate('/candidate/browse-jobs');
       return;
     }
-    const target = option.next_action === 'preview_rewrite' ? 'resume-coach' : 'claim-passport';
-    document.getElementById(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    if (target === 'claim-passport') {
-      setClaimHint(issue.claim_ids?.length ? `请为相关 Claim 补充证据或说明：${issue.claim_ids.join(', ')}` : issue.diagnosis);
+    if (option.next_action === 'preview_rewrite') {
+      document.getElementById('resume-coach')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      message.info('已定位到 AI 简历诊断，请基于现有事实预览改写');
+      return;
     }
+    const hasClaims = Boolean(issue.claim_ids?.length);
+    setPassportFocus({
+      requestId: `${Date.now()}-${option.strategy_id}`,
+      claimIds: issue.claim_ids || [],
+      title: option.next_action === 'open_evidence_followup' ? '补充证据' : '查看相关履历主张',
+      message: hasClaims
+        ? `${issue.diagnosis} 已展开相关主张，请填写背景、角色、指标口径或文档引用。`
+        : `${issue.diagnosis} 当前问题未关联到现有主张；请先在“① 编辑”补充真实项目或经历，保存后再同步主张。`,
+    });
+    requestAnimationFrame(() => {
+      document.getElementById('claim-passport')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   }, [navigate]);
+
+  const handleResumeEnriched = useCallback((parsed) => {
+    if (!selectedId || !parsed) return;
+    setEditData(parsed);
+    setResumes((previous) => previous.map((resume) => (
+      resume.id === selectedId ? { ...resume, parsed } : resume
+    )));
+  }, [selectedId]);
 
   const fetchResumes = useCallback(async () => {
     setLoading(true);
@@ -87,7 +117,13 @@ export default function MyResumes() {
     setMatchesLoading(true);
     try {
       const res = await api.get(`/matches/resume/${resumeId}`);
-      setTopMatches((res.data || []).slice(0, 3));
+      const rows = (res.data || []).slice(0, 3);
+      setTopMatches(rows);
+      setTargetJobId((current) => (
+        rows.some((item) => String(item.job_id) === String(current))
+          ? current
+          : (rows[0]?.job_id || null)
+      ));
     } catch {
       setTopMatches([]);
     } finally {
@@ -127,6 +163,7 @@ export default function MyResumes() {
     setPendingSuggestions([]);
     setRawText('');
     setTopMatches([]);
+    setTargetJobId(null);
     try {
       const detail = await api.get(`/resume/${resume.id}`);
       const merged = { ...resume, ...detail.data };
@@ -355,24 +392,12 @@ export default function MyResumes() {
               </>
             )}
             <Divider style={{ margin: '12px 0' }} />
-            <Text strong><StarOutlined /> Top 3 匹配</Text>
-            <Spin spinning={matchesLoading}>
-              {topMatches.length === 0 ? (
-                <Text type="secondary" style={{ fontSize: 12 }}>保存或采纳建议后更新</Text>
-              ) : (
-                <List
-                  size="small"
-                  dataSource={topMatches}
-                  renderItem={(m, idx) => (
-                    <List.Item style={{ padding: '4px 0' }}>
-                      <Tag color={idx === 0 ? 'gold' : 'blue'}>#{idx + 1}</Tag>
-                      <Text style={{ fontSize: 13 }}>{m.job_title}</Text>
-                      <Tag color="volcano">{Number(m.score).toFixed(1)}</Tag>
-                    </List.Item>
-                  )}
-                />
-              )}
-            </Spin>
+            <TopJobMatches
+              matches={topMatches}
+              loading={matchesLoading}
+              targetJobId={targetJobId}
+              onTargetChange={handleTargetJobChange}
+            />
           </Card>
         </Col>
 
@@ -409,7 +434,7 @@ export default function MyResumes() {
             </Card>
             <div id="resume-coach"><ResumeCoachPanel
               resumeId={selectedResume.id}
-              defaultJobTitle={editData.expected_job_title}
+              defaultJobTitle={targetJob?.job_title || editData.expected_job_title}
               onApplySuggestion={(s) => handleApplySuggestion(selectedResume.id, s)}
               onDismissSuggestion={(s) => handleDismissSuggestion(selectedResume.id, s)}
               onSuggestionsUpdated={setPendingSuggestions}
@@ -417,15 +442,43 @@ export default function MyResumes() {
             /></div>
             <ResumeVariantsPanel
               resumeId={selectedResume.id}
-              defaultJobTitle={editData.expected_job_title}
+              defaultJobTitle={targetJob?.job_title || editData.expected_job_title}
               topMatches={topMatches}
+              targetJobId={targetJobId}
+              onTargetJobChange={handleTargetJobChange}
               onApplyVariant={handleVariantApplied}
             />
-            <div id="claim-passport"><ClaimPassportPanel resumeId={selectedResume.id} /></div>
-            <ImprovementSimulationPanel resumeId={selectedResume.id} jobId={topMatches[0]?.job_id} onAction={handleSimulationAction} />
+            <div id="claim-passport"><ClaimPassportPanel
+              resumeId={selectedResume.id}
+              focusRequest={passportFocus}
+              onResumeEnriched={handleResumeEnriched}
+            /></div>
+            <ImprovementSimulationPanel
+              resumeId={selectedResume.id}
+              jobId={targetJobId}
+              onAction={handleSimulationAction}
+            />
           </div>
         </Col>
       </Row>
+      <TargetJobOptimizationPanel
+        key={`${selectedResume.id}:${targetJobId || 'none'}`}
+        resumeId={selectedResume.id}
+        targetJobId={targetJobId}
+        onTargetJobChange={handleTargetJobChange}
+        onApplied={() => openWorkbench(selectedResume)}
+        onFocusClaims={(issue) => {
+          setPassportFocus({
+            requestId: `${Date.now()}-target-gap`,
+            claimIds: issue.claim_ids || [],
+            title: '已定位到岗位差距对应的经历',
+            message: issue.diagnosis,
+          });
+          requestAnimationFrame(() => {
+            document.getElementById('claim-passport')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          });
+        }}
+      />
     </div>
   );
 

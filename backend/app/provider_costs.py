@@ -111,7 +111,10 @@ async def record_provider_cost_event(
 ) -> ProviderCostEvent:
     normalized = usage or {
         "provider": "deepseek",
-        "model": requested_model or os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
+        "model": requested_model
+        or os.getenv("DEEPSEEK_MODEL")
+        or os.getenv("AI_MODEL_DEFAULT")
+        or "qwen-plus",
         "provider_request_id": None,
         "input_tokens": 0,
         "output_tokens": 0,

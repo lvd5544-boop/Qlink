@@ -7,11 +7,14 @@ import os
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from .ai.config import ai_enabled, primary_api_key, provider_configured
 from .schema_version import inspect_schema, schema_version_required
 
 
 def model_runtime_mode() -> str:
-    return "provider" if os.getenv("DEEPSEEK_API_KEY", "").strip() else "rules_only"
+    if not ai_enabled():
+        return "rules_only"
+    return "provider" if provider_configured() else "rules_only"
 
 
 def _model_required() -> bool:
@@ -86,6 +89,16 @@ async def collect_readiness(engine: AsyncEngine, redis_client) -> dict:
         "ok": model_mode == "provider" or not _model_required(),
         "mode": model_mode,
         "required": _model_required(),
+        "ai_enabled": ai_enabled(),
+        "reason": (
+            None
+            if model_mode == "provider"
+            else "ai_disabled"
+            if not ai_enabled()
+            else "api_key_missing"
+            if not primary_api_key()
+            else "provider_unavailable"
+        ),
     }
     ready = all(item["ok"] for item in checks.values())
     return {"status": "ready" if ready else "not_ready", "checks": checks}
