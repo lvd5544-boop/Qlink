@@ -84,6 +84,15 @@ class ApplyRequest(BaseModel):
     cover_letter: Optional[str] = None
 
 
+class ExternalTrackingRequest(BaseModel):
+    job_id: str
+    resume_id: str
+
+
+class ExternalTrackingStatusRequest(BaseModel):
+    status: str
+
+
 class ConflictReviewRequest(BaseModel):
     claim_id: str = Field(min_length=1, max_length=160)
     reason: str = Field(min_length=1, max_length=2000)
@@ -408,6 +417,7 @@ class _SnapshotResume:
 
 def _application_payload(app: JobApplication, job: JobDescription | None = None):
     threads = claim_threads_summary(app)
+    meta = app.pipeline_meta if isinstance(app.pipeline_meta, dict) else {}
     return {
         "id": str(app.id),
         "job_id": app.job_id,
@@ -419,6 +429,8 @@ def _application_payload(app: JobApplication, job: JobDescription | None = None)
         "status_label": STATUS_LABELS.get(app.status, app.status),
         "employer_status_label": EMPLOYER_STATUS_LABELS.get(app.status, app.status),
         "cover_letter": app.cover_letter,
+        "external_tracking": bool(meta.get("external_tracking")),
+        "application_source": meta.get("application_source"),
         "created_at": app.created_at.isoformat() if app.created_at else None,
         "updated_at": app.updated_at.isoformat() if app.updated_at else None,
         "employer_reviewed_at": threads.get("employer_reviewed_at"),
@@ -437,9 +449,7 @@ def _application_payload(app: JobApplication, job: JobDescription | None = None)
             )
             for role in ("candidate", "employer")
         },
-        "current_resume_version_id": (app.pipeline_meta or {}).get("current_resume_version_id")
-        if isinstance(app.pipeline_meta, dict)
-        else None,
+        "current_resume_version_id": meta.get("current_resume_version_id"),
         "initial_submission_snapshot": deepcopy(
             (app.pipeline_meta or {}).get("initial_submission_snapshot")
         )
@@ -740,6 +750,115 @@ async def apply_job(
         "status": "ok",
         "application": _application_payload(application, job),
     }
+
+
+@router.post("/external-tracking")
+async def create_external_application_tracking(
+    req: ExternalTrackingRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """记录候选人在站外完成的投递；不会向企业发送申请。"""
+    if current_user.role != "candidate":
+        raise HTTPException(status_code=403, detail="仅求职者可记录站外投递")
+
+    job = await db.get(JobDescription, req.job_id)
+    parsed = job.parsed_json or {} if job else {}
+    if (
+        not job
+        or not parsed.get("advisor_private")
+        or str(parsed.get("advisor_imported_by")) != str(current_user.id)
+    ):
+        raise HTTPException(status_code=404, detail="仅可记录本人导入的目标岗位")
+
+    resume = await db.get(Resume, req.resume_id)
+    if not resume or resume.user_id != str(current_user.id):
+        raise HTTPException(status_code=404, detail="简历不存在或不属于当前用户")
+
+    await _lock_application_identity(
+        db,
+        job_id=req.job_id,
+        candidate_id=str(current_user.id),
+    )
+    existing = await db.execute(
+        select(JobApplication).where(
+            JobApplication.job_id == req.job_id,
+            JobApplication.candidate_id == str(current_user.id),
+        )
+    )
+    existing_app = existing.scalars().first()
+    if existing_app:
+        if not (existing_app.pipeline_meta or {}).get("external_tracking"):
+            raise HTTPException(status_code=409, detail="该岗位已有平台申请记录")
+        return {"status": "exists", "application": _application_payload(existing_app, job)}
+
+    application = JobApplication(
+        job_id=req.job_id,
+        employer_id=None,
+        candidate_id=str(current_user.id),
+        resume_id=req.resume_id,
+        status="submitted",
+    )
+    capture_resume_snapshot(
+        application,
+        resume,
+        actor_id=str(current_user.id),
+        source="candidate_external_tracking",
+    )
+    meta = dict(application.pipeline_meta or {})
+    meta.update(
+        {
+            "external_tracking": True,
+            "application_source": "candidate_external_tracking",
+            "external_tracking_notice": "candidate_recorded_only_not_platform_submitted",
+        }
+    )
+    application.pipeline_meta = meta
+    db.add(application)
+    await db.commit()
+    await db.refresh(application)
+    return {"status": "ok", "application": _application_payload(application, job)}
+
+
+@router.patch("/external-tracking/{application_id}/status")
+async def update_external_application_status(
+    application_id: str,
+    req: ExternalTrackingStatusRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """由候选人记录站外申请结果，并保留状态历史。"""
+    if current_user.role != "candidate":
+        raise HTTPException(status_code=403, detail="仅求职者可更新站外投递")
+    app = await _load_application_for_update(db, application_id)
+    if not app or app.candidate_id != str(current_user.id):
+        raise HTTPException(status_code=404, detail="投递记录不存在")
+    if not (app.pipeline_meta or {}).get("external_tracking"):
+        raise HTTPException(status_code=409, detail="该记录不是站外投递")
+
+    transition = {
+        "interview_invited": "candidate_records_interview",
+        "rejected": "candidate_records_rejected",
+        "accepted": "candidate_records_accepted",
+    }
+    action = transition.get(req.status)
+    if not action:
+        raise HTTPException(status_code=400, detail="可记录的结果为：进入面试、未通过、录用")
+    try:
+        set_application_status(
+            app,
+            req.status,
+            action=action,
+            actor_role="candidate",
+            actor_id=str(current_user.id),
+            source="candidate_external_tracking",
+        )
+    except StatusTransitionError as exc:
+        raise HTTPException(status_code=exc.code, detail=str(exc)) from exc
+    await db.commit()
+    await db.refresh(app)
+    job = await db.get(JobDescription, app.job_id)
+    return {"status": "ok", "application": _application_payload(app, job)}
 
 
 class ChangeResumeRequest(BaseModel):

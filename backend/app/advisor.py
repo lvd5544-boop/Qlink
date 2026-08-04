@@ -574,6 +574,7 @@ async def serialize_profile(
             "id": str(job.id),
             "title": job.title,
             "company_name": (job.parsed_json or {}).get("company_name"),
+            "advisor_private": bool((job.parsed_json or {}).get("advisor_private")),
         },
         "snapshot": {
             "id": str(snapshot.id),

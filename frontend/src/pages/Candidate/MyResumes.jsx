@@ -186,6 +186,7 @@ export default function MyResumes() {
     if (loading || deepLinkHandled.current || selectedId) return undefined;
     const timer = setTimeout(() => {
       const resumeId = searchParams.get('resumeId');
+      const requestedJobId = searchParams.get('jobId');
       if (!resumeId) return;
 
       deepLinkHandled.current = true;
@@ -198,14 +199,18 @@ export default function MyResumes() {
 
       const target = resumes.find((r) => r.id === resumeId);
       if (target) {
-        openWorkbench(target);
-        const hint = searchParams.get('claimHint');
-        if (hint) {
-          setClaimHint(hint);
-          message.info(`已打开简历。请在右侧「③ 诊断与采纳」查看表述一致性提醒：${hint.slice(0, 40)}…`);
-        } else {
-          message.info('已打开申请关联简历。在右侧「③ 诊断与采纳」可查看表述一致性提醒与 AI 追问。');
-        }
+        void openWorkbench(target).then(() => {
+          if (requestedJobId) setTargetJobId(requestedJobId);
+          const hint = searchParams.get('claimHint');
+          if (hint) {
+            setClaimHint(hint);
+            message.info(`已打开简历。请在右侧「③ 诊断与采纳」查看表述一致性提醒：${hint.slice(0, 40)}…`);
+          } else if (requestedJobId) {
+            message.info('已带入目标岗位。请在下方完成忠实改写，并选择一个最重要的提升行动。');
+          } else {
+            message.info('已打开申请关联简历。在右侧「③ 诊断与采纳」可查看表述一致性提醒与 AI 追问。');
+          }
+        });
       } else {
         message.warning('未找到对应简历，请从列表中选择');
       }

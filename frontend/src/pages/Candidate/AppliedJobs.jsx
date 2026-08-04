@@ -11,6 +11,7 @@ import {
   Input,
   List,
   message,
+  Popconfirm,
   Row,
   Space,
   Spin,
@@ -25,7 +26,7 @@ import {
   MessageOutlined,
   CheckCircleOutlined,
 } from '@ant-design/icons';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import api from '../../api';
 import { getApiErrorMessage } from '../../utils/apiError';
 import MatchEvaluationPanel from '../../components/MatchEvaluationPanel';
@@ -53,7 +54,15 @@ const canPerform = (application, action) => (
   application?.allowed_actions?.candidate?.includes(action) ?? false
 );
 
+const externalStatusText = {
+  submitted: '已记录投递',
+  interview_invited: '已进入面试',
+  rejected: '未通过',
+  accepted: '已录用',
+};
+
 export default function AppliedJobs() {
+  const [searchParams] = useSearchParams();
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -65,6 +74,7 @@ export default function AppliedJobs() {
   const [activeClaimId, setActiveClaimId] = useState(null);
   const [replySuccess, setReplySuccess] = useState({});
   const [evalExpanded, setEvalExpanded] = useState(false);
+  const [updatingOutcome, setUpdatingOutcome] = useState(null);
   const messagesEndRef = useRef(null);
   const autoOpened = useRef(false);
 
@@ -86,6 +96,10 @@ export default function AppliedJobs() {
 
   const loadMessages = useCallback(async (app) => {
     setCurrentApplication(app);
+    if (app.external_tracking) {
+      setMessages([]);
+      return;
+    }
     setMessagesLoading(true);
     const opens = openClaimsFromApp(app);
     setActiveClaimId(opens[0]?.claim_id || null);
@@ -100,6 +114,21 @@ export default function AppliedJobs() {
       setMessagesLoading(false);
     }
   }, []);
+
+  const updateExternalOutcome = async (app, status) => {
+    setUpdatingOutcome(`${app.id}:${status}`);
+    try {
+      const res = await api.patch(`/applications/external-tracking/${app.id}/status`, { status });
+      const updated = res.data?.application;
+      setApplications((current) => current.map((item) => (item.id === app.id ? { ...item, ...updated } : item)));
+      setCurrentApplication((current) => (current?.id === app.id ? { ...current, ...updated } : current));
+      message.success('站外申请结果已更新');
+    } catch (err) {
+      message.error(getApiErrorMessage(err, '更新申请结果失败'));
+    } finally {
+      setUpdatingOutcome(null);
+    }
+  };
 
   const submitClarificationReply = async () => {
     const appId = currentApplication?.id;
@@ -171,6 +200,13 @@ export default function AppliedJobs() {
 
   useEffect(() => {
     if (loading || autoOpened.current || !applications.length) return;
+    const requestedId = searchParams.get('applicationId');
+    const requested = applications.find((a) => a.id === requestedId);
+    if (requested) {
+      autoOpened.current = true;
+      const timer = setTimeout(() => loadMessages(requested), 0);
+      return () => clearTimeout(timer);
+    }
     const pending = applications.find((a) => a.status === 'needs_clarification');
     if (pending) {
       autoOpened.current = true;
@@ -178,7 +214,7 @@ export default function AppliedJobs() {
       return () => clearTimeout(timer);
     }
     return undefined;
-  }, [loading, applications, loadMessages]);
+  }, [loading, applications, loadMessages, searchParams]);
 
   const pendingClarifications = applications.filter((application) => (
     canPerform(application, 'reply_clarification')
@@ -203,7 +239,7 @@ export default function AppliedJobs() {
         title={(
           <Space>
             <FileSearchOutlined />
-            已申请岗位
+            投递与结果
           </Space>
         )}
         extra={(
@@ -230,7 +266,7 @@ export default function AppliedJobs() {
 
         <Spin spinning={loading || refreshing}>
           {applications.length === 0 ? (
-            <Empty description="暂无申请记录" image={Empty.PRESENTED_IMAGE_SIMPLE}>
+            <Empty description="暂无投递记录" image={Empty.PRESENTED_IMAGE_SIMPLE}>
               <Link to="/candidate/browse-jobs">
                 <Button type="primary">去浏览岗位</Button>
               </Link>
@@ -248,7 +284,9 @@ export default function AppliedJobs() {
                       borderRadius: 8,
                       padding: '12px 8px',
                     }}
-                    extra={(
+                    extra={app.external_tracking ? (
+                      <Button onClick={() => loadMessages(app)}>更新结果</Button>
+                    ) : (
                       <Button
                         type={canPerform(app, 'reply_clarification') ? 'primary' : 'default'}
                         icon={<MessageOutlined />}
@@ -262,7 +300,10 @@ export default function AppliedJobs() {
                       title={(
                         <Space wrap>
                           <span style={{ fontWeight: 600 }}>{app.job_title || '未知岗位'}</span>
-                          <Tag color={statusCfg.color}>{statusCfg.text}</Tag>
+                          <Tag color={statusCfg.color}>
+                            {app.external_tracking ? externalStatusText[app.status] : statusCfg.text}
+                          </Tag>
+                          {app.external_tracking && <Tag>站外记录</Tag>}
                           {canPerform(app, 'reply_clarification') && (
                             <Tag color="orange" icon={<MessageOutlined />}>
                               待回复{app.open_claim_count ? ` · ${app.open_claim_count}` : ''}
@@ -275,7 +316,8 @@ export default function AppliedJobs() {
                           <EnvironmentOutlined /> {app.job_location || '不限'}
                           <DollarOutlined /> {app.job_salary || '面议'}
                           <span>
-                            申请：{app.created_at ? new Date(app.created_at).toLocaleString() : '—'}
+                            {app.external_tracking ? '记录：' : '申请：'}
+                            {app.created_at ? new Date(app.created_at).toLocaleString() : '—'}
                           </span>
                         </Space>
                       )}
@@ -289,6 +331,57 @@ export default function AppliedJobs() {
       </Card>
 
       {currentApplication && (
+        currentApplication.external_tracking ? (
+          <Card
+            className="content-card"
+            title={`站外申请进度 · ${currentApplication.job_title || '未知岗位'}`}
+          >
+            <Alert
+              type="info"
+              showIcon
+              message="这是你记录的站外进度"
+              description="平台没有替你向企业提交申请；结果由你根据实际进展更新。"
+              style={{ marginBottom: 16 }}
+            />
+            <Space wrap>
+              {currentApplication.status === 'submitted' && (
+                <Popconfirm
+                  title="确认已进入面试？"
+                  onConfirm={() => updateExternalOutcome(currentApplication, 'interview_invited')}
+                >
+                  <Button loading={updatingOutcome === `${currentApplication.id}:interview_invited`}>
+                    记录进入面试
+                  </Button>
+                </Popconfirm>
+              )}
+              {['submitted', 'interview_invited'].includes(currentApplication.status) && (
+                <>
+                  <Popconfirm
+                    title="确认本次申请未通过？"
+                    onConfirm={() => updateExternalOutcome(currentApplication, 'rejected')}
+                  >
+                    <Button danger loading={updatingOutcome === `${currentApplication.id}:rejected`}>
+                      记录未通过
+                    </Button>
+                  </Popconfirm>
+                  <Popconfirm
+                    title="确认已收到录用结果？"
+                    onConfirm={() => updateExternalOutcome(currentApplication, 'accepted')}
+                  >
+                    <Button type="primary" loading={updatingOutcome === `${currentApplication.id}:accepted`}>
+                      记录录用
+                    </Button>
+                  </Popconfirm>
+                </>
+              )}
+              {['rejected', 'accepted'].includes(currentApplication.status) && (
+                <Tag color={getStatusConfig(currentApplication.status).color}>
+                  {externalStatusText[currentApplication.status]}
+                </Tag>
+              )}
+            </Space>
+          </Card>
+        ) : (
         <Row gutter={16}>
           <Col xs={24} lg={16}>
             <Card
@@ -475,6 +568,7 @@ export default function AppliedJobs() {
             </Card>
           </Col>
         </Row>
+        )
       )}
     </Space>
   );

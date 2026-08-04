@@ -1,0 +1,80 @@
+name: Core user flow E2E
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  playwright-core-flow:
+    name: UI-only QLink core flow
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      APP_PORT: "8080"
+      PUBLIC_ORIGIN: http://localhost:8080
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: qlink-e2e-database-password
+      POSTGRES_DB: jobplatform_core_flow_e2e
+      SECRET_KEY: qlink-e2e-access-secret-at-least-32-bytes
+      FIDELITY_PROOF_SECRET_KEY: qlink-e2e-proof-secret-at-least-32-bytes
+      EMPLOYER_INVITE_CODE: e2e-employer-invite
+      MODEL_REQUIRED: "false"
+      AI_ENABLED: "false"
+      VIRUS_SCAN_ENABLED: "false"
+      E2E_BASE_URL: http://localhost:8080
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Playwright
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Start QLink Docker stack
+        run: docker compose up -d --build
+
+      - name: Wait for the user-facing application
+        run: |
+          ready=0
+          for attempt in $(seq 1 120); do
+            if curl --fail --silent http://localhost:8080/api/ready >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" != "1" ]; then
+            docker compose ps
+            exit 1
+          fi
+
+      - name: Run both visible core-flow branches
+        working-directory: frontend
+        run: npx playwright test e2e/core-user-flow.spec.js
+
+      - name: Capture Docker logs
+        if: always()
+        run: docker compose logs --no-color > docker-compose-e2e.log
+
+      - name: Upload Playwright and Docker evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-user-flow-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            frontend/e2e-report/
+            frontend/test-results/
+            docker-compose-e2e.log
+
+      - name: Stop QLink Docker stack
+        if: always()
+        run: docker compose down --volumes

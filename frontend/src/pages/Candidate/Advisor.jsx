@@ -8,6 +8,7 @@ import {
   Empty,
   Input,
   List,
+  Modal,
   Progress,
   Select,
   Space,
@@ -21,16 +22,18 @@ import {
   AuditOutlined,
   DatabaseOutlined,
   CompassOutlined,
+  FileAddOutlined,
   FundOutlined,
   LinkOutlined,
   RobotOutlined,
   SendOutlined,
   SolutionOutlined,
 } from '@ant-design/icons';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api';
 import { getApiErrorMessage } from '../../utils/apiError';
 import { createIdempotencyTracker } from '../../utils/idempotency';
+import CandidateActionMap from '../../components/CandidateActionMap';
 import PersonalizedGuidancePanel from '../../components/PersonalizedGuidancePanel';
 
 const { Paragraph, Text, Title } = Typography;
@@ -221,7 +224,9 @@ function AdvisorAnswer({ item }) {
 }
 
 export default function Advisor() {
+  const navigate = useNavigate();
   const diagnosticIdempotency = useRef(createIdempotencyTracker('advisor-diagnostic'));
+  const targetImportIdempotency = useRef(createIdempotencyTracker('advisor-target-import'));
   const [searchParams, setSearchParams] = useSearchParams();
   const [jobs, setJobs] = useState([]);
   const [resumes, setResumes] = useState([]);
@@ -233,6 +238,11 @@ export default function Advisor() {
   const [diagnosing, setDiagnosing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importTitle, setImportTitle] = useState('');
+  const [importJd, setImportJd] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [recordingApplication, setRecordingApplication] = useState(false);
   const jobId = searchParams.get('job_id') || '';
 
   const jobOptions = useMemo(
@@ -312,6 +322,47 @@ export default function Advisor() {
     }
   };
 
+  const importTargetJob = async () => {
+    const descriptionText = importJd.trim();
+    if (!descriptionText) {
+      message.warning('请粘贴完整的目标岗位 JD');
+      return;
+    }
+    const requestPayload = {
+      title: importTitle.trim() || null,
+      description_text: descriptionText,
+    };
+    const idempotencyKey = targetImportIdempotency.current.keyFor(requestPayload);
+    setImporting(true);
+    try {
+      const response = await api.post(
+        '/advisor/target-jobs/import',
+        requestPayload,
+        { headers: { 'Idempotency-Key': idempotencyKey } },
+      );
+      targetImportIdempotency.current.complete(idempotencyKey);
+      const importedJob = response.data?.job;
+      if (!importedJob?.id) throw new Error('target_job_import_missing_id');
+      setJobs((current) => [
+        importedJob,
+        ...current.filter((item) => String(item.id) !== String(importedJob.id)),
+      ]);
+      setProfile(response.data);
+      setMessages([]);
+      setDiagnostic(null);
+      setImportOpen(false);
+      setImportTitle('');
+      setImportJd('');
+      setLoading(true);
+      setSearchParams({ job_id: importedJob.id });
+      message.success('目标 JD 已导入，现在可以核对岗位要求并分析下一步');
+    } catch (error) {
+      message.error(getApiErrorMessage(error, '目标 JD 导入失败，请检查内容后重试'));
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const generateReadiness = async () => {
     if (!jobId || !selectedResumeId) {
       message.warning('请先选择一份简历');
@@ -338,6 +389,40 @@ export default function Advisor() {
     }
   };
   const targetRequirements = profile?.layers?.target_role?.requirements || [];
+
+  const openApplicationWorkbench = () => {
+    if (!selectedResumeId || !jobId) return;
+    const params = new URLSearchParams({ resumeId: selectedResumeId, jobId });
+    navigate(`/candidate/my-resumes?${params.toString()}`);
+  };
+
+  const resolveIssueInResume = (issue) => {
+    if (!selectedResumeId || !jobId) return;
+    const params = new URLSearchParams({
+      resumeId: selectedResumeId,
+      jobId,
+      claimHint: issue?.diagnosis || '请补充这条经历的背景、本人角色、行动、结果和证据。',
+    });
+    navigate(`/candidate/my-resumes?${params.toString()}`);
+  };
+
+  const recordExternalApplication = async () => {
+    if (!selectedResumeId || !jobId) return;
+    setRecordingApplication(true);
+    try {
+      const response = await api.post('/applications/external-tracking', {
+        job_id: jobId,
+        resume_id: selectedResumeId,
+      });
+      const applicationId = response.data?.application?.id;
+      message.success(response.data?.status === 'exists' ? '该站外投递已记录' : '已记录站外投递');
+      navigate(`/candidate/applied-jobs${applicationId ? `?applicationId=${applicationId}` : ''}`);
+    } catch (error) {
+      message.error(getApiErrorMessage(error, '记录站外投递失败'));
+    } finally {
+      setRecordingApplication(false);
+    }
+  };
 
   return (
     <div className="advisor-page">
@@ -367,6 +452,9 @@ export default function Advisor() {
               placeholder="选择目标岗位"
               onChange={(value) => setSearchParams({ job_id: value })}
             />
+            <Button icon={<FileAddOutlined />} onClick={() => setImportOpen(true)}>
+              粘贴目标 JD
+            </Button>
             <Select
               allowClear
               value={selectedResumeId}
@@ -397,6 +485,45 @@ export default function Advisor() {
           )}
         </Space>
       </Card>
+
+      <Modal
+        title="粘贴你真正想申请的岗位"
+        open={importOpen}
+        okText="导入并查看岗位要求"
+        cancelText="取消"
+        confirmLoading={importing}
+        onOk={importTargetJob}
+        onCancel={() => {
+          if (!importing) setImportOpen(false);
+        }}
+        destroyOnHidden
+      >
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <Alert
+            showIcon
+            type="info"
+            message="JD 只用于理解目标岗位"
+            description="系统不会把岗位要求当成你的经历，也不会把你导入的岗位公开到岗位列表。"
+          />
+          <Input
+            value={importTitle}
+            maxLength={255}
+            placeholder="岗位名称（可选，例如：AI 产品经理）"
+            onChange={(event) => setImportTitle(event.target.value)}
+          />
+          <Input.TextArea
+            value={importJd}
+            autoSize={{ minRows: 8, maxRows: 16 }}
+            maxLength={100000}
+            showCount
+            placeholder="从企业官网、招聘平台或招聘方消息中粘贴完整 JD"
+            onChange={(event) => setImportJd(event.target.value)}
+          />
+          <Text type="secondary">
+            导入后先查看系统提取的关键要求，再选择简历分析已有证据、信息缺口和下一步行动。
+          </Text>
+        </Space>
+      </Modal>
 
       <Spin spinning={loading}>
         {profile ? (
@@ -453,11 +580,7 @@ export default function Advisor() {
         {diagnostic ? (
           <div className="advisor-readiness-grid">
             <div>
-              <Alert
-                showIcon
-                type="info"
-                message="先完成右侧最重要的 1—3 项，不需要一次把简历全部重写"
-              />
+              <CandidateActionMap diagnostic={diagnostic} onResolveIssue={resolveIssueInResume} />
               <Collapse
                 style={{ marginTop: 12 }}
                 items={[{
@@ -482,7 +605,34 @@ export default function Advisor() {
               <PersonalizedGuidancePanel
                 guidance={diagnostic.personalized_guidance}
                 fallback={diagnostic.decision_trace?.recommended_next_actions || []}
+                title="按这个顺序投递和提升"
               />
+              <Space direction="vertical" size={8} style={{ width: '100%', marginTop: 12 }}>
+                <Button type="primary" block onClick={openApplicationWorkbench}>
+                  生成当前可投版本并安排提升行动
+                </Button>
+                {profile?.job?.advisor_private && (
+                  <Button
+                    block
+                    loading={recordingApplication}
+                    onClick={() => Modal.confirm({
+                      title: '确认你已在站外完成投递？',
+                      content: '这里只记录进度，不会替你向企业提交，也不会把简历发送给企业。',
+                      okText: '确认已投递并记录',
+                      cancelText: '取消',
+                      onOk: recordExternalApplication,
+                    })}
+                  >
+                    我已在站外投递，记录进度
+                  </Button>
+                )}
+                <Button block onClick={() => navigate('/candidate/applied-jobs')}>
+                  查看投递、面试和录用结果
+                </Button>
+                <Text type="secondary">
+                  改写只使用你已确认的履历事实；提升行动完成后仍需补充新经历或证据。
+                </Text>
+              </Space>
             </div>
           </div>
         ) : (

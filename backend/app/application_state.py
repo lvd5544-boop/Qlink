@@ -43,6 +43,9 @@ APPLICATION_TRANSITIONS = {
         "create_invitation": "interview_invited",
         "employer_rejects": "rejected",
         "employer_accepts": "accepted",
+        "candidate_records_interview": "interview_invited",
+        "candidate_records_rejected": "rejected",
+        "candidate_records_accepted": "accepted",
     },
     "viewed": {
         "employer_view": "viewed",
@@ -75,6 +78,8 @@ APPLICATION_TRANSITIONS = {
         "employer_view": "interview_invited",
         "employer_rejects": "rejected",
         "employer_accepts": "accepted",
+        "candidate_records_rejected": "rejected",
+        "candidate_records_accepted": "accepted",
     },
 }
 
@@ -87,6 +92,9 @@ ACTION_ROLES = {
     "candidate_answers_some": frozenset({"candidate"}),
     "candidate_answers_all": frozenset({"candidate"}),
     "employer_closes_clarification": frozenset({"employer"}),
+    "candidate_records_interview": frozenset({"candidate"}),
+    "candidate_records_rejected": frozenset({"candidate"}),
+    "candidate_records_accepted": frozenset({"candidate"}),
 }
 
 _PUBLIC_ACTION_NAMES = {

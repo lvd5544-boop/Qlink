@@ -6,6 +6,7 @@ import api from '../api';
 import { getApiErrorMessage } from '../utils/apiError';
 import { decodeHtmlEntities } from '../utils/text';
 import PersonalizedGuidancePanel from './PersonalizedGuidancePanel';
+import CandidateApplicationKit from './CandidateApplicationKit';
 
 const { Paragraph, Text } = Typography;
 
@@ -64,12 +65,22 @@ export default function TargetJobOptimizationPanel({
     api.get('/browse-jobs').then((response) => {
       if (!active) return;
       const rows = Array.isArray(response.data) ? response.data : (response.data?.jobs || []);
-      setJobs(rows);
+      if (!targetJobId || rows.some((item) => String(item.id) === String(targetJobId))) {
+        setJobs(rows);
+        return;
+      }
+      api.get(`/advisor/jobs/${targetJobId}/profile`).then((profileResponse) => {
+        if (!active) return;
+        const privateJob = profileResponse.data?.job;
+        setJobs(privateJob?.id ? [privateJob, ...rows] : rows);
+      }).catch(() => {
+        if (active) setJobs(rows);
+      });
     }).catch(() => {
       if (active) setJobs([]);
     });
     return () => { active = false; };
-  }, []);
+  }, [targetJobId]);
 
   const effectiveJobId = targetJobId || jobId;
 
@@ -371,6 +382,13 @@ export default function TargetJobOptimizationPanel({
             </Card>
           </Col>
         </Row>
+        {diagnostic && (
+          <CandidateApplicationKit
+            resumeId={resumeId}
+            jobId={effectiveJobId}
+            diagnostic={diagnostic}
+          />
+        )}
       </Spin>
     </Card>
   );

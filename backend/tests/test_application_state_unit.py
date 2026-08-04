@@ -55,6 +55,9 @@ def _resume(resume_id: str, parsed_json: dict):
         ("clarification_closed", "interview_invited", "create_invitation", "employer"),
         ("interview_invited", "rejected", "employer_rejects", "employer"),
         ("viewed", "accepted", "employer_accepts", "employer"),
+        ("submitted", "interview_invited", "candidate_records_interview", "candidate"),
+        ("submitted", "rejected", "candidate_records_rejected", "candidate"),
+        ("interview_invited", "accepted", "candidate_records_accepted", "candidate"),
     ],
 )
 def test_application_transition_table_allows_required_edges(current, target, action, actor_role):
