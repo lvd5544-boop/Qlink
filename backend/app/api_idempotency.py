@@ -22,7 +22,9 @@ def _now() -> datetime:
 
 
 def fingerprint_payload(payload: Any) -> str:
-    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str, separators=(",", ":"))
+    raw = json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, default=str, separators=(",", ":")
+    )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 

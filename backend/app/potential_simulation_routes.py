@@ -13,7 +13,7 @@ from .claim_passport import sync_resume_claims
 from .database import get_db
 from .models_db import JobDescription, PotentialSimulationEvent, Resume, ResumeClaim, User
 from .potential_simulation import RULE_VERSION, build_simulation
-from .security import require_admin, require_candidate
+from .security import candidate_can_access_job, require_admin, require_candidate
 
 router = APIRouter(tags=["Potential Simulation"])
 
@@ -111,7 +111,7 @@ async def _owned_inputs(db: AsyncSession, resume_id: str, job_id: str, user: Use
     if not resume or resume.user_id != str(user.id):
         raise HTTPException(status_code=404, detail="简历不存在或无权访问")
     job = await db.get(JobDescription, job_id)
-    if not job:
+    if not job or not candidate_can_access_job(job, str(user.id)):
         raise HTTPException(status_code=404, detail="岗位不存在")
     await sync_resume_claims(db, resume, actor_id=str(user.id), reason="potential_simulation")
     claims = (
@@ -170,9 +170,7 @@ async def get_improvement_simulation(
     )
     selected_ids = list(latest.strategy_ids or []) if latest else None
     try:
-        resume, job, result = await _simulate(
-            db, resume_id, job_id, current_user, selected_ids
-        )
+        resume, job, result = await _simulate(db, resume_id, job_id, current_user, selected_ids)
     except HTTPException as exc:
         if not latest or exc.status_code != 422:
             raise

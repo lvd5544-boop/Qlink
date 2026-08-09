@@ -96,22 +96,30 @@ async def create_resume_version(
         raise RuntimeError("resume_version_conflict") from exc
 
     claims = (
-        await db.execute(
-            select(ResumeClaim).where(
-                ResumeClaim.resume_id == str(resume.id),
-                ResumeClaim.workflow_state != "withdrawn",
-            )
-        )
-    ).scalars().all()
-    for claim in claims:
-        evidence_ids = (
+        (
             await db.execute(
-                select(ClaimEvidence.id).where(
-                    ClaimEvidence.claim_id == str(claim.id),
-                    ClaimEvidence.verification_status != "withdrawn",
+                select(ResumeClaim).where(
+                    ResumeClaim.resume_id == str(resume.id),
+                    ResumeClaim.workflow_state != "withdrawn",
                 )
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
+    )
+    for claim in claims:
+        evidence_ids = (
+            (
+                await db.execute(
+                    select(ClaimEvidence.id).where(
+                        ClaimEvidence.claim_id == str(claim.id),
+                        ClaimEvidence.verification_status != "withdrawn",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
         revision = (
             await db.execute(
                 select(ClaimRevision)
@@ -234,7 +242,9 @@ def _capability_names(claims: list[ResumeClaim]) -> list[str]:
 
 def _entry_and_details(
     claims: list[ResumeClaim],
-) -> tuple[dict[tuple[str, int | None], ResumeClaim], dict[tuple[str, int | None], list[ResumeClaim]]]:
+) -> tuple[
+    dict[tuple[str, int | None], ResumeClaim], dict[tuple[str, int | None], list[ResumeClaim]]
+]:
     entries: dict[tuple[str, int | None], ResumeClaim] = {}
     details: dict[tuple[str, int | None], list[ResumeClaim]] = {}
     for claim in claims:
@@ -258,15 +268,19 @@ async def build_map(
     limit: int,
 ) -> dict[str, Any]:
     claims = (
-        await db.execute(
-            select(ResumeClaim)
-            .where(
-                ResumeClaim.user_id == str(user_id),
-                ResumeClaim.workflow_state != "withdrawn",
+        (
+            await db.execute(
+                select(ResumeClaim)
+                .where(
+                    ResumeClaim.user_id == str(user_id),
+                    ResumeClaim.workflow_state != "withdrawn",
+                )
+                .order_by(ResumeClaim.updated_at.desc())
             )
-            .order_by(ResumeClaim.updated_at.desc())
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     claim_ids = [str(row.id) for row in claims]
     links = []
     if claim_ids:
@@ -287,33 +301,53 @@ async def build_map(
     edges: list[dict[str, Any]] = []
     if view == "timeline":
         experiences = (
-            await db.execute(
-                select(CareerExperience).where(
-                    CareerExperience.user_id == str(user_id),
-                    CareerExperience.workflow_state != "withdrawn",
+            (
+                await db.execute(
+                    select(CareerExperience).where(
+                        CareerExperience.user_id == str(user_id),
+                        CareerExperience.workflow_state != "withdrawn",
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for exp in experiences:
-            nodes.append({"id": f"experience:{exp.id}", "type": "experience", "label": exp.title or exp.organization or "职业经历", "meta": serialize_experience(exp)})
+            nodes.append(
+                {
+                    "id": f"experience:{exp.id}",
+                    "type": "experience",
+                    "label": exp.title or exp.organization or "职业经历",
+                    "meta": serialize_experience(exp),
+                }
+            )
         for key, claim in entries.items():
             node_id = f"claim:{claim.id}"
-            nodes.append({
-                "id": node_id,
-                "type": _project_type(claim.section),
-                "label": claim.current_text,
-                "meta": {
-                    "claim_id": str(claim.id),
-                    "section": claim.section,
-                    "detail_count": len(grouped_details.get(key, [])),
-                    "details": [
-                        {"id": str(item.id), "text": item.current_text}
-                        for item in grouped_details.get(key, [])[:8]
-                    ],
-                },
-            })
+            nodes.append(
+                {
+                    "id": node_id,
+                    "type": _project_type(claim.section),
+                    "label": claim.current_text,
+                    "meta": {
+                        "claim_id": str(claim.id),
+                        "section": claim.section,
+                        "detail_count": len(grouped_details.get(key, [])),
+                        "details": [
+                            {"id": str(item.id), "text": item.current_text}
+                            for item in grouped_details.get(key, [])[:8]
+                        ],
+                    },
+                }
+            )
             if claim.career_experience_id:
-                edges.append({"id": f"contains:{claim.id}", "source": f"experience:{claim.career_experience_id}", "target": node_id, "relationship": "包含"})
+                edges.append(
+                    {
+                        "id": f"contains:{claim.id}",
+                        "source": f"experience:{claim.career_experience_id}",
+                        "target": node_id,
+                        "relationship": "包含",
+                    }
+                )
     elif view == "capability":
         for capability in _capability_names(claims):
             capability_id = f"capability:{capability.casefold()}"
@@ -322,40 +356,46 @@ async def build_map(
                 detail_text = " ".join(item.current_text or "" for item in details).casefold()
                 if capability.casefold() in detail_text:
                     matched_groups.append(key)
-            nodes.append({
-                "id": capability_id,
-                "type": "capability",
-                "label": capability,
-                "meta": {
-                    "project_count": len(matched_groups),
-                    "status": "有项目支撑" if matched_groups else "待关联项目",
-                },
-            })
+            nodes.append(
+                {
+                    "id": capability_id,
+                    "type": "capability",
+                    "label": capability,
+                    "meta": {
+                        "project_count": len(matched_groups),
+                        "status": "有项目支撑" if matched_groups else "待关联项目",
+                    },
+                }
+            )
             for key in matched_groups[:6]:
                 entry = entries.get(key)
                 if entry is None:
                     continue
                 project_id = f"project:{entry.id}"
                 if not any(node["id"] == project_id for node in nodes):
-                    nodes.append({
-                        "id": project_id,
-                        "type": _project_type(entry.section),
-                        "label": entry.current_text,
-                        "meta": {
-                            "claim_id": str(entry.id),
-                            "detail_count": len(grouped_details.get(key, [])),
-                            "details": [
-                                {"id": str(item.id), "text": item.current_text}
-                                for item in grouped_details.get(key, [])[:8]
-                            ],
-                        },
-                    })
-                edges.append({
-                    "id": f"capability-project:{capability_id}:{entry.id}",
-                    "source": capability_id,
-                    "target": project_id,
-                    "relationship": "在该项目/经历中使用",
-                })
+                    nodes.append(
+                        {
+                            "id": project_id,
+                            "type": _project_type(entry.section),
+                            "label": entry.current_text,
+                            "meta": {
+                                "claim_id": str(entry.id),
+                                "detail_count": len(grouped_details.get(key, [])),
+                                "details": [
+                                    {"id": str(item.id), "text": item.current_text}
+                                    for item in grouped_details.get(key, [])[:8]
+                                ],
+                            },
+                        }
+                    )
+                edges.append(
+                    {
+                        "id": f"capability-project:{capability_id}:{entry.id}",
+                        "source": capability_id,
+                        "target": project_id,
+                        "relationship": "在该项目/经历中使用",
+                    }
+                )
     elif view == "evidence":
         linked_claim_ids = {
             str(link.claim_id)
@@ -365,17 +405,19 @@ async def build_map(
         for claim in claims:
             if str(claim.id) not in linked_claim_ids:
                 continue
-            nodes.append({
-                "id": f"claim:{claim.id}",
-                "type": "claim",
-                "label": claim.current_text,
-                "meta": {
-                    "state": claim.confirmation_state,
-                    "relationship_count": sum(
-                        1 for link, _ in links if str(link.claim_id) == str(claim.id)
-                    ),
-                },
-            })
+            nodes.append(
+                {
+                    "id": f"claim:{claim.id}",
+                    "type": "claim",
+                    "label": claim.current_text,
+                    "meta": {
+                        "state": claim.confirmation_state,
+                        "relationship_count": sum(
+                            1 for link, _ in links if str(link.claim_id) == str(claim.id)
+                        ),
+                    },
+                }
+            )
     elif view == "job":
         job = await db.get(JobDescription, job_id) if job_id else None
         if job is not None:
@@ -386,41 +428,53 @@ async def build_map(
                     continue
                 requirement_id = f"requirement:{name.lower()}"
                 matched = [
-                    claim for claim in claims
-                    if name.lower() in (claim.current_text or "").lower()
+                    claim for claim in claims if name.lower() in (claim.current_text or "").lower()
                 ]
-                nodes.append({
-                    "id": requirement_id,
-                    "type": "requirement",
-                    "label": name,
-                    "meta": {
-                        "job_id": str(job.id),
-                        "status": "evidence_found" if matched else "needs_clarification",
-                        "matched_claim_count": len(matched),
-                    },
-                })
+                nodes.append(
+                    {
+                        "id": requirement_id,
+                        "type": "requirement",
+                        "label": name,
+                        "meta": {
+                            "job_id": str(job.id),
+                            "status": "evidence_found" if matched else "needs_clarification",
+                            "matched_claim_count": len(matched),
+                        },
+                    }
+                )
                 for claim in matched:
                     claim_node_id = f"claim:{claim.id}"
                     if not any(node["id"] == claim_node_id for node in nodes):
-                        nodes.append({
-                            "id": claim_node_id,
-                            "type": "claim",
-                            "label": claim.current_text,
-                            "meta": {
-                                "claim_id": str(claim.id),
-                                "state": claim.confirmation_state,
-                                "matched_requirement": name,
-                            },
-                        })
-                    edges.append({
-                        "id": f"requirement-claim:{name}:{claim.id}",
-                        "source": requirement_id,
-                        "target": claim_node_id,
-                        "relationship": "已有相关 Claim（仍需人工确认）",
-                    })
+                        nodes.append(
+                            {
+                                "id": claim_node_id,
+                                "type": "claim",
+                                "label": claim.current_text,
+                                "meta": {
+                                    "claim_id": str(claim.id),
+                                    "state": claim.confirmation_state,
+                                    "matched_requirement": name,
+                                },
+                            }
+                        )
+                    edges.append(
+                        {
+                            "id": f"requirement-claim:{name}:{claim.id}",
+                            "source": requirement_id,
+                            "target": claim_node_id,
+                            "relationship": "已有相关 Claim（仍需人工确认）",
+                        }
+                    )
     else:
         for claim in claims:
-            nodes.append({"id": f"claim:{claim.id}", "type": "claim", "label": claim.current_text, "meta": {"state": claim.confirmation_state}})
+            nodes.append(
+                {
+                    "id": f"claim:{claim.id}",
+                    "type": "claim",
+                    "label": claim.current_text,
+                    "meta": {"state": claim.confirmation_state},
+                }
+            )
 
     visible_claim_node_ids = {node["id"] for node in nodes if node["type"] == "claim"}
     for link, artifact in links:
@@ -432,26 +486,43 @@ async def build_map(
             continue
         artifact_id = f"artifact:{artifact.id}"
         if not any(node["id"] == artifact_id for node in nodes):
-            nodes.append({"id": artifact_id, "type": "evidence", "label": artifact.title, "meta": {"verification_status": artifact.verification_status}})
-        edges.append({
-            "id": f"evidence-link:{link.id}",
-            "source": artifact_id,
-            "target": f"claim:{link.claim_id}",
-            "relationship": {"supports": "支持", "contradicts": "待澄清的不一致", "related": "相关"}.get(link.relationship, "相关"),
-            "meta": {"link_method": link.link_method},
-        })
+            nodes.append(
+                {
+                    "id": artifact_id,
+                    "type": "evidence",
+                    "label": artifact.title,
+                    "meta": {"verification_status": artifact.verification_status},
+                }
+            )
+        edges.append(
+            {
+                "id": f"evidence-link:{link.id}",
+                "source": artifact_id,
+                "target": f"claim:{link.claim_id}",
+                "relationship": {
+                    "supports": "支持",
+                    "contradicts": "待澄清的不一致",
+                    "related": "相关",
+                }.get(link.relationship, "相关"),
+                "meta": {"link_method": link.link_method},
+            }
+        )
 
     page_nodes = nodes[offset : offset + limit]
     visible_ids = {node["id"] for node in page_nodes}
     page_edges = [
-        edge for edge in edges
-        if edge["source"] in visible_ids and edge["target"] in visible_ids
+        edge for edge in edges if edge["source"] in visible_ids and edge["target"] in visible_ids
     ]
     return {
         "view": view,
         "nodes": page_nodes,
         "edges": page_edges,
-        "page": {"offset": offset, "limit": limit, "total": len(nodes), "has_more": offset + limit < len(nodes)},
+        "page": {
+            "offset": offset,
+            "limit": limit,
+            "total": len(nodes),
+            "has_more": offset + limit < len(nodes),
+        },
         "privacy_boundary": "owner_authorized_server_projection",
         "job_id": str(job_id) if job_id else None,
     }

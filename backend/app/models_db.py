@@ -842,9 +842,13 @@ class InterviewSession(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     mode = Column(String(32), nullable=False)
-    job_id = Column(String(36), ForeignKey("job_descriptions.id", ondelete="SET NULL"), nullable=True)
+    job_id = Column(
+        String(36), ForeignKey("job_descriptions.id", ondelete="SET NULL"), nullable=True
+    )
     resume_id = Column(String(36), ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True)
-    claim_id = Column(String(36), ForeignKey("resume_claims.id", ondelete="SET NULL"), nullable=True)
+    claim_id = Column(
+        String(36), ForeignKey("resume_claims.id", ondelete="SET NULL"), nullable=True
+    )
     status = Column(String(24), nullable=False, default="active")
     consent_snapshot = Column(JSON, nullable=False, default=dict)
     policy_version = Column(String(64), nullable=False, default="interview_policy_v1")
@@ -861,7 +865,9 @@ class InterviewQuestion(Base):
     __tablename__ = "interview_questions"
     __table_args__ = (
         UniqueConstraint("session_id", "sequence_no", name="uq_interview_question_seq"),
-        CheckConstraint("core_or_probe IN ('core', 'probe')", name="ck_interview_question_core_or_probe"),
+        CheckConstraint(
+            "core_or_probe IN ('core', 'probe')", name="ck_interview_question_core_or_probe"
+        ),
         Index("ix_interview_questions_session", "session_id", "sequence_no"),
     )
 
@@ -871,7 +877,9 @@ class InterviewQuestion(Base):
     )
     sequence_no = Column(Integer, nullable=False)
     question_goal = Column(String(64), nullable=False)
-    claim_id = Column(String(36), ForeignKey("resume_claims.id", ondelete="SET NULL"), nullable=True)
+    claim_id = Column(
+        String(36), ForeignKey("resume_claims.id", ondelete="SET NULL"), nullable=True
+    )
     requirement_id = Column(String(128), nullable=True)
     competency_id = Column(String(128), nullable=True)
     core_or_probe = Column(String(16), nullable=False, default="core")
@@ -931,7 +939,9 @@ class InterviewObservation(Base):
     text = Column(Text, nullable=False)
     source_start = Column(Integer, nullable=False)
     source_end = Column(Integer, nullable=False)
-    claim_id = Column(String(36), ForeignKey("resume_claims.id", ondelete="SET NULL"), nullable=True)
+    claim_id = Column(
+        String(36), ForeignKey("resume_claims.id", ondelete="SET NULL"), nullable=True
+    )
     candidate_confirmation_state = Column(String(32), nullable=False, default="pending")
     extractor_version = Column(String(64), nullable=False, default="rules_obs_v1")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -1051,7 +1061,9 @@ class ReadinessAction(Base):
         String(36), ForeignKey("optimization_issues.id", ondelete="CASCADE"), nullable=False
     )
     strategy_id = Column(
-        String(36), ForeignKey("optimization_strategy_options.id", ondelete="CASCADE"), nullable=False
+        String(36),
+        ForeignKey("optimization_strategy_options.id", ondelete="CASCADE"),
+        nullable=False,
     )
     action_type = Column(String(64), nullable=False)
     title = Column(String(255), nullable=False)
@@ -1089,7 +1101,9 @@ class ResumePatchProposal(Base):
         String(36), ForeignKey("optimization_issues.id", ondelete="CASCADE"), nullable=False
     )
     strategy_id = Column(
-        String(36), ForeignKey("optimization_strategy_options.id", ondelete="CASCADE"), nullable=False
+        String(36),
+        ForeignKey("optimization_strategy_options.id", ondelete="CASCADE"),
+        nullable=False,
     )
     field_path = Column(String(255), nullable=False)
     before_text = Column(Text, nullable=False)
@@ -1781,7 +1795,9 @@ class ResumeVersionClaimLink(Base):
     __tablename__ = "resume_version_claim_links"
     __table_args__ = (
         UniqueConstraint(
-            "resume_version_id", "claim_id", "field_path",
+            "resume_version_id",
+            "claim_id",
+            "field_path",
             name="uq_resume_version_claim_field",
         ),
     )
@@ -1790,7 +1806,9 @@ class ResumeVersionClaimLink(Base):
     resume_version_id = Column(
         String(36), ForeignKey("resume_versions.id", ondelete="CASCADE"), nullable=False
     )
-    claim_id = Column(String(36), ForeignKey("resume_claims.id", ondelete="RESTRICT"), nullable=False)
+    claim_id = Column(
+        String(36), ForeignKey("resume_claims.id", ondelete="RESTRICT"), nullable=False
+    )
     claim_revision_id = Column(
         String(36), ForeignKey("claim_revisions.id", ondelete="SET NULL"), nullable=True
     )
@@ -1804,7 +1822,9 @@ class ResumeVersionClaimLink(Base):
 class MigrationOrphanReport(Base):
     __tablename__ = "migration_orphan_reports"
     __table_args__ = (
-        UniqueConstraint("migration_version", "entity_type", "entity_id", name="uq_migration_orphan"),
+        UniqueConstraint(
+            "migration_version", "entity_type", "entity_id", name="uq_migration_orphan"
+        ),
     )
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))

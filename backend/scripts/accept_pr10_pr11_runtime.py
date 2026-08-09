@@ -25,7 +25,9 @@ def request(
         headers.update(extra_headers)
     raw = json.dumps(body).encode() if body is not None else None
     try:
-        with urlopen(Request(f"{BASE}{path}", data=raw, headers=headers, method=method), timeout=10) as response:
+        with urlopen(
+            Request(f"{BASE}{path}", data=raw, headers=headers, method=method), timeout=10
+        ) as response:
             payload = json.loads(response.read().decode() or "{}")
             return response.status, payload
     except HTTPError as exc:
@@ -34,7 +36,9 @@ def request(
 
 
 def login(email: str, password: str) -> str:
-    status, payload = request("/auth/login", method="POST", body={"email": email, "password": password})
+    status, payload = request(
+        "/auth/login", method="POST", body={"email": email, "password": password}
+    )
     if status != 200 or not payload.get("access_token"):
         raise RuntimeError(f"login failed for {email}: status={status}")
     return payload["access_token"]
@@ -99,7 +103,9 @@ def main() -> None:
     assert status == 200 and replay["experience"]["id"] == experience_id
     print("PASS PR11 experience idempotent replay")
 
-    status, map_payload = request("/career-passport/map?view=timeline&limit=100", token=candidate_token)
+    status, map_payload = request(
+        "/career-passport/map?view=timeline&limit=100", token=candidate_token
+    )
     assert status == 200
     assert map_payload["privacy_boundary"] == "owner_authorized_server_projection"
     assert any(node["label"] == "PR11 runtime smoke" for node in map_payload["nodes"])

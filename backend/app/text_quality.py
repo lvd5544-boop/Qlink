@@ -25,9 +25,7 @@ def repair_mojibake(value: str | None) -> str:
                 # External APIs occasionally truncate a final multi-byte
                 # character. Repair the valid prefix and discard only the
                 # broken tail instead of abandoning the whole string.
-                candidates.append(
-                    current.encode(encoding).decode("utf-8", errors="replace")
-                )
+                candidates.append(current.encode(encoding).decode("utf-8", errors="replace"))
             except UnicodeEncodeError:
                 continue
         best = min(candidates, key=_badness)

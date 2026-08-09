@@ -35,6 +35,7 @@ import { getApiErrorMessage } from '../../utils/apiError';
 import { createIdempotencyTracker } from '../../utils/idempotency';
 import CandidateActionMap from '../../components/CandidateActionMap';
 import PersonalizedGuidancePanel from '../../components/PersonalizedGuidancePanel';
+import { isEnglishDemoMode } from '../../utils/demoMode';
 
 const { Paragraph, Text, Title } = Typography;
 
@@ -224,6 +225,7 @@ function AdvisorAnswer({ item }) {
 }
 
 export default function Advisor() {
+  const englishDemo = isEnglishDemoMode();
   const navigate = useNavigate();
   const diagnosticIdempotency = useRef(createIdempotencyTracker('advisor-diagnostic'));
   const targetImportIdempotency = useRef(createIdempotencyTracker('advisor-target-import'));
@@ -238,7 +240,7 @@ export default function Advisor() {
   const [diagnosing, setDiagnosing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(() => searchParams.get('import') === '1');
   const [importTitle, setImportTitle] = useState('');
   const [importJd, setImportJd] = useState('');
   const [importing, setImporting] = useState(false);
@@ -248,9 +250,11 @@ export default function Advisor() {
   const jobOptions = useMemo(
     () => jobs.map((job) => ({
       value: job.id,
-      label: `${job.title}${job.company_name ? ` · ${job.company_name}` : ''}`,
+      label: englishDemo && /[\u3400-\u9FFF]/.test(job.title || '')
+        ? 'Example Target Role'
+        : `${job.title}${job.company_name ? ` · ${job.company_name}` : ''}`,
     })),
-    [jobs],
+    [englishDemo, jobs],
   );
 
   useEffect(() => {
@@ -325,7 +329,7 @@ export default function Advisor() {
   const importTargetJob = async () => {
     const descriptionText = importJd.trim();
     if (!descriptionText) {
-      message.warning('请粘贴完整的目标岗位 JD');
+      message.warning(englishDemo ? 'Paste the complete target-role JD' : '请粘贴完整的目标岗位 JD');
       return;
     }
     const requestPayload = {
@@ -355,7 +359,7 @@ export default function Advisor() {
       setImportJd('');
       setLoading(true);
       setSearchParams({ job_id: importedJob.id });
-      message.success('目标 JD 已导入，现在可以核对岗位要求并分析下一步');
+      message.success(englishDemo ? 'Target JD imported. Review the requirements and reason about the next action.' : '目标 JD 已导入，现在可以核对岗位要求并分析下一步');
     } catch (error) {
       message.error(getApiErrorMessage(error, '目标 JD 导入失败，请检查内容后重试'));
     } finally {
@@ -365,7 +369,7 @@ export default function Advisor() {
 
   const generateReadiness = async () => {
     if (!jobId || !selectedResumeId) {
-      message.warning('请先选择一份简历');
+      message.warning(englishDemo ? 'Select a resume first' : '请先选择一份简历');
       return;
     }
     setDiagnosing(true);
@@ -435,10 +439,12 @@ export default function Advisor() {
                 level={3}
                 style={{ margin: 0, overflowWrap: 'anywhere' }}
               >
-                岗位准备助手
+                {englishDemo ? 'Role Readiness Advisor' : '岗位准备助手'}
               </Title>
               <Text type="secondary">
-                选择岗位和简历，直接看你最该准备什么。
+                {englishDemo
+                  ? 'AI reasons about the evidence gap, then designs the next question or task.'
+                  : '选择岗位和简历，直接看你最该准备什么。'}
               </Text>
             </div>
           </Space>
@@ -449,21 +455,21 @@ export default function Advisor() {
               value={jobId || undefined}
               options={jobOptions}
               className="advisor-job-select"
-              placeholder="选择目标岗位"
+              placeholder={englishDemo ? 'Select a target role' : '选择目标岗位'}
               onChange={(value) => setSearchParams({ job_id: value })}
             />
             <Button icon={<FileAddOutlined />} onClick={() => setImportOpen(true)}>
-              粘贴目标 JD
+              {englishDemo ? 'Paste Target JD' : '粘贴目标 JD'}
             </Button>
             <Select
               allowClear
               value={selectedResumeId}
               className="advisor-resume-select"
-              placeholder="选择简历以核对你的材料"
+              placeholder={englishDemo ? 'Select a resume to map your evidence' : '选择简历以核对你的材料'}
               onChange={setSelectedResumeId}
               options={resumes.map((resume, index) => ({
                 value: resume.id,
-                label: `${resume.parsed?.name || `简历 ${index + 1}`} · ${resume.parsed?.expected_job_title || '未填写方向'}`,
+                label: `${resume.parsed?.name || `${englishDemo ? 'Resume' : '简历'} ${index + 1}`} · ${resume.parsed?.expected_job_title || (englishDemo ? 'Direction not set' : '未填写方向')}`,
               }))}
             />
             <Button
@@ -472,25 +478,27 @@ export default function Advisor() {
               disabled={!jobId || !selectedResumeId}
               onClick={generateReadiness}
             >
-              分析我该先做什么
+              {englishDemo ? 'Reason About My Next Action' : '分析我该先做什么'}
             </Button>
           </Space>
           {profile?.snapshot?.is_stale && (
             <Alert
               showIcon
               type="warning"
-              message="部分来源已经过期"
-              description="顾问不会继续把过期来源用于新回答；请等待管理员发布新版本。"
+              message={englishDemo ? 'Some sources have expired' : '部分来源已经过期'}
+              description={englishDemo
+                ? 'Expired sources will not be used for new answers.'
+                : '顾问不会继续把过期来源用于新回答；请等待管理员发布新版本。'}
             />
           )}
         </Space>
       </Card>
 
       <Modal
-        title="粘贴你真正想申请的岗位"
+        title={englishDemo ? 'Paste the role you actually want' : '粘贴你真正想申请的岗位'}
         open={importOpen}
-        okText="导入并查看岗位要求"
-        cancelText="取消"
+        okText={englishDemo ? 'Import and Extract Requirements' : '导入并查看岗位要求'}
+        cancelText={englishDemo ? 'Cancel' : '取消'}
         confirmLoading={importing}
         onOk={importTargetJob}
         onCancel={() => {
@@ -502,13 +510,15 @@ export default function Advisor() {
           <Alert
             showIcon
             type="info"
-            message="JD 只用于理解目标岗位"
-            description="系统不会把岗位要求当成你的经历，也不会把你导入的岗位公开到岗位列表。"
+            message={englishDemo ? 'The JD defines the target—not your experience' : 'JD 只用于理解目标岗位'}
+            description={englishDemo
+              ? 'QLink never turns role requirements into claims about you. The imported role stays private.'
+              : '系统不会把岗位要求当成你的经历，也不会把你导入的岗位公开到岗位列表。'}
           />
           <Input
             value={importTitle}
             maxLength={255}
-            placeholder="岗位名称（可选，例如：AI 产品经理）"
+            placeholder={englishDemo ? 'Role title (optional), e.g. AI Product Manager' : '岗位名称（可选，例如：AI 产品经理）'}
             onChange={(event) => setImportTitle(event.target.value)}
           />
           <Input.TextArea
@@ -516,11 +526,13 @@ export default function Advisor() {
             autoSize={{ minRows: 8, maxRows: 16 }}
             maxLength={100000}
             showCount
-            placeholder="从企业官网、招聘平台或招聘方消息中粘贴完整 JD"
+            placeholder={englishDemo ? 'Paste the complete JD from a company or recruiting platform' : '从企业官网、招聘平台或招聘方消息中粘贴完整 JD'}
             onChange={(event) => setImportJd(event.target.value)}
           />
           <Text type="secondary">
-            导入后先查看系统提取的关键要求，再选择简历分析已有证据、信息缺口和下一步行动。
+            {englishDemo
+              ? 'QLink extracts the key requirements, maps your existing evidence, and identifies the next question or task.'
+              : '导入后先查看系统提取的关键要求，再选择简历分析已有证据、信息缺口和下一步行动。'}
           </Text>
         </Space>
       </Modal>
@@ -528,7 +540,7 @@ export default function Advisor() {
       <Spin spinning={loading}>
         {profile ? (
           <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-            <Card className="content-card" title="这个岗位最看重什么">
+            <Card className="content-card" title={englishDemo ? '5–8 Key Role Requirements' : '这个岗位最看重什么'}>
               {targetRequirements.length ? (
                 <List
                   size="small"
@@ -538,19 +550,20 @@ export default function Advisor() {
               ) : (
                 <Empty
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="这个岗位的明确要求还不完整，可以先查看完整岗位说明"
+                  description={englishDemo ? 'The explicit role requirements are incomplete.' : '这个岗位的明确要求还不完整，可以先查看完整岗位说明'}
                 />
               )}
             </Card>
             <Collapse
               items={[{
                 key: 'professional-sources',
-                label: '查看职业参考、公司背景和信息来源（可选）',
+                label: englishDemo ? 'Sources and reasoning trace (optional)' : '查看职业参考、公司背景和信息来源（可选）',
                 children: (
                   <>
                     <Paragraph type="secondary">
-                      以下内容用于解释建议从哪里来，不需要为了完成简历优化而阅读。
-                      事实必须带引用；推断会明确标识。
+                      {englishDemo
+                        ? 'This section explains where the guidance comes from. Facts require citations; inferences are labeled.'
+                        : '以下内容用于解释建议从哪里来，不需要为了完成简历优化而阅读。事实必须带引用；推断会明确标识。'}
                     </Paragraph>
                     <div className="advisor-layer-grid">
                       {Object.entries(LAYER_META).map(([type]) => (
@@ -569,13 +582,13 @@ export default function Advisor() {
             />
           </Space>
         ) : (
-          <Empty description="请选择目标岗位" />
+          <Empty description={englishDemo ? 'Select a target role' : '请选择目标岗位'} />
         )}
       </Spin>
 
       <Card
         className="content-card"
-        title="你现在最该做什么"
+        title={englishDemo ? 'Evidence Gap → Next Best Action' : '你现在最该做什么'}
       >
         {diagnostic ? (
           <div className="advisor-readiness-grid">
@@ -585,12 +598,12 @@ export default function Advisor() {
                 style={{ marginTop: 12 }}
                 items={[{
                   key: 'readiness-reference',
-                  label: '查看准备度参考（可选）',
+                  label: englishDemo ? 'Readiness reference (optional)' : '查看准备度参考（可选）',
                   children: (
                     <>
-                      <Text>当前材料覆盖情况</Text>
+                      <Text>{englishDemo ? 'Current evidence coverage' : '当前材料覆盖情况'}</Text>
                       <Progress percent={Number(diagnostic.readiness?.current || 0)} />
-                      <Text>完成计划后的参考情景</Text>
+                      <Text>{englishDemo ? 'Scenario after completing the plan' : '完成计划后的参考情景'}</Text>
                       <Progress
                         strokeColor="#94a3b8"
                         percent={Number(diagnostic.readiness?.future_scenario || 0)}
@@ -605,11 +618,11 @@ export default function Advisor() {
               <PersonalizedGuidancePanel
                 guidance={diagnostic.personalized_guidance}
                 fallback={diagnostic.decision_trace?.recommended_next_actions || []}
-                title="按这个顺序投递和提升"
+                title={englishDemo ? 'Apply and build evidence in this order' : '按这个顺序投递和提升'}
               />
               <Space direction="vertical" size={8} style={{ width: '100%', marginTop: 12 }}>
                 <Button type="primary" block onClick={openApplicationWorkbench}>
-                  生成当前可投版本并安排提升行动
+                  {englishDemo ? 'Build an Evidence-Based Application Plan' : '生成当前可投版本并安排提升行动'}
                 </Button>
                 {profile?.job?.advisor_private && (
                   <Button
@@ -627,10 +640,12 @@ export default function Advisor() {
                   </Button>
                 )}
                 <Button block onClick={() => navigate('/candidate/applied-jobs')}>
-                  查看投递、面试和录用结果
+                  {englishDemo ? 'View Application Outcomes' : '查看投递、面试和录用结果'}
                 </Button>
                 <Text type="secondary">
-                  改写只使用你已确认的履历事实；提升行动完成后仍需补充新经历或证据。
+                  {englishDemo
+                    ? 'Only confirmed facts are used. Completed tasks must return as new evidence.'
+                    : '改写只使用你已确认的履历事实；提升行动完成后仍需补充新经历或证据。'}
                 </Text>
               </Space>
             </div>
@@ -638,19 +653,23 @@ export default function Advisor() {
         ) : (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description="选择简历后生成；结果只依据当前岗位要求与你已提供的材料。"
+            description={englishDemo
+              ? 'Select a resume to reason from the role requirements and evidence you provided.'
+              : '选择简历后生成；结果只依据当前岗位要求与你已提供的材料。'}
           />
         )}
       </Card>
 
       <Card
         className="content-card advisor-chat"
-        title={<Space><RobotOutlined />问岗位顾问</Space>}
+        title={<Space><RobotOutlined />{englishDemo ? 'Ask the Role Advisor' : '问岗位顾问'}</Space>}
       >
         <List
           dataSource={messages}
           locale={{
-            emptyText: '可以问：我应该优先准备什么？我的哪段经历最适合这个岗位？',
+            emptyText: englishDemo
+              ? 'Try: What should I prepare first? Which experience best supports this role?'
+              : '可以问：我应该优先准备什么？我的哪段经历最适合这个岗位？',
           }}
           renderItem={(item) => (
             <List.Item className="advisor-message-row">
@@ -663,7 +682,7 @@ export default function Advisor() {
             autoSize={{ minRows: 2, maxRows: 5 }}
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            placeholder="例如：我应该先改哪一段经历？"
+            placeholder={englishDemo ? 'Example: Which evidence gap should I address first?' : '例如：我应该先改哪一段经历？'}
             onPressEnter={(event) => {
               if (!event.shiftKey) {
                 event.preventDefault();
@@ -678,7 +697,7 @@ export default function Advisor() {
             disabled={!jobId}
             onClick={send}
           >
-            发送
+            {englishDemo ? 'Send' : '发送'}
           </Button>
         </Space.Compact>
       </Card>

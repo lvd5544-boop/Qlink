@@ -644,9 +644,7 @@ def _compute_v2_total(
     """v2 十维评分。"""
     from .matching_signals import score_industry_match, score_impact, score_growth_potential
 
-    resume_skills = _extract_skill_names(
-        resume_json.get("skills"), include_planned=include_planned
-    )
+    resume_skills = _extract_skill_names(resume_json.get("skills"), include_planned=include_planned)
     required_skills = _extract_skill_names(job_json.get("required_skills"))
     required_skills |= _skills_from_responsibilities(job_json)
 
@@ -837,15 +835,6 @@ def full_match_evaluation(
         missing_skills=missing_skills,
         known_skills=known_skills,
     )
-    # 用实际 match_score 更新概率
-    from .matching_signals import estimate_probabilities
-
-    signals["probabilities"] = estimate_probabilities(
-        match_score=total,
-        stability_ratio=signals["stability"]["ratio"],
-        impact_ratio=signals["impact"]["ratio"],
-    )
-
     suggestions = generate_career_suggestions(
         resume_json,
         job_json,

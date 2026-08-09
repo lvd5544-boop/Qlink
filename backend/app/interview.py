@@ -387,7 +387,9 @@ async def interview_handler(
                 await websocket.send_text("[系统] 面试已完成，感谢你的参与！")
                 history.append({"role": "assistant", "content": reply})
                 try:
-                    fragment = await extract_fragment(messages, model,
+                    fragment = await extract_fragment(
+                        messages,
+                        model,
                         db=db,
                         user_id=user_id,
                     )

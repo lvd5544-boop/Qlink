@@ -126,7 +126,9 @@ def _clean_heading(line: str) -> str:
 def _has_explicit_summary_heading(text: str) -> bool:
     for raw_line in text.splitlines():
         heading = _clean_heading(raw_line)
-        if any(key == "summary" and pattern.fullmatch(heading) for key, pattern in _SECTION_PATTERNS):
+        if any(
+            key == "summary" and pattern.fullmatch(heading) for key, pattern in _SECTION_PATTERNS
+        ):
             return True
     return False
 
@@ -177,9 +179,8 @@ def _section_name(line: str) -> str | None:
     cleaned = _clean_heading(line)
     if len(cleaned) > 70 or len(cleaned.split()) > 8:
         return None
-    if (
-        re.search(r"\b(?:skills?|competenc(?:y|ies)|technologies)\b", cleaned)
-        and not re.search(r"[.;]", cleaned)
+    if re.search(r"\b(?:skills?|competenc(?:y|ies)|technologies)\b", cleaned) and not re.search(
+        r"[.;]", cleaned
     ):
         return "skills"
     for name, pattern in _SECTION_PATTERNS:
@@ -204,7 +205,11 @@ def _split_sections(lines: list[str]) -> tuple[list[str], dict[str, list[str]]]:
         inline_content = None
         if inline_match:
             label = inline_match.group(1).lower()
-            section = "projects" if ("项目" in label or label.startswith("project")) else "work_experience"
+            section = (
+                "projects"
+                if ("项目" in label or label.startswith("project"))
+                else "work_experience"
+            )
             inline_content = inline_match.group(2).strip()
         marker = _is_numbered_marker(line)
         if (
@@ -284,7 +289,9 @@ def _project_from_lines(lines: list[str], index: int) -> dict[str, Any] | None:
         name = " ".join(name.split()[:10]).strip(" ,.;:-")
     if not name:
         name = f"项目 {index + 1}"
-    duration_match = next((_DATE_PATTERN.search(line) for line in lines if _DATE_PATTERN.search(line)), None)
+    duration_match = next(
+        (_DATE_PATTERN.search(line) for line in lines if _DATE_PATTERN.search(line)), None
+    )
     return {
         "name": name,
         "duration": duration_match.group(0) if duration_match else None,
@@ -351,12 +358,7 @@ def parse_resume_rules_only(text: str) -> ResumeInfo:
                     re.I,
                 )
             )
-            if (
-                phone_match
-                and not date_range
-                and 8 <= len(phone_digits) <= 15
-                and "@" not in line
-            ):
+            if phone_match and not date_range and 8 <= len(phone_digits) <= 15 and "@" not in line:
                 data["phone"] = phone_match.group(0).strip()
         expected_title = _explicit_value(line, ("期望职位", "目标职位", "target role"))
         if expected_title:
@@ -372,9 +374,7 @@ def parse_resume_rules_only(text: str) -> ResumeInfo:
     if not data["name"]:
         data["name"] = next((line for line in preamble[:10] if _looks_like_name(line)), None)
 
-    education_lines = [
-        line for line in sections.get("education", []) if len(line.strip()) > 1
-    ]
+    education_lines = [line for line in sections.get("education", []) if len(line.strip()) > 1]
     school_line = next((line for line in education_lines if _SCHOOL_PATTERN.search(line)), None)
     degree_line = next((line for line in education_lines if _DEGREE_PATTERN.search(line)), None)
     if school_line:
@@ -395,11 +395,7 @@ def parse_resume_rules_only(text: str) -> ResumeInfo:
     ]
 
     work_groups = _project_groups(sections.get("work_experience", []))
-    data["work_experience"] = [
-        work
-        for group in work_groups
-        if (work := _work_from_lines(group))
-    ]
+    data["work_experience"] = [work for group in work_groups if (work := _work_from_lines(group))]
 
     if not data["skills"] and sections.get("skills"):
         candidates: list[str] = []

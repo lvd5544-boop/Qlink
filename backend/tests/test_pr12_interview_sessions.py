@@ -11,7 +11,7 @@ from app.interview_policy import (
     plan_probe_question,
     validate_observation_offsets,
 )
-from app.models_db import ClaimEvent, ResumeClaim
+from app.models_db import ClaimEvent, JobDescription, ResumeClaim
 
 
 async def _sync_claim(db_session, resume, actor_id):
@@ -57,8 +57,13 @@ def test_repeated_probe_terminates():
         current_text = "把接口延迟降低了 35%"
         claim_type = "result"
 
-    assert plan_probe_question(claim=Claim(), prior_probe_count=2, last_goal="clarify_metric") is None
-    assert plan_probe_question(claim=Claim(), prior_probe_count=0, last_goal="clarify_metric") is not None
+    assert (
+        plan_probe_question(claim=Claim(), prior_probe_count=2, last_goal="clarify_metric") is None
+    )
+    assert (
+        plan_probe_question(claim=Claim(), prior_probe_count=0, last_goal="clarify_metric")
+        is not None
+    )
 
 
 async def test_practice_answers_do_not_auto_become_claims(
@@ -97,13 +102,17 @@ async def test_practice_answers_do_not_auto_become_claims(
     from sqlalchemy import select
 
     rows = (
-        await db_session.execute(
-            select(ClaimEvent).where(
-                ClaimEvent.event_type == "interview_observation_confirmed",
-                ClaimEvent.claim_id == str(claim.id),
+        (
+            await db_session.execute(
+                select(ClaimEvent).where(
+                    ClaimEvent.event_type == "interview_observation_confirmed",
+                    ClaimEvent.claim_id == str(claim.id),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert rows == []
 
 
@@ -190,9 +199,7 @@ async def test_confirmed_observation_can_write_non_practice_claim(
     assert refreshed.evidence_state == "supported_by_user_evidence"
 
 
-async def test_revoke_stops_further_answers(
-    client, db_session, candidate_a, resume_a, auth_header
-):
+async def test_revoke_stops_further_answers(client, db_session, candidate_a, resume_a, auth_header):
     created = await client.post(
         "/interview-sessions",
         json={"mode": "vault_builder", "resume_id": str(resume_a.id)},
@@ -271,9 +278,7 @@ async def test_target_gap_sessions_share_core_question_bank(
     assert q1
 
 
-async def test_answer_cannot_expand_session_consent(
-    client, candidate_a, resume_a, auth_header
-):
+async def test_answer_cannot_expand_session_consent(client, candidate_a, resume_a, auth_header):
     created = await client.post(
         "/interview-sessions",
         json={
@@ -324,6 +329,35 @@ async def test_target_gap_requires_job_id(client, candidate_a, resume_a, auth_he
     )
     assert response.status_code == 422
     assert "job_id" in response.json()["detail"]
+
+
+async def test_target_gap_rejects_another_candidates_private_job(
+    client, db_session, candidate_a, candidate_b, resume_a, auth_header
+):
+    private_job = JobDescription(
+        employer_id=None,
+        title="候选人 B 的私有面试目标",
+        raw_text="Python 后端工程师",
+        parsed_json={
+            "advisor_private": True,
+            "advisor_imported_by": str(candidate_b.id),
+            "required_skills": ["Python"],
+        },
+    )
+    db_session.add(private_job)
+    await db_session.commit()
+
+    response = await client.post(
+        "/interview-sessions",
+        json={
+            "mode": "target_gap",
+            "resume_id": str(resume_a.id),
+            "job_id": str(private_job.id),
+        },
+        headers=auth_header(candidate_a),
+    )
+
+    assert response.status_code == 404
 
 
 async def test_revoke_clears_purpose_consent_and_blocks_writeback(

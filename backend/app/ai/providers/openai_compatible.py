@@ -21,12 +21,8 @@ class OpenAICompatibleProvider:
         timeout: float | None = None,
     ) -> None:
         self.api_key = (api_key if api_key is not None else primary_api_key()).strip()
-        self.base_url = (base_url if base_url is not None else primary_base_url()).rstrip(
-            "/"
-        )
-        self.timeout = (
-            timeout if timeout is not None else request_timeout_seconds()
-        )
+        self.base_url = (base_url if base_url is not None else primary_base_url()).rstrip("/")
+        self.timeout = timeout if timeout is not None else request_timeout_seconds()
 
     def _ensure_key(self) -> None:
         if not self.api_key:

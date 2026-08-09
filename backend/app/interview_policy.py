@@ -14,13 +14,9 @@ POLICY_VERSION = "interview_policy_v1"
 MAX_PROBES_PER_CLAIM = 2
 MAX_CORE_QUESTIONS = 6
 
-SESSION_MODES = frozenset(
-    {"vault_builder", "target_gap", "claim_clarification", "practice"}
-)
+SESSION_MODES = frozenset({"vault_builder", "target_gap", "claim_clarification", "practice"})
 
-DECLINE_REASONS = frozenset(
-    {"unknown", "forgot", "prefer_not_to_answer", "stop_followup"}
-)
+DECLINE_REASONS = frozenset({"unknown", "forgot", "prefer_not_to_answer", "stop_followup"})
 
 # Sensitive / discriminatory topics — blocked before any question is persisted.
 _BANNED_PATTERNS = (
@@ -65,7 +61,9 @@ def assert_question_allowed(text: str) -> None:
 
 
 def _anchor_from_claim(claim: Any) -> str:
-    text = (getattr(claim, "current_text", None) or getattr(claim, "original_text", None) or "").strip()
+    text = (
+        getattr(claim, "current_text", None) or getattr(claim, "original_text", None) or ""
+    ).strip()
     return text[:80] or "该主张"
 
 
@@ -119,7 +117,9 @@ def plan_core_questions(
             if name:
                 normalized.append(name)
         normalized = sorted(set(normalized), key=lambda value: value.lower())
-        seed = hashlib.sha256(f"{getattr(job, 'id', '')}:{','.join(normalized)}".encode()).hexdigest()
+        seed = hashlib.sha256(
+            f"{getattr(job, 'id', '')}:{','.join(normalized)}".encode()
+        ).hexdigest()
         # Stable rotation based on seed, but same inputs → same order.
         rotated = sorted(
             normalized,
@@ -159,10 +159,7 @@ def plan_core_questions(
             if not isinstance(item, dict):
                 continue
             anchor = (
-                item.get("name")
-                or item.get("title")
-                or item.get("position")
-                or item.get("company")
+                item.get("name") or item.get("title") or item.get("position") or item.get("company")
             )
             if anchor:
                 anchors.append(str(anchor).strip())
@@ -236,13 +233,15 @@ def extract_observations_from_answer(
         adjusted = start + len(span) - len(span.lstrip())
         if not value or kind in seen_types or text[adjusted : adjusted + len(value)] != value:
             return
-        observations.append({
-            "observation_type": kind,
-            "text": value,
-            "source_start": adjusted,
-            "source_end": adjusted + len(value),
-            "claim_id": claim_id,
-        })
+        observations.append(
+            {
+                "observation_type": kind,
+                "text": value,
+                "source_start": adjusted,
+                "source_end": adjusted + len(value),
+                "claim_id": claim_id,
+            }
+        )
         seen_types.add(kind)
 
     sentence_matches = list(re.finditer(r"[^。！？\n]+", text))
@@ -251,11 +250,20 @@ def extract_observations_from_answer(
         lowered = sentence.casefold()
         if re.search(r"\d+(?:\.\d+)?%?", sentence):
             add("metric", sentence, match.start())
-        if re.search(r"结果|最终|交付|完成|实现|提升|降低|解决|产出|上线|获奖|result|delivered|improved|reduced|achieved|completed", lowered):
+        if re.search(
+            r"结果|最终|交付|完成|实现|提升|降低|解决|产出|上线|获奖|result|delivered|improved|reduced|achieved|completed",
+            lowered,
+        ):
             add("result", sentence, match.start())
-        if re.search(r"使用|采用|通过|模型|方法|框架|算法|分析|设计|实现|using|used|method|approach|designed|implemented|analy", lowered):
+        if re.search(
+            r"使用|采用|通过|模型|方法|框架|算法|分析|设计|实现|using|used|method|approach|designed|implemented|analy",
+            lowered,
+        ):
             add("method", sentence, match.start())
-        if re.search(r"学到|复盘|取舍|权衡|反思|下次|如果重来|改进|learned|trade.?off|next time|would change|retrospect", lowered):
+        if re.search(
+            r"学到|复盘|取舍|权衡|反思|下次|如果重来|改进|learned|trade.?off|next time|would change|retrospect",
+            lowered,
+        ):
             add("reflection", sentence, match.start())
         if re.search(r"(^|[，,。\s])(我|本人|i)\s*", lowered) and re.search(
             r"负责|完成|推动|选择|协调|开发|设计|实现|分析|搭建|带领|主导|决定|wrote|built|led|owned|developed|designed|implemented|analyzed|chose",

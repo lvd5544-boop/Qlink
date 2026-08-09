@@ -29,6 +29,7 @@ from .models_db import (
 from .potential_simulation import RULE_VERSION, build_simulation
 from .personalized_guidance import build_job_guidance
 from .resume_apply import apply_field_path, value_at_field_path
+from .security import candidate_can_access_job
 
 SCORING_VERSION = "hybrid_v2"
 DIAGNOSTIC_CATEGORIES = (
@@ -62,6 +63,45 @@ def _category(issue_type: str) -> str:
     }.get(issue_type, "structure_ats")
 
 
+CLARIFIABLE_ISSUE_TYPES = frozenset(
+    {
+        "presentation_gap",
+        "evidence_gap",
+        "capability_gap",
+        "credibility_risk",
+        "relevance_gap",
+        "differentiation_gap",
+        "career_narrative_gap",
+    }
+)
+
+
+def route_state_for(
+    *,
+    issue_type: str,
+    claim_ids: list[str],
+    strategies: list[dict[str, Any]],
+    development_confirmed: bool,
+) -> tuple[str, str]:
+    """Pick the candidate's next step for one diagnosed issue.
+
+    A requirement that is simply absent from the resume can only reach
+    ``clarify``. Only an explicit candidate action — selecting a development
+    strategy for that requirement — may reach ``develop``.
+    """
+    if issue_type == "hard_constraint":
+        return "constraint", "objective_constraint_checked_separately"
+    if claim_ids and any(option.get("can_apply_now") for option in strategies):
+        return "ready", "candidate_source_usable_now"
+    if development_confirmed:
+        return "develop", "candidate_selected_development_plan"
+    if issue_type == "capability_gap":
+        return "clarify", "missing_from_resume_needs_candidate_confirmation"
+    if issue_type in CLARIFIABLE_ISSUE_TYPES:
+        return "clarify", "candidate_source_incomplete"
+    return "unknown", "insufficient_information_to_route"
+
+
 def _severity(issue_type: str) -> str:
     if issue_type == "hard_constraint":
         return "blocker"
@@ -79,18 +119,22 @@ async def owned_inputs(
     if not resume or str(resume.user_id) != str(user_id):
         raise PermissionError("resume_not_owned")
     job = await db.get(JobDescription, str(job_id))
-    if not job:
+    if not job or not candidate_can_access_job(job, str(user_id)):
         raise ValueError("job_not_found")
     await sync_resume_claims(db, resume, actor_id=str(user_id), reason="pr13_diagnostic")
     claims = (
-        await db.execute(
-            select(ResumeClaim).where(
-                ResumeClaim.resume_id == str(resume.id),
-                ResumeClaim.user_id == str(user_id),
-                ResumeClaim.workflow_state != "withdrawn",
+        (
+            await db.execute(
+                select(ResumeClaim).where(
+                    ResumeClaim.resume_id == str(resume.id),
+                    ResumeClaim.user_id == str(user_id),
+                    ResumeClaim.workflow_state != "withdrawn",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return resume, job, list(claims)
 
 
@@ -143,14 +187,18 @@ async def generate_diagnostic(
         _claim_snapshot(claims),
     )
     prior = (
-        await db.execute(
-            select(OptimizationIssue).where(
-                OptimizationIssue.resume_id == str(resume.id),
-                OptimizationIssue.job_id == str(job.id),
-                OptimizationIssue.status == "open",
+        (
+            await db.execute(
+                select(OptimizationIssue).where(
+                    OptimizationIssue.resume_id == str(resume.id),
+                    OptimizationIssue.job_id == str(job.id),
+                    OptimizationIssue.status == "open",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for row in prior:
         row.status = "superseded"
 
@@ -223,33 +271,45 @@ async def serialize_diagnostic(
     db: AsyncSession, *, user_id: str, job_id: str, diagnostic_id: str
 ) -> dict[str, Any]:
     issues = (
-        await db.execute(
-            select(OptimizationIssue)
-            .where(
-                OptimizationIssue.diagnostic_id == str(diagnostic_id),
-                OptimizationIssue.user_id == str(user_id),
-                OptimizationIssue.job_id == str(job_id),
+        (
+            await db.execute(
+                select(OptimizationIssue)
+                .where(
+                    OptimizationIssue.diagnostic_id == str(diagnostic_id),
+                    OptimizationIssue.user_id == str(user_id),
+                    OptimizationIssue.job_id == str(job_id),
+                )
+                .order_by(OptimizationIssue.created_at.asc())
             )
-            .order_by(OptimizationIssue.created_at.asc())
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     if not issues:
         raise LookupError("diagnostic_not_found")
     issue_ids = [str(row.id) for row in issues]
     strategies = (
-        await db.execute(
-            select(OptimizationStrategyOption).where(
-                OptimizationStrategyOption.issue_id.in_(issue_ids)
+        (
+            await db.execute(
+                select(OptimizationStrategyOption).where(
+                    OptimizationStrategyOption.issue_id.in_(issue_ids)
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     links = (
-        await db.execute(
-            select(OptimizationIssueClaimLink).where(
-                OptimizationIssueClaimLink.issue_id.in_(issue_ids)
+        (
+            await db.execute(
+                select(OptimizationIssueClaimLink).where(
+                    OptimizationIssueClaimLink.issue_id.in_(issue_ids)
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     strategies_by_issue: dict[str, list[OptimizationStrategyOption]] = {}
     for row in strategies:
         strategies_by_issue.setdefault(str(row.issue_id), []).append(row)
@@ -257,22 +317,50 @@ async def serialize_diagnostic(
     for row in links:
         claims_by_issue.setdefault(str(row.issue_id), []).append(str(row.claim_id))
 
-    serialized = []
-    grouped = {name: [] for name in DIAGNOSTIC_CATEGORIES}
+    confirmed_development_keys = set(
+        (
+            await db.execute(
+                select(OptimizationIssue.issue_key)
+                .join(ReadinessAction, ReadinessAction.issue_id == OptimizationIssue.id)
+                .where(
+                    ReadinessAction.user_id == str(user_id),
+                    ReadinessAction.job_id == str(job_id),
+                    ReadinessAction.status != "abandoned",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    serialized: list[dict[str, Any]] = []
+    grouped: dict[str, list[dict[str, Any]]] = {name: [] for name in DIAGNOSTIC_CATEGORIES}
     severity_order = {"blocker": 0, "high": 1, "medium": 2, "low": 3}
     for row in sorted(issues, key=lambda item: severity_order[item.severity]):
+        issue_claim_ids = claims_by_issue.get(str(row.id), [])
+        issue_strategies = [
+            serialize_strategy(value) for value in strategies_by_issue.get(str(row.id), [])
+        ]
+        route_state, route_reason = route_state_for(
+            issue_type=row.issue_type,
+            claim_ids=issue_claim_ids,
+            strategies=issue_strategies,
+            development_confirmed=row.issue_key in confirmed_development_keys,
+        )
         item = {
             "id": str(row.id),
             "issue_key": row.issue_key,
             "issue_type": row.issue_type,
             "category": _category(row.issue_type),
+            "route_state": route_state,
+            "route_reason": route_reason,
             "target_requirement_id": row.target_requirement_id,
             "diagnosis": row.diagnosis,
             "severity": row.severity,
             "source_refs": row.source_refs or [],
-            "claim_ids": claims_by_issue.get(str(row.id), []),
+            "claim_ids": issue_claim_ids,
             "status": row.status,
-            "strategies": [serialize_strategy(value) for value in strategies_by_issue.get(str(row.id), [])],
+            "strategies": issue_strategies,
         }
         serialized.append(item)
         grouped[item["category"]].append(item)
@@ -281,13 +369,17 @@ async def serialize_diagnostic(
     resume = await db.get(Resume, str(first.resume_id))
     job = await db.get(JobDescription, str(first.job_id))
     claims = (
-        await db.execute(
-            select(ResumeClaim).where(
-                ResumeClaim.resume_id == str(first.resume_id),
-                ResumeClaim.workflow_state != "withdrawn",
+        (
+            await db.execute(
+                select(ResumeClaim).where(
+                    ResumeClaim.resume_id == str(first.resume_id),
+                    ResumeClaim.workflow_state != "withdrawn",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     simulation = build_simulation(
         resume.parsed_json or {},
         {**(job.parsed_json or {}), "_raw_text": job.raw_text or ""},
@@ -325,9 +417,7 @@ async def serialize_diagnostic(
             "uncertainties": [
                 "未被简历或 Evidence Vault 观察到的能力保持 unknown，不推断为不具备。"
             ],
-            "recommended_next_actions": [
-                value.title for value in strategies if value.recommended
-            ],
+            "recommended_next_actions": [value.title for value in strategies if value.recommended],
         },
     }
 
@@ -351,9 +441,7 @@ def serialize_strategy(row: OptimizationStrategyOption) -> dict[str, Any]:
     }
 
 
-async def owned_issue(
-    db: AsyncSession, *, issue_id: str, user_id: str
-) -> OptimizationIssue | None:
+async def owned_issue(db: AsyncSession, *, issue_id: str, user_id: str) -> OptimizationIssue | None:
     return (
         await db.execute(
             select(OptimizationIssue).where(
@@ -371,12 +459,16 @@ async def select_strategy(
     if not strategy or str(strategy.issue_id) != str(issue.id):
         raise ValueError("strategy_not_in_issue")
     rows = (
-        await db.execute(
-            select(OptimizationStrategyOption).where(
-                OptimizationStrategyOption.issue_id == str(issue.id)
+        (
+            await db.execute(
+                select(OptimizationStrategyOption).where(
+                    OptimizationStrategyOption.issue_id == str(issue.id)
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for row in rows:
         row.status = "selected" if str(row.id) == str(strategy.id) else "available"
     existing = (
@@ -414,43 +506,57 @@ async def create_rewrite_preview(
     if not strategy or str(strategy.issue_id) != str(issue.id):
         raise ValueError("strategy_not_in_issue")
     links = (
-        await db.execute(
-            select(OptimizationIssueClaimLink).where(
-                OptimizationIssueClaimLink.issue_id == str(issue.id)
+        (
+            await db.execute(
+                select(OptimizationIssueClaimLink).where(
+                    OptimizationIssueClaimLink.issue_id == str(issue.id)
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     claim_ids = [str(row.claim_id) for row in links]
     claims = []
     if claim_ids:
         claims = (
-            await db.execute(
-                select(ResumeClaim).where(
-                    ResumeClaim.id.in_(claim_ids),
-                    ResumeClaim.user_id == str(user_id),
-                    ResumeClaim.workflow_state != "withdrawn",
+            (
+                await db.execute(
+                    select(ResumeClaim).where(
+                        ResumeClaim.id.in_(claim_ids),
+                        ResumeClaim.user_id == str(user_id),
+                        ResumeClaim.workflow_state != "withdrawn",
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
     if not claims:
         raise PermissionError("candidate_source_required")
 
     resume = await db.get(Resume, str(issue.resume_id))
     field_path = "summary"
     before_text = value_at_field_path(resume.parsed_json or {}, field_path)
-    claim_texts = list(dict.fromkeys(row.current_text.strip() for row in claims if row.current_text.strip()))
+    claim_texts = list(
+        dict.fromkeys(row.current_text.strip() for row in claims if row.current_text.strip())
+    )
     source_corpus = "；".join([value for value in [before_text, *claim_texts] if value])
     after_text = source_corpus
     fidelity = assess_fidelity(source_corpus, after_text)
     evidence_ids = (
-        await db.execute(
-            select(ClaimEvidence.artifact_id).where(
-                ClaimEvidence.claim_id.in_(claim_ids),
-                ClaimEvidence.artifact_id.is_not(None),
-                ClaimEvidence.verification_status != "withdrawn",
+        (
+            await db.execute(
+                select(ClaimEvidence.artifact_id).where(
+                    ClaimEvidence.claim_id.in_(claim_ids),
+                    ClaimEvidence.artifact_id.is_not(None),
+                    ClaimEvidence.verification_status != "withdrawn",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     proposal = ResumePatchProposal(
         id=str(uuid.uuid4()),
         user_id=str(user_id),
@@ -544,20 +650,22 @@ async def apply_proposal(
         proposal.status = "expired"
         raise RuntimeError("proposal_stale")
     claims = (
-        await db.execute(
-            select(ResumeClaim).where(
-                ResumeClaim.id.in_(proposal.source_claim_ids or ["__none__"]),
-                ResumeClaim.user_id == str(user_id),
-                ResumeClaim.workflow_state != "withdrawn",
+        (
+            await db.execute(
+                select(ResumeClaim).where(
+                    ResumeClaim.id.in_(proposal.source_claim_ids or ["__none__"]),
+                    ResumeClaim.user_id == str(user_id),
+                    ResumeClaim.workflow_state != "withdrawn",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     if {str(row.id) for row in claims} != set(proposal.source_claim_ids or []):
         raise PermissionError("candidate_source_required")
     source_corpus = "；".join(
-        value
-        for value in [proposal.before_text, *(row.current_text for row in claims)]
-        if value
+        value for value in [proposal.before_text, *(row.current_text for row in claims)] if value
     )
     fidelity = assess_fidelity(source_corpus, proposal.after_text)
     proposal.fidelity_result = fidelity

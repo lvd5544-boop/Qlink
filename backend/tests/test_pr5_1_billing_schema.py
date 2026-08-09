@@ -212,6 +212,9 @@ async def test_postgres_pricing_catalog_migration_up_down_up():
     interview_result_downgrade = (
         migration_dir / "20260725_pr5_1_interview_results_down.sql"
     ).read_text(encoding="utf-8")
+    structured_interview_upgrade = (
+        migration_dir / "20260729_pr12_interview_sessions_up.sql"
+    ).read_text(encoding="utf-8")
 
     async with engine.begin() as connection:
         # Respect stack order: a newer table references interview sessions,
@@ -222,6 +225,9 @@ async def test_postgres_pricing_catalog_migration_up_down_up():
             downgrade,
             upgrade,
             interview_result_upgrade,
+            # Restore the current schema after exercising the historical
+            # PR5.1 round trip so later PostgreSQL tests stay isolated.
+            structured_interview_upgrade,
         ):
             for statement in (part.strip() for part in sql.split(";")):
                 if statement:

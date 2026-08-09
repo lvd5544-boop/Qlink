@@ -19,6 +19,7 @@ from .interview_policy import (
     validate_observation_offsets,
 )
 from .personalized_guidance import build_interview_action_plan, guidance_context
+from .security import candidate_can_access_job
 from .models_db import (
     ClaimEvent,
     InterviewAnswer,
@@ -98,6 +99,8 @@ async def create_session(
         job = await db.get(JobDescription, job_id)
         if job is None:
             raise ValueError("job_not_found")
+        if not candidate_can_access_job(job, str(user_id)):
+            raise PermissionError("job_not_owned")
     if mode == "target_gap" and job is None:
         raise ValueError("job_required")
     if mode == "vault_builder" and resume is None and claim is None:
@@ -148,12 +151,16 @@ async def create_session(
 
 async def list_questions(db: AsyncSession, session_id: str) -> list[InterviewQuestion]:
     return (
-        await db.execute(
-            select(InterviewQuestion)
-            .where(InterviewQuestion.session_id == str(session_id))
-            .order_by(InterviewQuestion.sequence_no.asc())
+        (
+            await db.execute(
+                select(InterviewQuestion)
+                .where(InterviewQuestion.session_id == str(session_id))
+                .order_by(InterviewQuestion.sequence_no.asc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
 
 async def next_question(
@@ -171,7 +178,9 @@ async def next_question(
                     InterviewAnswer.question_id.in_([str(q.id) for q in questions] or ["__none__"])
                 )
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     for question in questions:
         if str(question.id) not in {str(value) for value in answered_ids}:
@@ -295,14 +304,18 @@ async def list_observations_for_session(
     db: AsyncSession, session_id: str
 ) -> list[InterviewObservation]:
     return (
-        await db.execute(
-            select(InterviewObservation)
-            .join(InterviewAnswer, InterviewAnswer.id == InterviewObservation.answer_id)
-            .join(InterviewQuestion, InterviewQuestion.id == InterviewAnswer.question_id)
-            .where(InterviewQuestion.session_id == str(session_id))
-            .order_by(InterviewObservation.created_at.asc())
+        (
+            await db.execute(
+                select(InterviewObservation)
+                .join(InterviewAnswer, InterviewAnswer.id == InterviewObservation.answer_id)
+                .join(InterviewQuestion, InterviewQuestion.id == InterviewAnswer.question_id)
+                .where(InterviewQuestion.session_id == str(session_id))
+                .order_by(InterviewObservation.created_at.asc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
 
 async def set_observation_confirmation(
@@ -431,7 +444,9 @@ async def complete_session(db: AsyncSession, session: InterviewSession) -> Inter
     return session
 
 
-async def revoke_session(db: AsyncSession, session: InterviewSession, *, actor_id: str | None = None) -> InterviewSession:
+async def revoke_session(
+    db: AsyncSession, session: InterviewSession, *, actor_id: str | None = None
+) -> InterviewSession:
     """Revoke purpose consent and stop further use of session outputs."""
     session.status = "revoked"
     session.revoked_at = now_utc()
@@ -450,8 +465,14 @@ async def revoke_session(db: AsyncSession, session: InterviewSession, *, actor_i
 
     if answer_ids:
         answers = (
-            await db.execute(select(InterviewAnswer).where(InterviewAnswer.id.in_(list(answer_ids))))
-        ).scalars().all()
+            (
+                await db.execute(
+                    select(InterviewAnswer).where(InterviewAnswer.id.in_(list(answer_ids)))
+                )
+            )
+            .scalars()
+            .all()
+        )
         for answer in answers:
             answer.allowed_uses = _consent_defaults({})
             answer.share_with_employer = False
@@ -462,13 +483,17 @@ async def revoke_session(db: AsyncSession, session: InterviewSession, *, actor_i
         if not claim or str(claim.user_id) != str(session.user_id):
             continue
         linked = (
-            await db.execute(
-                select(ClaimEvent).where(
-                    ClaimEvent.claim_id == claim_id,
-                    ClaimEvent.event_type == "interview_observation_confirmed",
+            (
+                await db.execute(
+                    select(ClaimEvent).where(
+                        ClaimEvent.claim_id == claim_id,
+                        ClaimEvent.event_type == "interview_observation_confirmed",
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         from_this_session = [
             event
             for event in linked
@@ -477,8 +502,7 @@ async def revoke_session(db: AsyncSession, session: InterviewSession, *, actor_i
         if not from_this_session:
             continue
         if claim.workflow_state != "withdrawn" and (
-            claim.source_object_type == "interview_observation"
-            or claim.origin_kind == "interview"
+            claim.source_object_type == "interview_observation" or claim.origin_kind == "interview"
         ):
             claim.workflow_state = "withdrawn"
             claim.confirmation_state = "withdrawn"
@@ -529,7 +553,9 @@ def serialize_answer(row: InterviewAnswer) -> dict[str, Any]:
     }
 
 
-def serialize_observation(row: InterviewObservation, *, answer_text: str | None = None) -> dict[str, Any]:
+def serialize_observation(
+    row: InterviewObservation, *, answer_text: str | None = None
+) -> dict[str, Any]:
     payload = {
         "id": str(row.id),
         "answer_id": str(row.answer_id),
@@ -576,7 +602,9 @@ def serialize_session(
     }
 
 
-async def session_progress(db: AsyncSession, session_id: str) -> tuple[list[InterviewQuestion], int]:
+async def session_progress(
+    db: AsyncSession, session_id: str
+) -> tuple[list[InterviewQuestion], int]:
     questions = await list_questions(db, session_id)
     if not questions:
         return [], 0
@@ -599,20 +627,25 @@ async def build_session_report(
 
     questions = await list_questions(db, str(session.id))
     answers = (
-        await db.execute(
-            select(InterviewAnswer).where(
-                InterviewAnswer.question_id.in_([str(row.id) for row in questions] or ["__none__"])
+        (
+            await db.execute(
+                select(InterviewAnswer).where(
+                    InterviewAnswer.question_id.in_(
+                        [str(row.id) for row in questions] or ["__none__"]
+                    )
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     answer_by_question = {str(row.question_id): row for row in answers}
     observations = await list_observations_for_session(db, str(session.id))
-    usable = [
-        row for row in observations
-        if row.candidate_confirmation_state != "rejected"
-    ]
+    usable = [row for row in observations if row.candidate_confirmation_state != "rejected"]
     observation_types = {row.observation_type for row in usable}
-    answered = [row for row in answers if not row.user_declined and row.answer_text_snapshot.strip()]
+    answered = [
+        row for row in answers if not row.user_declined and row.answer_text_snapshot.strip()
+    ]
     declined = [row for row in answers if row.user_declined]
     answer_corpus = "\n".join(row.answer_text_snapshot for row in answered)
     resume = await db.get(Resume, str(session.resume_id)) if session.resume_id else None
@@ -638,7 +671,9 @@ async def build_session_report(
                 .order_by(InterviewSession.created_at.desc())
                 .limit(5)
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     prior_types: dict[str, set[str]] = {str(value): set() for value in prior_session_ids}
     if prior_session_ids:
@@ -647,7 +682,9 @@ async def build_session_report(
                 select(InterviewQuestion.session_id, InterviewObservation.observation_type)
                 .join(InterviewAnswer, InterviewAnswer.question_id == InterviewQuestion.id)
                 .join(InterviewObservation, InterviewObservation.answer_id == InterviewAnswer.id)
-                .where(InterviewQuestion.session_id.in_([str(value) for value in prior_session_ids]))
+                .where(
+                    InterviewQuestion.session_id.in_([str(value) for value in prior_session_ids])
+                )
             )
         ).all()
         for prior_session_id, observation_type in prior_rows:
@@ -655,8 +692,7 @@ async def build_session_report(
     recurring_gap_types = {
         kind
         for kind in ("candidate_action", "result", "metric", "reflection")
-        if len(prior_types) >= 2
-        and sum(kind not in values for values in prior_types.values()) >= 2
+        if len(prior_types) >= 2 and sum(kind not in values for values in prior_types.values()) >= 2
     }
 
     strength_types = {
@@ -701,44 +737,54 @@ async def build_session_report(
         if kind in observation_types
     ][:4]
     if not strengths and answered:
-        strengths.append({
-            "title": "完成了有效回答",
-            "evidence": "本次回答已形成可回看的会话记录。",
-            "why_it_matters": "这为后续逐次训练和比较提供了起点。",
-            "keep_doing": f"下一次继续使用「{anchor_name}」作为练习案例，并增加一个可核对细节。",
-            "source": "本次回答",
-        })
+        strengths.append(
+            {
+                "title": "完成了有效回答",
+                "evidence": "本次回答已形成可回看的会话记录。",
+                "why_it_matters": "这为后续逐次训练和比较提供了起点。",
+                "keep_doing": f"下一次继续使用「{anchor_name}」作为练习案例，并增加一个可核对细节。",
+                "source": "本次回答",
+            }
+        )
 
     gaps: list[dict[str, str]] = []
     gap_types: list[str] = []
     if "candidate_action" not in observation_types:
         gap_types.append("candidate_action")
-        gaps.append({
-            "title": "个人贡献不够清楚",
-            "detail": f"你提到了「{anchor_name}」，但回答中还没有稳定地区分“我做了什么”和“团队做了什么”。",
-            "impact": "招聘方可能认可项目本身，却无法判断你的责任边界和独立解决问题能力。",
-        })
+        gaps.append(
+            {
+                "title": "个人贡献不够清楚",
+                "detail": f"你提到了「{anchor_name}」，但回答中还没有稳定地区分“我做了什么”和“团队做了什么”。",
+                "impact": "招聘方可能认可项目本身，却无法判断你的责任边界和独立解决问题能力。",
+            }
+        )
     if not {"result", "metric"} & observation_types:
         gap_types.extend(["result", "metric"])
-        gaps.append({
-            "title": "结果证据偏弱",
-            "detail": f"「{anchor_name}」已有行动描述，但缺少交付物、影响范围、效率或前后变化。",
-            "impact": "面试官难以判断这段经历的完成质量和对目标岗位的实际价值。",
-        })
+        gaps.append(
+            {
+                "title": "结果证据偏弱",
+                "detail": f"「{anchor_name}」已有行动描述，但缺少交付物、影响范围、效率或前后变化。",
+                "impact": "面试官难以判断这段经历的完成质量和对目标岗位的实际价值。",
+            }
+        )
     if "reflection" not in observation_types:
         gap_types.append("reflection")
-        gaps.append({
-            "title": "复盘深度不足",
-            "detail": f"当前还没有看到你在「{anchor_name}」中的关键取舍、局限和下一次改法。",
-            "impact": f"这会削弱你对{target_role or '复杂任务'}的学习速度与可迁移能力展示。",
-        })
+        gaps.append(
+            {
+                "title": "复盘深度不足",
+                "detail": f"当前还没有看到你在「{anchor_name}」中的关键取舍、局限和下一次改法。",
+                "impact": f"这会削弱你对{target_role or '复杂任务'}的学习速度与可迁移能力展示。",
+            }
+        )
     if declined or len(answered) < len(questions):
         gap_types.append("completeness")
-        gaps.append({
-            "title": "回答完整度不足",
-            "detail": f"{len(questions)} 道题中完成 {len(answered)} 道有效回答。",
-            "impact": "部分能力没有获得被观察和反馈的机会。",
-        })
+        gaps.append(
+            {
+                "title": "回答完整度不足",
+                "detail": f"{len(questions)} 道题中完成 {len(answered)} 道有效回答。",
+                "impact": "部分能力没有获得被观察和反馈的机会。",
+            }
+        )
 
     coaching = build_interview_action_plan(
         gap_types=gap_types,
@@ -756,21 +802,27 @@ async def build_session_report(
     scores = {
         "回答完整度": round(100 * len(answered) / max(len(questions), 1)),
         "个人贡献清晰度": 85 if "candidate_action" in observation_types else 35,
-        "结果证据": 90 if "metric" in observation_types else (70 if "result" in observation_types else 30),
+        "结果证据": 90
+        if "metric" in observation_types
+        else (70 if "result" in observation_types else 30),
         "复盘深度": 85 if "reflection" in observation_types else 35,
     }
     transcript = []
     for question in questions:
         answer = answer_by_question.get(str(question.id))
-        transcript.append({
-            "question_id": str(question.id),
-            "sequence_no": question.sequence_no,
-            "question_goal": question.question_goal,
-            "question_text": question.question_text,
-            "answer_text": answer.answer_text_snapshot if answer and not answer.user_declined else None,
-            "declined": bool(answer.user_declined) if answer else False,
-            "decline_reason": answer.decline_reason if answer else None,
-        })
+        transcript.append(
+            {
+                "question_id": str(question.id),
+                "sequence_no": question.sequence_no,
+                "question_goal": question.question_goal,
+                "question_text": question.question_text,
+                "answer_text": answer.answer_text_snapshot
+                if answer and not answer.user_declined
+                else None,
+                "declined": bool(answer.user_declined) if answer else False,
+                "decline_reason": answer.decline_reason if answer else None,
+            }
+        )
 
     return {
         "status": session.status,

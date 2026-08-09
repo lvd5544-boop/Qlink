@@ -276,6 +276,7 @@ async def _run_llm_parse(payload: dict) -> dict:
         parsed = await parse_job_with_llm(text)
     else:
         from .llm_client import run_in_thread
+
         parsed = await run_in_thread(parse_with_llm, text)
     return {"kind": kind, "parsed": parsed}
 

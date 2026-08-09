@@ -62,23 +62,27 @@ async def _sync_career_experiences(
     parsed = resume.parsed_json or {}
     imported: list[tuple[str, int, str, str | None, str | None, str | None]] = []
     for index, item in enumerate(parsed.get("work_experience") or []):
-        imported.append((
-            "work",
-            index,
-            "work_experience",
-            item.get("company"),
-            item.get("position"),
-            item.get("description"),
-        ))
+        imported.append(
+            (
+                "work",
+                index,
+                "work_experience",
+                item.get("company"),
+                item.get("position"),
+                item.get("description"),
+            )
+        )
     for index, item in enumerate(parsed.get("projects") or []):
-        imported.append((
-            "project",
-            index,
-            "projects",
-            None,
-            item.get("name") or item.get("role"),
-            item.get("description"),
-        ))
+        imported.append(
+            (
+                "project",
+                index,
+                "projects",
+                None,
+                item.get("name") or item.get("role"),
+                item.get("description"),
+            )
+        )
     education = str(parsed.get("education") or "").strip()
     school = str(parsed.get("school") or "").strip() or None
     degree = str(parsed.get("degree") or "").strip() or None
@@ -86,13 +90,17 @@ async def _sync_career_experiences(
         imported.append(("education", 0, "education", school, degree or education, education))
 
     existing = (
-        await db.execute(
-            select(CareerExperience).where(
-                CareerExperience.user_id == str(resume.user_id),
-                CareerExperience.workflow_state != "withdrawn",
+        (
+            await db.execute(
+                select(CareerExperience).where(
+                    CareerExperience.user_id == str(resume.user_id),
+                    CareerExperience.workflow_state != "withdrawn",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     by_identity = {
         _experience_identity(row.experience_type, row.organization, row.title): row
         for row in existing
@@ -183,7 +191,11 @@ async def sync_resume_claims(
                 source_object_type="resume",
                 source_object_id=str(resume.id),
                 career_experience_id=(
-                    str(experience_by_section[(str(item.get("section")), int(item.get("entry_index")))].id)
+                    str(
+                        experience_by_section[
+                            (str(item.get("section")), int(item.get("entry_index")))
+                        ].id
+                    )
                     if item.get("entry_index") is not None
                     and (str(item.get("section")), int(item.get("entry_index")))
                     in experience_by_section
@@ -667,6 +679,8 @@ def serialize_claim(
             for item in events
         ],
     }
+
+
 _DATE_ONLY_CLAIM = re.compile(
     r"^\s*(?:(?:19|20)\d{2}(?:[./-]\d{1,2})?"
     r"(?:\s*(?:-|–|—|to|至)\s*(?:(?:19|20)\d{2}(?:[./-]\d{1,2})?|present|至今))?)\s*$",

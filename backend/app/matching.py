@@ -54,18 +54,14 @@ def _evaluate_hybrid(resume_json: dict, job_json: dict, job_title: str) -> tuple
         reason = f"{policy_reason}。{base_reason}"
     else:
         reason = policy_reason
-    breakdown["match_tier"] = (
-        "high" if score >= 8 else ("medium" if score >= 5 else "low")
-    )
+    breakdown["match_tier"] = "high" if score >= 8 else ("medium" if score >= 5 else "low")
     eligible = (breakdown.get("preference_policy") or {}).get("eligible", True)
     breakdown["potential_score"] = (
         min(10.0, round(score + max(float(potential) - float(base_score), 0), 1))
         if eligible
         else score
     )
-    breakdown["improvement_delta"] = round(
-        breakdown["potential_score"] - score, 1
-    )
+    breakdown["improvement_delta"] = round(breakdown["potential_score"] - score, 1)
     return score, breakdown, reason
 
 

@@ -46,13 +46,16 @@ async def _prepare_confirmed_hard_requirement(
     )
     assert confirmed.status_code == 200, confirmed.text
     rows = (
-        await db_session.execute(
-            select(JobRequirement).where(
-                JobRequirement.profile_snapshot_id
-                == confirmed.json()["snapshot"]["id"]
+        (
+            await db_session.execute(
+                select(JobRequirement).where(
+                    JobRequirement.profile_snapshot_id == confirmed.json()["snapshot"]["id"]
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert rows
     for row in rows:
         row.employer_confirmed = True
@@ -60,11 +63,7 @@ async def _prepare_confirmed_hard_requirement(
             row.is_hard_constraint = True
     await db_session.commit()
     hard = next(
-        (
-            row
-            for row in rows
-            if row.is_hard_constraint and row.requirement_type == "skill"
-        ),
+        (row for row in rows if row.is_hard_constraint and row.requirement_type == "skill"),
         None,
     )
     if hard is None:
@@ -455,9 +454,10 @@ async def test_snapshot_immutable_and_traceable(
     assert body["requirement_refs"]
     assert body["resume_version_id"] == "v2"
     assert body["resume_content_hash"] == _content_hash(newer_resume)
-    assert detail.json()["decision_trace"]["observed_source_refs"][0][
-        "profile_snapshot_hash"
-    ] == frozen_hash
+    assert (
+        detail.json()["decision_trace"]["observed_source_refs"][0]["profile_snapshot_hash"]
+        == frozen_hash
+    )
     rerun = await client.get(
         f"/employer/screening-runs/{run['id']}",
         headers=_headers(auth_header, employer_a),
@@ -667,10 +667,14 @@ async def test_idempotent_execute_and_unique_result(
     )
     assert third.status_code == 200
     rows = (
-        await db_session.execute(
-            select(ScreeningResult).where(ScreeningResult.run_id == run["id"])
+        (
+            await db_session.execute(
+                select(ScreeningResult).where(ScreeningResult.run_id == run["id"])
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
 
 
@@ -809,12 +813,16 @@ async def test_new_credibility_audit_omits_risk_score(
     assert "risk_score" not in (body.get("report") or {})
 
     record = (
-        await db_session.execute(
-            select(CredibilityAuditRecord)
-            .where(CredibilityAuditRecord.application_id == str(application_a.id))
-            .order_by(CredibilityAuditRecord.created_at.desc())
+        (
+            await db_session.execute(
+                select(CredibilityAuditRecord)
+                .where(CredibilityAuditRecord.application_id == str(application_a.id))
+                .order_by(CredibilityAuditRecord.created_at.desc())
+            )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     assert record is not None
     assert record.risk_score is None
 
@@ -860,12 +868,18 @@ async def test_concurrent_execute_unique_constraint(
     assert first.status_code == 200
     assert second.status_code == 200
     rows = (
-        await db_session.execute(
-            select(ScreeningResult).where(ScreeningResult.run_id == run["id"])
+        (
+            await db_session.execute(
+                select(ScreeningResult).where(ScreeningResult.run_id == run["id"])
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
     runs = (
-        await db_session.execute(select(ScreeningRun).where(ScreeningRun.id == run["id"]))
-    ).scalars().all()
+        (await db_session.execute(select(ScreeningRun).where(ScreeningRun.id == run["id"])))
+        .scalars()
+        .all()
+    )
     assert runs[0].status == "completed"

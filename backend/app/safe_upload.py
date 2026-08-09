@@ -56,7 +56,9 @@ def _validate_magic(path: Path, extension: str) -> None:
         try:
             sample.decode("utf-8")
         except UnicodeDecodeError as exc:
-            raise HTTPException(status_code=415, detail="文本或代码文件必须使用 UTF-8 编码") from exc
+            raise HTTPException(
+                status_code=415, detail="文本或代码文件必须使用 UTF-8 编码"
+            ) from exc
 
 
 def _validate_container_limits_sync(path: Path, extension: str) -> None:

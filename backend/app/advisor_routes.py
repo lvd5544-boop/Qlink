@@ -21,7 +21,7 @@ from .auth import get_current_user
 from .database import get_db
 from .job_parser import parse_job_rules_only
 from .models_db import AdvisorMessage, JobDescription, Resume, TargetRoleProfileSnapshot, User
-from .security import require_candidate
+from .security import candidate_can_access_job, require_candidate
 from .target_job_optimization import generate_diagnostic, serialize_diagnostic
 
 router = APIRouter(prefix="/advisor", tags=["Job Advisor"])
@@ -62,11 +62,9 @@ async def _job_or_404(
     job = await db.get(JobDescription, str(job_id))
     if not job:
         raise HTTPException(status_code=404, detail="岗位不存在")
-    parsed = job.parsed_json or {}
-    imported_by = parsed.get("advisor_imported_by")
-    if parsed.get("advisor_private") and (
-        user is None or str(imported_by) != str(user.id)
-    ):
+    if user is None and (job.parsed_json or {}).get("advisor_private"):
+        raise HTTPException(status_code=404, detail="岗位不存在")
+    if user is not None and not candidate_can_access_job(job, str(user.id)):
         raise HTTPException(status_code=404, detail="岗位不存在")
     return job
 
@@ -169,10 +167,7 @@ async def confirm_target_job_profile(
             return gate.replay
         decisions = None
         if body and body.requirements is not None:
-            decisions = {
-                item.requirement_id: item.classification
-                for item in body.requirements
-            }
+            decisions = {item.requirement_id: item.classification for item in body.requirements}
             if len(decisions) != len(body.requirements):
                 raise HTTPException(status_code=422, detail="岗位要求不能重复")
         try:
@@ -318,15 +313,19 @@ async def list_advisor_messages(
 ):
     await _job_or_404(db, job_id, current_user)
     rows = (
-        await db.execute(
-            select(AdvisorMessage)
-            .where(
-                AdvisorMessage.user_id == str(current_user.id),
-                AdvisorMessage.job_id == str(job_id),
+        (
+            await db.execute(
+                select(AdvisorMessage)
+                .where(
+                    AdvisorMessage.user_id == str(current_user.id),
+                    AdvisorMessage.job_id == str(job_id),
+                )
+                .order_by(AdvisorMessage.created_at)
             )
-            .order_by(AdvisorMessage.created_at)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return {
         "messages": [
             {

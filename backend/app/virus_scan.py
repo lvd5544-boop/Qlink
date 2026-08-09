@@ -14,9 +14,7 @@ from dataclasses import dataclass
 logger = logging.getLogger(__name__)
 
 # Standard EICAR test file signature (safe test string used by AV vendors).
-EICAR_SIGNATURE = (
-    b"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
-)
+EICAR_SIGNATURE = b"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
 
 
 @dataclass(frozen=True)

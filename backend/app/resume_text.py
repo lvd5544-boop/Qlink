@@ -5,9 +5,7 @@ from __future__ import annotations
 import re
 from typing import List
 
-_EXPLICIT_BULLET = re.compile(
-    r"^\s*(?:[-•●▪◦‣]|(?:\d{1,2}|[A-Za-z])[.)、])\s+"
-)
+_EXPLICIT_BULLET = re.compile(r"^\s*(?:[-•●▪◦‣]|(?:\d{1,2}|[A-Za-z])[.)、])\s+")
 _SENTENCE_BOUNDARY = re.compile(r"(?<=[。！？!?])\s+|(?<=[.])\s+(?=[A-Z\u4e00-\u9fff])")
 
 
@@ -43,16 +41,10 @@ def split_bullets(text: str) -> List[str]:
         return []
     units: list[str] = []
     for paragraph in _compact_visual_lines(text):
-        clauses = [
-            value.strip()
-            for value in re.split(r"[；;]+", paragraph)
-            if value.strip()
-        ]
+        clauses = [value.strip() for value in re.split(r"[；;]+", paragraph) if value.strip()]
         for clause in clauses:
             sentences = [
-                value.strip()
-                for value in _SENTENCE_BOUNDARY.split(clause)
-                if value.strip()
+                value.strip() for value in _SENTENCE_BOUNDARY.split(clause) if value.strip()
             ]
             units.extend(sentences or [clause])
 
@@ -61,9 +53,8 @@ def split_bullets(text: str) -> List[str]:
     merged: list[str] = []
     for unit in units:
         word_count = len(re.findall(r"\b[\w²]+\b", unit))
-        is_fragment = (
-            len(unit) < 28
-            or (re.match(r"^(?:and|or|but|to|for|with|via|out)\b", unit, re.I) and word_count < 18)
+        is_fragment = len(unit) < 28 or (
+            re.match(r"^(?:and|or|but|to|for|with|via|out)\b", unit, re.I) and word_count < 18
         )
         if is_fragment and merged:
             merged[-1] = f"{merged[-1]} {unit}".strip()

@@ -23,9 +23,7 @@ ARBEITNOW_URL = "https://www.arbeitnow.com/api/job-board-api"
 REMOTEOK_URL = "https://remoteok.com/api"
 USAJOBS_URL = "https://data.usajobs.gov/api/search"
 GREENHOUSE_URL = "https://boards-api.greenhouse.io/v1/boards/{token}/jobs"
-DEFAULT_GREENHOUSE_BOARDS = (
-    "anthropic:Anthropic,stripe:Stripe,discord:Discord"
-)
+DEFAULT_GREENHOUSE_BOARDS = "anthropic:Anthropic,stripe:Stripe,discord:Discord"
 
 EMPLOYER_ID = "foreign"
 
@@ -47,22 +45,24 @@ def _normalize_job(
     url: str = "",
 ) -> dict:
     tag_skills = [{"name": t, "level": "intermediate"} for t in (tags or [])[:10] if t]
-    return repair_text_tree({
-        "title": title or "未知岗位",
-        "company_name": company_name or "未知企业",
-        "company_type": "foreign",
-        "salary_range": "",
-        "location": location or "远程/海外",
-        "required_skills": tag_skills,
-        "responsibilities": [description] if description else [],
-        "experience_years": None,
-        "education": "",
-        "other_notes": f"来源: {source_label} | {url}".strip(),
-        "source_name": source_label,
-        "source_url": url,
-        "source_attribution": f"岗位来源：{source_label}；申请时跳转原始岗位页面。",
-        "last_seen_at": datetime.now(timezone.utc).isoformat(),
-    })
+    return repair_text_tree(
+        {
+            "title": title or "未知岗位",
+            "company_name": company_name or "未知企业",
+            "company_type": "foreign",
+            "salary_range": "",
+            "location": location or "远程/海外",
+            "required_skills": tag_skills,
+            "responsibilities": [description] if description else [],
+            "experience_years": None,
+            "education": "",
+            "other_notes": f"来源: {source_label} | {url}".strip(),
+            "source_name": source_label,
+            "source_url": url,
+            "source_attribution": f"岗位来源：{source_label}；申请时跳转原始岗位页面。",
+            "last_seen_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
 
 
 async def _ensure_foreign_employer(db):
@@ -181,11 +181,7 @@ async def fetch_usajobs_jobs(client: httpx.AsyncClient) -> list:
             timeout=30.0,
         )
         response.raise_for_status()
-        items = (
-            response.json()
-            .get("SearchResult", {})
-            .get("SearchResultItems", [])
-        )
+        items = response.json().get("SearchResult", {}).get("SearchResultItems", [])
         for item in items:
             descriptor = item.get("MatchedObjectDescriptor") or {}
             details = (descriptor.get("UserArea") or {}).get("Details") or {}
@@ -233,9 +229,7 @@ def _configured_greenhouse_boards() -> list[tuple[str, str]]:
 async def fetch_greenhouse_jobs(client: httpx.AsyncClient) -> list:
     """Fetch published company jobs through Greenhouse's public GET API."""
     jobs = []
-    max_per_board = max(
-        1, min(int(os.getenv("GREENHOUSE_MAX_JOBS_PER_BOARD") or 200), 500)
-    )
+    max_per_board = max(1, min(int(os.getenv("GREENHOUSE_MAX_JOBS_PER_BOARD") or 200), 500))
     for token, company in _configured_greenhouse_boards():
         try:
             response = await client.get(
@@ -300,10 +294,14 @@ async def fetch_foreign_jobs():
     async with AsyncSessionLocal() as db:
         await _ensure_foreign_employer(db)
         existing = (
-            await db.execute(
-                select(JobDescription).where(JobDescription.employer_id == EMPLOYER_ID)
+            (
+                await db.execute(
+                    select(JobDescription).where(JobDescription.employer_id == EMPLOYER_ID)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         by_source_url = {
             str((row.parsed_json or {}).get("source_url")): row
             for row in existing
@@ -322,11 +320,7 @@ async def fetch_foreign_jobs():
                 row = by_source_url.get(job_info.get("source_url")) or by_identity.get(
                     (job_info["company_name"].lower(), job_info["title"].lower())
                 )
-                raw_text = (
-                    job_info["responsibilities"][0]
-                    if job_info["responsibilities"]
-                    else ""
-                )
+                raw_text = job_info["responsibilities"][0] if job_info["responsibilities"] else ""
                 if row is None:
                     row = JobDescription(
                         employer_id=EMPLOYER_ID,

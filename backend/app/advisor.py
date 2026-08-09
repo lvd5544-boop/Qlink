@@ -214,15 +214,19 @@ async def _ensure_taxonomy_source(db: AsyncSession) -> tuple[DataSource, DataSou
         db.add(source)
         await db.flush()
     version = (
-        await db.execute(
-            select(DataSourceVersion)
-            .where(
-                DataSourceVersion.source_id == source.id,
-                DataSourceVersion.external_version == TAXONOMY_VERSION,
+        (
+            await db.execute(
+                select(DataSourceVersion)
+                .where(
+                    DataSourceVersion.source_id == source.id,
+                    DataSourceVersion.external_version == TAXONOMY_VERSION,
+                )
+                .order_by(DataSourceVersion.created_at.desc())
             )
-            .order_by(DataSourceVersion.created_at.desc())
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     if version is None:
         version = DataSourceVersion(
             id=str(uuid.uuid4()),
@@ -276,24 +280,32 @@ async def _active_external_sources(
     job: JobDescription,
 ) -> list[tuple[DataSource, DataSourceVersion]]:
     sources = (
-        await db.execute(
-            select(DataSource).where(
-                DataSource.status == "approved",
-                DataSource.layer.in_(("B", "C", "D")),
+        (
+            await db.execute(
+                select(DataSource).where(
+                    DataSource.status == "approved",
+                    DataSource.layer.in_(("B", "C", "D")),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     rows: list[tuple[DataSource, DataSourceVersion]] = []
     for source in sources:
         if not _scope_matches(source, job):
             continue
         version = (
-            await db.execute(
-                select(DataSourceVersion)
-                .where(DataSourceVersion.source_id == str(source.id))
-                .order_by(DataSourceVersion.created_at.desc())
+            (
+                await db.execute(
+                    select(DataSourceVersion)
+                    .where(DataSourceVersion.source_id == str(source.id))
+                    .order_by(DataSourceVersion.created_at.desc())
+                )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         if version is None:
             continue
         try:
@@ -349,9 +361,7 @@ def _occupation_profile(
         if keyword.casefold() in haystack and occupation not in occupations:
             occupations.append(occupation)
     work_themes = _unique_text(
-        theme
-        for occupation in occupations
-        for theme in _OCCUPATION_THEMES.get(occupation, [])
+        theme for occupation in occupations for theme in _OCCUPATION_THEMES.get(occupation, [])
     )
     citation = _citation(
         source_id=str(source.id),
@@ -463,9 +473,7 @@ async def get_or_create_profile(
         )
     ]
     parsed_for_profile = {
-        key: value
-        for key, value in (job.parsed_json or {}).items()
-        if not str(key).startswith("_")
+        key: value for key, value in (job.parsed_json or {}).items() if not str(key).startswith("_")
     }
     jd_payload = {"title": job.title, "raw_text": job.raw_text, "parsed": parsed_for_profile}
     jd_hash = _stable_hash(jd_payload)
@@ -480,35 +488,43 @@ async def get_or_create_profile(
         }
     )
     existing = (
-        await db.execute(
-            select(TargetRoleProfileSnapshot).where(
-                TargetRoleProfileSnapshot.job_id == str(job.id),
-                TargetRoleProfileSnapshot.snapshot_hash == snapshot_hash,
+        (
+            await db.execute(
+                select(TargetRoleProfileSnapshot).where(
+                    TargetRoleProfileSnapshot.job_id == str(job.id),
+                    TargetRoleProfileSnapshot.snapshot_hash == snapshot_hash,
+                )
             )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     if existing is not None:
         await db.commit()
         return existing
 
     previous = (
-        await db.execute(
-            select(TargetRoleProfileSnapshot).where(
-                TargetRoleProfileSnapshot.job_id == str(job.id),
-                TargetRoleProfileSnapshot.status.in_(("draft", "employer_confirmed")),
+        (
+            await db.execute(
+                select(TargetRoleProfileSnapshot).where(
+                    TargetRoleProfileSnapshot.job_id == str(job.id),
+                    TargetRoleProfileSnapshot.status.in_(("draft", "employer_confirmed")),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for row in previous:
         row.status = "superseded"
 
     expiry_candidates = [
-        version.expires_at
-        for _, version in external_sources
-        if version.expires_at is not None
+        version.expires_at for _, version in external_sources if version.expires_at is not None
     ]
-    freshness = min(expiry_candidates) if expiry_candidates else _utcnow() + timedelta(
-        days=_DEFAULT_FRESHNESS_DAYS
+    freshness = (
+        min(expiry_candidates)
+        if expiry_candidates
+        else _utcnow() + timedelta(days=_DEFAULT_FRESHNESS_DAYS)
     )
     snapshot = TargetRoleProfileSnapshot(
         id=str(uuid.uuid4()),
@@ -551,12 +567,16 @@ async def serialize_profile(
     job: JobDescription,
 ) -> dict[str, Any]:
     requirements = (
-        await db.execute(
-            select(JobRequirement)
-            .where(JobRequirement.profile_snapshot_id == str(snapshot.id))
-            .order_by(JobRequirement.importance.desc(), JobRequirement.created_at)
+        (
+            await db.execute(
+                select(JobRequirement)
+                .where(JobRequirement.profile_snapshot_id == str(snapshot.id))
+                .order_by(JobRequirement.importance.desc(), JobRequirement.created_at)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     jd_citation = _citation(
         source_id=f"job:{job.id}",
         source_version_id=f"jd:{snapshot.jd_snapshot_hash[:24]}",
@@ -586,9 +606,7 @@ async def serialize_profile(
             "taxonomy_version": snapshot.taxonomy_version,
             "created_at": snapshot.created_at.isoformat() if snapshot.created_at else None,
             "freshness_expires_at": (
-                snapshot.freshness_expires_at.isoformat()
-                if snapshot.freshness_expires_at
-                else None
+                snapshot.freshness_expires_at.isoformat() if snapshot.freshness_expires_at else None
             ),
             "is_stale": bool(expires_at and expires_at <= now),
         },
@@ -627,12 +645,14 @@ async def confirm_profile(
     requirement_decisions: dict[str, str] | None = None,
 ) -> None:
     rows = (
-        await db.execute(
-            select(JobRequirement).where(
-                JobRequirement.profile_snapshot_id == str(snapshot.id)
+        (
+            await db.execute(
+                select(JobRequirement).where(JobRequirement.profile_snapshot_id == str(snapshot.id))
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     if requirement_decisions is not None:
         row_ids = {str(row.id) for row in rows}
         if set(requirement_decisions) != row_ids:
@@ -644,9 +664,7 @@ async def confirm_profile(
 
     for row in rows:
         classification = (
-            requirement_decisions.get(str(row.id))
-            if requirement_decisions is not None
-            else None
+            requirement_decisions.get(str(row.id)) if requirement_decisions is not None else None
         )
         if classification == "hard":
             row.requirement_level = "required"
@@ -809,20 +827,14 @@ async def answer_advisor(
         "profile_snapshot_id": str(snapshot.id),
         "snapshot_hash": snapshot.snapshot_hash,
         "observed_source_refs": sorted(
-            {
-                citation["source_version_id"]
-                for item in statements
-                for citation in item["citations"]
-            }
+            {citation["source_version_id"] for item in statements for citation in item["citations"]}
         ),
         "rules_fired": [
             "four_layers_remain_separate",
             "candidate_missing_is_not_capability_absence",
             "future_action_does_not_raise_current_readiness",
         ],
-        "uncertainties": (
-            ["未选择简历，无法核对候选人已有材料。"] if resume is None else []
-        ),
+        "uncertainties": (["未选择简历，无法核对候选人已有材料。"] if resume is None else []),
         "alternative_explanations": [
             "简历未出现某项技能，可能是未写出，也可能是尚未具备；需要用户澄清。"
         ],
@@ -855,8 +867,6 @@ async def answer_advisor(
         "statements": statements,
         "response_trace": trace,
         "created_at": (
-            advisor_message.created_at.isoformat()
-            if advisor_message.created_at
-            else None
+            advisor_message.created_at.isoformat() if advisor_message.created_at else None
         ),
     }

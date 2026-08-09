@@ -165,9 +165,7 @@ async def test_signed_download_url_round_trip(
     assert storage.exists(object_ref)
 
 
-async def test_idempotency_replay_and_conflict(
-    client, candidate_a, auth_header, db_session
-):
+async def test_idempotency_replay_and_conflict(client, candidate_a, auth_header, db_session):
     headers = {
         **auth_header(candidate_a),
         "Idempotency-Key": "pr11-experience-1",

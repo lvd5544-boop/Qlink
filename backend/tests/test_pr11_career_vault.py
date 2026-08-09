@@ -18,9 +18,7 @@ async def _sync_one(db_session, resume, actor_id):
     return claims[0]
 
 
-async def test_claim_id_stays_stable_and_owner_is_backfilled(
-    db_session, resume_a, candidate_a
-):
+async def test_claim_id_stays_stable_and_owner_is_backfilled(db_session, resume_a, candidate_a):
     first = await _sync_one(db_session, resume_a, candidate_a.id)
     stable_id = str(first.id)
     second = await _sync_one(db_session, resume_a, candidate_a.id)
@@ -39,12 +37,14 @@ async def test_resume_sections_seed_long_lived_experiences_and_link_claims(
     await db_session.commit()
 
     experiences = (
-        await db_session.execute(
-            select(CareerExperience).where(
-                CareerExperience.user_id == str(candidate_a.id)
+        (
+            await db_session.execute(
+                select(CareerExperience).where(CareerExperience.user_id == str(candidate_a.id))
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     linked = [claim for claim in claims if claim.section in {"projects", "work_experience"}]
 
     assert experiences

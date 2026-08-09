@@ -6,6 +6,9 @@ from app.matching_preference import (
     infer_candidate_intent,
     infer_job_industries,
 )
+from app.matching_hybrid import full_match_evaluation
+from app.matching_rerank import _profile_summary
+from app.matching_signals import score_industry_match
 
 
 DATA_RESUME = {
@@ -15,13 +18,15 @@ DATA_RESUME = {
         {"name": "pandas"},
         {"name": "scikit-learn"},
     ],
-    "projects": [{
-        "name": "Air Quality Forecasting",
-        "description": (
-            "Compared random forest and regression models using R² and MSE "
-            "for real-time air quality forecasting."
-        ),
-    }],
+    "projects": [
+        {
+            "name": "Air Quality Forecasting",
+            "description": (
+                "Compared random forest and regression models using R² and MSE "
+                "for real-time air quality forecasting."
+            ),
+        }
+    ],
 }
 
 
@@ -94,9 +99,52 @@ def test_incidental_jd_words_do_not_become_job_industries():
     job = {
         "title": "Data Scientist - Cybersecurity Analyst",
         "company_name": "Security Lab",
-        "responsibilities": [
-            "We offer a fun work environment and monitor social media threats."
-        ],
+        "responsibilities": ["We offer a fun work environment and monitor social media threats."],
     }
 
     assert infer_job_industries(job, job["title"]) == ["technology"]
+
+
+def test_company_brand_does_not_offset_a_cross_industry_mismatch():
+    ratio, detail = score_industry_match(
+        {
+            "work_experience": [
+                {
+                    "company": "Google",
+                    "position": "Software Engineer",
+                    "description": "Built cloud APIs",
+                }
+            ],
+        },
+        {
+            "title": "Financial Analyst",
+            "company_name": "Bank",
+            "responsibilities": ["Analyze trading and insurance portfolios"],
+        },
+        "Financial Analyst",
+    )
+
+    assert ratio == 0.2
+    assert detail["overlap"] == []
+
+
+def test_matching_outputs_no_school_brand_or_fake_outcome_probabilities():
+    result = full_match_evaluation(
+        {**DATA_RESUME, "school": "MIT"},
+        {
+            "title": "Data Scientist",
+            "required_skills": ["Python"],
+            "responsibilities": ["Build machine learning models"],
+        },
+        "Data Scientist",
+    )
+
+    assert "education_prestige" not in result["signals"]
+    assert "probabilities" not in result["signals"]
+
+
+def test_llm_rerank_profile_excludes_candidate_name():
+    summary = _profile_summary(DATA_RESUME)
+
+    assert '"name"' not in summary
+    assert "Lin" not in summary

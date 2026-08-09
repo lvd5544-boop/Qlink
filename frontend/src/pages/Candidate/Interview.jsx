@@ -23,7 +23,9 @@ import {
 const { Text } = Typography;
 
 export default function Interview() {
-  const [channel, setChannel] = useState('structured');
+  const [channel, setChannel] = useState(
+    () => new URLSearchParams(window.location.search).get('channel') || 'structured',
+  );
   const [mode, setMode] = useState('profile');
   const [resumeId, setResumeId] = useState(null);
   const [resumes, setResumes] = useState([]);

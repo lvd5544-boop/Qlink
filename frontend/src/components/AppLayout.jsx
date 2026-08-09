@@ -1,7 +1,8 @@
-import { Layout, Menu, Button, Typography, Space } from 'antd';
+import { Layout, Menu, Button, Typography, Space, Tag } from 'antd';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { LogoutOutlined, UserOutlined } from '@ant-design/icons';
 import api from '../api';
+import { disableEnglishDemoMode, isEnglishDemoMode } from '../utils/demoMode';
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
@@ -34,6 +35,7 @@ function parentKeys(items, pathname, parents = []) {
 export default function AppLayout({ brandTitle, brandSubtitle, menuItems, role, journey }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const englishDemo = isEnglishDemoMode();
 
   const handleLogout = async () => {
     try {
@@ -80,19 +82,35 @@ export default function AppLayout({ brandTitle, brandSubtitle, menuItems, role, 
             {currentPage?.label || brandTitle}
           </Text>
           <Space>
+            {englishDemo && <Tag color="blue">ENGLISH DEMO</Tag>}
             <Text type="secondary" style={{ fontSize: 13 }}>
-              <UserOutlined /> {ROLE_LABEL[role] || '用户'}
+              <UserOutlined /> {englishDemo
+                ? ({ candidate: 'Candidate', employer: 'Employer' }[role] || 'User')
+                : (ROLE_LABEL[role] || '用户')}
             </Text>
+            {englishDemo && (
+              <Button
+                type="text"
+                onClick={() => {
+                  disableEnglishDemoMode();
+                  window.location.reload();
+                }}
+              >
+                Exit Demo
+              </Button>
+            )}
             <Button type="text" icon={<LogoutOutlined />} onClick={handleLogout}>
-              退出
+              {englishDemo ? 'Log out' : '退出'}
             </Button>
           </Space>
         </Header>
         <Content className="app-content">
           <div className="app-content-inner">
             {journey?.length > 0 && (
-              <div className="candidate-journey" aria-label="求职主流程">
-                <Text type="secondary" className="candidate-journey-label">当前主线</Text>
+              <div className="candidate-journey" aria-label={englishDemo ? 'Core application flow' : '求职主流程'}>
+                <Text type="secondary" className="candidate-journey-label">
+                  {englishDemo ? 'Core flow' : '当前主线'}
+                </Text>
                 <Space wrap size={4}>
                   {journey.map((step, index) => (
                     <Button

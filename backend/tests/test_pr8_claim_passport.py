@@ -32,12 +32,10 @@ async def test_claim_extraction_includes_identity_scalar_education_and_projects(
 
     assert any(item["section"] == "name" and item["text"] == "Jordan Example" for item in claims)
     assert any(
-        item["section"] == "education" and "Example University" in item["text"]
-        for item in claims
+        item["section"] == "education" and "Example University" in item["text"] for item in claims
     )
     assert any(
-        item["section"] == "projects" and item["text"] == "AI Job Platform"
-        for item in claims
+        item["section"] == "projects" and item["text"] == "AI Job Platform" for item in claims
     )
 
     summarized = extract_resume_claims(

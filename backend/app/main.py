@@ -1728,9 +1728,7 @@ def public_job_payload(parsed: Optional[dict]) -> dict:
     from .text_quality import repair_text_tree
 
     source = parsed or {}
-    return repair_text_tree(
-        {key: source[key] for key in PUBLIC_JOB_FIELDS if key in source}
-    )
+    return repair_text_tree({key: source[key] for key in PUBLIC_JOB_FIELDS if key in source})
 
 
 @app.put("/jobs/{job_id}")
@@ -1922,12 +1920,14 @@ async def update_matching_preferences(
     if current_user.role != "candidate":
         raise HTTPException(status_code=403, detail="仅求职者可设置岗位偏好")
     if body.strictness not in {"focused", "balanced", "explore"}:
-        raise HTTPException(status_code=422, detail="strictness 必须为 focused、balanced 或 explore")
-    resumes = (
-        await db.execute(
-            select(Resume).where(Resume.user_id == str(current_user.id))
+        raise HTTPException(
+            status_code=422, detail="strictness 必须为 focused、balanced 或 explore"
         )
-    ).scalars().all()
+    resumes = (
+        (await db.execute(select(Resume).where(Resume.user_id == str(current_user.id))))
+        .scalars()
+        .all()
+    )
     preferences = {
         "target_roles": [value.strip() for value in body.target_roles if value.strip()],
         "preferred_industries": list(dict.fromkeys(body.preferred_industries)),

@@ -6,7 +6,7 @@ import api from '../api';
 import { getApiErrorMessage } from '../utils/apiError';
 import { decodeHtmlEntities } from '../utils/text';
 import PersonalizedGuidancePanel from './PersonalizedGuidancePanel';
-import CandidateApplicationKit from './CandidateApplicationKit';
+import OpportunityPreparationCard from './OpportunityPreparationCard';
 
 const { Paragraph, Text } = Typography;
 
@@ -383,7 +383,7 @@ export default function TargetJobOptimizationPanel({
           </Col>
         </Row>
         {diagnostic && (
-          <CandidateApplicationKit
+          <OpportunityPreparationCard
             resumeId={resumeId}
             jobId={effectiveJobId}
             diagnostic={diagnostic}

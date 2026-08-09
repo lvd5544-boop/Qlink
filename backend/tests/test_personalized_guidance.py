@@ -8,10 +8,12 @@ def test_interview_plan_is_anchored_to_candidate_project_and_target_skill():
     resume = {
         "name": "Lin",
         "skills": ["Python", "SQL"],
-        "projects": [{
-            "name": "PM2.5 Forecasting",
-            "description": "Built random forest models for air-quality forecasting.",
-        }],
+        "projects": [
+            {
+                "name": "PM2.5 Forecasting",
+                "description": "Built random forest models for air-quality forecasting.",
+            }
+        ],
     }
     job = {"title": "Data Scientist", "required_skills": ["Python", "Statistics"]}
 
@@ -38,15 +40,19 @@ def test_job_guidance_prioritizes_real_anchor_instead_of_generic_rewrite():
         },
         job_json={"title": "Software Engineer", "required_skills": ["Python"]},
         job_title="Software Engineer",
-        issues=[{
-            "diagnosis": "岗位相关性较弱",
-            "claim_ids": ["claim-1"],
-            "strategies": [{
-                "title": "突出已有 Python 任务",
-                "recommended": True,
-                "next_action": "preview_rewrite",
-            }],
-        }],
+        issues=[
+            {
+                "diagnosis": "岗位相关性较弱",
+                "claim_ids": ["claim-1"],
+                "strategies": [
+                    {
+                        "title": "突出已有 Python 任务",
+                        "recommended": True,
+                        "next_action": "preview_rewrite",
+                    }
+                ],
+            }
+        ],
     )
 
     assert result["anchor_experience"] == "Monopoly"
@@ -65,17 +71,31 @@ def test_job_guidance_uses_distinct_reason_steps_and_success_criteria():
             {
                 "diagnosis": "影响力证据不足",
                 "target_requirement_id": "impact",
-                "strategies": [{"strategy": "method_and_tradeoff", "title": "补充方法与权衡", "recommended": True}],
+                "strategies": [
+                    {
+                        "strategy": "method_and_tradeoff",
+                        "title": "补充方法与权衡",
+                        "recommended": True,
+                    }
+                ],
             },
             {
                 "diagnosis": "相关性较弱",
                 "target_requirement_id": "experimentation",
-                "strategies": [{"strategy": "relevance_alignment", "title": "突出相关任务", "recommended": True}],
+                "strategies": [
+                    {
+                        "strategy": "relevance_alignment",
+                        "title": "突出相关任务",
+                        "recommended": True,
+                    }
+                ],
             },
             {
                 "diagnosis": "转向叙事不足",
                 "target_requirement_id": "career_transition",
-                "strategies": [{"strategy": "career_narrative", "title": "说明转向路径", "recommended": True}],
+                "strategies": [
+                    {"strategy": "career_narrative", "title": "说明转向路径", "recommended": True}
+                ],
             },
         ],
     )
@@ -90,10 +110,12 @@ def test_interview_answer_anchor_wins_over_unrelated_long_resume_project():
     result = build_interview_action_plan(
         gap_types=["result"],
         resume_json={
-            "projects": [{
-                "name": "Monopoly",
-                "description": "A very long unrelated game project description " * 8,
-            }],
+            "projects": [
+                {
+                    "name": "Monopoly",
+                    "description": "A very long unrelated game project description " * 8,
+                }
+            ],
         },
         job_json={"required_skills": ["research"]},
         job_title="Data Labeling Specialist",

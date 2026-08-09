@@ -10,7 +10,5 @@ def test_repairs_common_utf8_mojibake_without_touching_normal_text():
 
 
 def test_repairs_nested_public_job_payloads():
-    payload = repair_text_tree(
-        {"title": "GoiÃ¡s", "skills": [{"name": "AnÃ¡lise"}]}
-    )
+    payload = repair_text_tree({"title": "GoiÃ¡s", "skills": [{"name": "AnÃ¡lise"}]})
     assert payload == {"title": "Goiás", "skills": [{"name": "Análise"}]}

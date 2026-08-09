@@ -34,7 +34,6 @@ def _profile_summary(profile: dict) -> str:
             )
     return json.dumps(
         {
-            "name": profile.get("name"),
             "expected_title": profile.get("expected_job_title"),
             "skills": skills[:15],
             "experience": exps[:5],
@@ -68,7 +67,7 @@ def _job_summary(job_info: dict, job_title: str) -> str:
 def _breakdown_summary(breakdown: dict) -> str:
     if not breakdown:
         return "{}"
-    slim = {}
+    slim: Dict[str, object] = {}
     for key in (
         "skills",
         "experience",

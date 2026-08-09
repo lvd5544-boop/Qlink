@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .api_idempotency import idempotent_write
 from .database import get_db
-from .models_db import OptimizationIssue, ReadinessAction, ResumePatchProposal, User
+from .models_db import OptimizationIssue, ReadinessAction, User
 from .security import require_candidate
 from .target_job_optimization import (
     apply_proposal,
@@ -43,7 +43,10 @@ def _error(exc: Exception) -> HTTPException:
         "diagnostic_not_found": (404, "诊断不存在或无权访问"),
         "issue_not_found": (404, "诊断问题不存在或无权访问"),
         "strategy_not_in_issue": (422, "策略不属于该诊断问题"),
-        "candidate_source_required": (409, "当前没有候选人 Claim/Evidence 来源，不能生成岗位定制改写"),
+        "candidate_source_required": (
+            409,
+            "当前没有候选人 Claim/Evidence 来源，不能生成岗位定制改写",
+        ),
         "proposal_not_found": (404, "改写提案不存在或无权访问"),
         "proposal_not_confirmable": (409, "改写提案当前不能确认"),
         "proposal_not_ready": (409, "请先逐条确认事实后再应用"),
@@ -294,9 +297,7 @@ async def get_patch_fidelity(
     current_user: User = Depends(require_candidate),
     db: AsyncSession = Depends(get_db),
 ):
-    proposal = await owned_proposal(
-        db, proposal_id=proposal_id, user_id=str(current_user.id)
-    )
+    proposal = await owned_proposal(db, proposal_id=proposal_id, user_id=str(current_user.id))
     if not proposal:
         raise _error(LookupError("proposal_not_found"))
     return {

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import select
 
-from app.models_db import PotentialSimulationEvent
+from app.models_db import JobDescription, PotentialSimulationEvent
 from app.potential_simulation import build_simulation
 
 pytestmark = pytest.mark.asyncio
@@ -44,6 +44,31 @@ async def test_candidate_cannot_tamper_with_strategy_identifier(
         path, headers=auth_header(candidate_a), json={"strategy_ids": ["made-up"]}
     )
     assert rejected.status_code == 422
+
+
+async def test_candidate_cannot_simulate_another_candidates_private_job(
+    client, db_session, auth_header, candidate_a, candidate_b, resume_a
+):
+    private_job = JobDescription(
+        employer_id=None,
+        title="候选人 B 的私有目标岗位",
+        raw_text="Python 后端工程师",
+        parsed_json={
+            "advisor_private": True,
+            "advisor_imported_by": str(candidate_b.id),
+            "required_skills": ["Python"],
+        },
+    )
+    db_session.add(private_job)
+    await db_session.commit()
+    await db_session.refresh(private_job)
+
+    response = await client.get(
+        f"/resumes/{resume_a.id}/jobs/{private_job.id}/improvement-simulation",
+        headers=auth_header(candidate_a),
+    )
+
+    assert response.status_code == 404
 
 
 async def test_empty_strategy_list_means_user_selected_no_actions(
@@ -214,9 +239,7 @@ async def test_counterfactual_recomputes_expression_evidence_and_capability_from
     assert result["potential_delta"] == round(
         result["expression_delta"] + result["evidence_delta"] + result["capability_delta"], 2
     )
-    assert {
-        item["status"] for item in result["selection_effects"]
-    } == {"changes_score_if_removed"}
+    assert {item["status"] for item in result["selection_effects"]} == {"changes_score_if_removed"}
 
 
 async def test_selection_effects_explain_overlap_and_missing_evidence_without_fake_score():
@@ -238,7 +261,13 @@ async def test_selection_effects_explain_overlap_and_missing_evidence_without_fa
         resume,
         job,
         "后端工程师",
-        [{"id": "claim-1", "current_text": "Built a service", "evidence_state": "not_enough_information"}],
+        [
+            {
+                "id": "claim-1",
+                "current_text": "Built a service",
+                "evidence_state": "not_enough_information",
+            }
+        ],
         [ids["method_and_tradeoff"]],
     )
     assert evidence_only["potential_score"] == evidence_only["current_score"]

@@ -75,6 +75,7 @@ def _map_error(exc: Exception) -> HTTPException:
         "claim_not_owned": (404, "主张不存在或无权访问"),
         "resume_not_owned": (404, "简历不存在或无权访问"),
         "job_not_found": (404, "岗位不存在"),
+        "job_not_owned": (404, "岗位不存在或无权访问"),
         "session_not_active": (409, "会话已结束"),
         "session_revoked": (409, "会话已撤回，不能继续使用"),
         "question_not_in_session": (404, "问题不存在或不属于该会话"),
@@ -95,9 +96,7 @@ def _map_error(exc: Exception) -> HTTPException:
     return HTTPException(status_code=status, detail=detail)
 
 
-async def _session_for_observation(
-    db: AsyncSession, observation_id: str, user_id: str
-):
+async def _session_for_observation(db: AsyncSession, observation_id: str, user_id: str):
     observation = await db.get(InterviewObservation, observation_id)
     if not observation:
         return None, None
@@ -155,13 +154,17 @@ async def list_interview_sessions(
 ):
     bounded_limit = max(1, min(limit, 50))
     rows = (
-        await db.execute(
-            select(InterviewSession)
-            .where(InterviewSession.user_id == str(current_user.id))
-            .order_by(InterviewSession.created_at.desc())
-            .limit(bounded_limit)
+        (
+            await db.execute(
+                select(InterviewSession)
+                .where(InterviewSession.user_id == str(current_user.id))
+                .order_by(InterviewSession.created_at.desc())
+                .limit(bounded_limit)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     items = []
     for row in rows:
         questions, answered = await session_progress(db, str(row.id))

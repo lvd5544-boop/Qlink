@@ -80,17 +80,88 @@ async function uploadResume(page, { hasTarget }) {
 
 async function visibleCheckpoint(page, node, locator, expectation) {
   try {
-    await expect(locator).toBeVisible({ timeout: 3_000 });
-    return true;
-  } catch {
+    await expect(locator).toBeVisible({ timeout: 8_000 });
+  } catch (error) {
     const description = `${node} 阻塞：${expectation}；当前页面 ${page.url()}`;
     await test.info().attach(`flow-blocker-${node}`, {
-      body: Buffer.from(description),
+      body: Buffer.from(`${description}\n\n${(await page.locator('body').innerText()).slice(0, 12_000)}`),
       contentType: 'text/plain',
     });
-    await expect.soft(locator, description).toBeVisible({ timeout: 500 });
-    return false;
+    throw new Error(`${description}\n${error.message}`);
   }
+}
+
+async function analyzeVisibleReadiness(page) {
+  const analyze = page.getByRole('button', { name: '分析我该先做什么' });
+  await visibleCheckpoint(page, 'H', analyze, '用户看不到“将岗位要求映射到个人经历”的操作');
+  const responsePromise = page.waitForResponse(
+    (response) => response.request().method() === 'POST'
+      && response.url().includes('/advisor/jobs/')
+      && response.url().endsWith('/diagnostics'),
+    { timeout: 60_000 },
+  );
+  await analyze.click();
+  const response = await responsePromise;
+  expect(response.ok(), `H 阻塞：岗位要求与经历映射接口返回 ${response.status()}`).toBeTruthy();
+  await visibleCheckpoint(
+    page,
+    'I',
+    page.getByText('先处理能改变这次申请的事项'),
+    '分析完成后用户看不到岗位准备情况',
+  );
+
+  const statusChecks = [
+    ['J', 'readiness-ready', '已有证据：可以直接使用'],
+    ['K', 'readiness-clarify', '信息不完整：需要立即追问'],
+    ['L', 'readiness-develop', '暂未具备：生成发展任务'],
+    ['M', 'readiness-constraint', '现实约束：单独确认'],
+    ['N', 'readiness-unknown', '无法判断：请求补充信息'],
+  ];
+  for (const [node, testId, label] of statusChecks) {
+    await visibleCheckpoint(page, node, page.getByTestId(testId).getByText(label), `准备情况中没有展示“${label}”`);
+  }
+  await visibleCheckpoint(
+    page,
+    'O',
+    page.getByTestId('readiness-clarify').getByRole('button', { name: '回答并补充这条经历或证据' }).first(),
+    '信息不完整时用户看不到补充问题的回答入口（页面最多展示 3 项）',
+  );
+  await visibleCheckpoint(
+    page,
+    'P',
+    page.getByText('补充后重新分析会更新证据和准备状态。').first(),
+    '用户看不到补充信息后如何更新准备状态',
+  );
+}
+
+async function generateVisibleOpportunityPreparation(page) {
+  await visibleCheckpoint(
+    page,
+    'T',
+    page.getByRole('button', { name: '查看投递、面试和录用结果' }),
+    '用户看不到记录和查看投递结果的入口',
+  );
+  await page.getByRole('button', { name: '生成当前可投版本并安排提升行动' }).click();
+  await expect(page, 'Q 阻塞：用户没有进入申请材料工作台').toHaveURL(/\/candidate\/my-resumes/);
+  const generate = page.getByTestId('pr13-generate-diagnostic');
+  await visibleCheckpoint(page, 'Q', generate, '用户看不到生成当前申请包所需的岗位诊断操作');
+  await generate.scrollIntoViewIfNeeded();
+  await generate.click();
+  await visibleCheckpoint(page, 'Q', page.getByText('本次机会准备卡'), '用户看不到基于当前证据生成的机会准备卡');
+  await page.getByRole('button', { name: '生成机会准备卡' }).click();
+  for (const section of ['现在可用', '面试故事', '待说清', '一个行动', '未解决要求']) {
+    await visibleCheckpoint(page, 'R', page.getByText(new RegExp(section)).first(), `机会准备卡缺少“${section}”栏目`);
+  }
+  const downloadButton = page.getByRole('button', { name: '下载 TXT（次要）' });
+  await expect(downloadButton, 'R 阻塞：用户看不到机会准备卡的次要导出操作').toBeEnabled();
+  const downloadPromise = page.waitForEvent('download');
+  await downloadButton.click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename(), 'R 阻塞：导出的机会准备卡不是 TXT 文件').toMatch(/机会准备卡\.txt$/);
+  await page.getByRole('button', { name: '用这批真实素材开始针对性面试' }).click();
+  await expect(page, 'S 阻塞：机会准备卡没有带入结构化面试').toHaveURL(
+    /\/candidate\/interview\?.*mode=target_gap.*resumeId=.*jobId=/,
+  );
 }
 
 test.beforeAll(async ({ browser, request }) => {
@@ -121,7 +192,7 @@ test.beforeAll(async ({ browser, request }) => {
   await page.close();
 });
 
-test('有目标岗位：从简历与目标 JD 到可导出的申请包', async ({ page }) => {
+test('有目标岗位：从简历与目标 JD 到机会准备卡和面试', async ({ page }) => {
   test.setTimeout(240_000);
   await registerAndLoginCandidate(page, 'target');
   await uploadResume(page, { hasTarget: true });
@@ -135,8 +206,7 @@ test('有目标岗位：从简历与目标 JD 到可导出的申请包', async (
     await page.getByPlaceholder('关键字搜索').fill(TARGET_JOB_TITLE);
     await page.getByRole('button', { name: '搜索' }).click();
     const targetRow = page.getByText(TARGET_JOB_TITLE).first();
-    const targetVisible = await visibleCheckpoint(page, 'D', targetRow, '用户选择“已有目标岗位”后应能选中目标 JD');
-    if (!targetVisible) return;
+    await visibleCheckpoint(page, 'D', targetRow, '用户选择“已有目标岗位”后应能选中目标 JD');
     const row = targetRow.locator('xpath=ancestor::*[contains(@class,"ant-list-item")]');
     await row.getByRole('button', { name: '查看岗位画像' }).click();
     await expect(page.getByRole('heading', { name: '岗位准备助手' }), 'D 阻塞：选中 JD 后没有进入岗位准备流程').toBeVisible();
@@ -145,23 +215,11 @@ test('有目标岗位：从简历与目标 JD 到可导出的申请包', async (
   });
 
   await test.step('H–P：映射经历证据并展示准备状态', async () => {
-    const analyze = page.getByRole('button', { name: '分析我该先做什么' });
-    if (!(await visibleCheckpoint(page, 'H', analyze, '用户看不到“将岗位要求映射到个人经历”的操作'))) return;
-    await analyze.click();
-    await expect(page.getByText('为你排序的下一步'), 'H/I 阻塞：分析后用户看不到证据映射或准备建议').toBeVisible({ timeout: 60_000 });
-    await visibleCheckpoint(page, 'J', page.getByText(/已有证据.*直接使用/), '准备情况中没有明确展示可直接使用的已有证据');
-    await visibleCheckpoint(page, 'K', page.getByText(/信息不完整.*追问/), '准备情况中没有明确展示需要立即追问的信息');
-    await visibleCheckpoint(page, 'L', page.getByText(/暂未具备.*发展任务/), '准备情况中没有明确展示发展任务');
-    await visibleCheckpoint(page, 'M', page.getByText(/现实约束/), '准备情况中没有单独展示现实约束');
-    await visibleCheckpoint(page, 'N', page.getByText(/无法判断.*补充信息/), '准备情况中没有明确请求无法判断项的补充信息');
-    await visibleCheckpoint(page, 'O', page.getByText(/最多 3 个问题/), '用户看不到最多三个补充问题及回答入口');
-    await visibleCheckpoint(page, 'P', page.getByText(/更新.*证据.*准备状态/), '回答后用户看不到证据和准备状态更新结果');
+    await analyzeVisibleReadiness(page);
   });
 
   await test.step('Q–T：生成、导出申请包并记录结果', async () => {
-    await visibleCheckpoint(page, 'Q', page.getByText(/当前可用申请包/), '用户看不到基于当前证据生成的申请包');
-    await visibleCheckpoint(page, 'R', page.getByText(/简历要点.*求职信.*面试故事/), '用户看不到简历要点、求职信素材和面试故事的导出结果');
-    await visibleCheckpoint(page, 'T', page.getByText(/记录.*投递.*面试.*录用结果/), '用户看不到记录投递、面试或录用结果的入口');
+    await generateVisibleOpportunityPreparation(page);
   });
 });
 
@@ -176,17 +234,19 @@ test('无目标岗位：查看当前、相邻、挑战三个方向后进入同�
       page.locator('.content-card').filter({ hasText: '推荐岗位' }),
       'C/E 阻塞：无目标用户看不到方向探索页',
     ).toBeVisible();
-    const current = await visibleCheckpoint(page, 'E-current', page.getByText(/^当前方向$/), '用户看不到“当前”方向');
-    const adjacent = await visibleCheckpoint(page, 'E-adjacent', page.getByText(/^相邻方向$/), '用户看不到“相邻”方向');
-    const challenge = await visibleCheckpoint(page, 'E-challenge', page.getByText(/^挑战方向$/), '用户看不到“挑战”方向');
-    if (!current || !adjacent || !challenge) return;
-    await visibleCheckpoint(page, 'F', page.getByRole('button', { name: /选择.*方向|选择.*岗位/ }).first(), '用户看不到选择方向或示例岗位的操作');
+    await visibleCheckpoint(page, 'E-current', page.getByTestId('career-direction-current').getByText('当前方向'), '用户看不到“当前”方向');
+    await visibleCheckpoint(page, 'E-adjacent', page.getByTestId('career-direction-adjacent').getByText('相邻方向'), '用户看不到“相邻”方向');
+    await visibleCheckpoint(page, 'E-challenge', page.getByTestId('career-direction-challenge').getByText('挑战方向'), '用户看不到“挑战”方向');
+    const selectExample = page.getByRole('button', { name: '选择这个示例岗位' }).first();
+    await visibleCheckpoint(page, 'F', selectExample, '用户看不到选择方向或示例岗位的操作');
+    await selectExample.click();
+    await expect(page, 'F 阻塞：选择示例岗位后没有进入统一准备流程').toHaveURL(/\/candidate\/advisor\?job_id=/);
   });
 
   await test.step('G–T：选择方向后应汇入岗位要求、准备情况和申请包', async () => {
-    await visibleCheckpoint(page, 'G', page.getByText(/5.?8 项关键岗位要求/), '方向选择后没有展示 5–8 项关键岗位要求');
-    await visibleCheckpoint(page, 'I', page.getByText(/岗位准备情况/), '方向选择后没有展示岗位准备情况');
-    await visibleCheckpoint(page, 'Q', page.getByText(/当前可用申请包/), '方向分支没有汇入当前可用申请包');
-    await visibleCheckpoint(page, 'R', page.getByText(/简历要点.*求职信.*面试故事/), '方向分支没有可见的申请材料导出结果');
+    const requirements = page.locator('.content-card').filter({ hasText: '这个岗位最看重什么' }).locator('.ant-list-item');
+    await expect(requirements, 'G 阻塞：方向选择后没有展示 5–8 项关键岗位要求').toHaveCount(6, { timeout: 30_000 });
+    await analyzeVisibleReadiness(page);
+    await generateVisibleOpportunityPreparation(page);
   });
 });

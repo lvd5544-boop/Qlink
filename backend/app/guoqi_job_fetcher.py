@@ -104,10 +104,10 @@ async def fetch_guoqi_jobs(keywords: list = None):
             await db.flush()
 
         existing = (
-            await db.execute(
-                select(JobDescription).where(JobDescription.employer_id == "guoqi")
-            )
-        ).scalars().all()
+            (await db.execute(select(JobDescription).where(JobDescription.employer_id == "guoqi")))
+            .scalars()
+            .all()
+        )
         by_source_id = {
             str((row.parsed_json or {}).get("source_job_id")): row
             for row in existing
@@ -180,9 +180,7 @@ async def fetch_guoqi_jobs(keywords: list = None):
                 }
 
                 identity = (company_name.casefold(), title.casefold())
-                row = by_source_id.get(job_info["source_job_id"]) or by_identity.get(
-                    identity
-                )
+                row = by_source_id.get(job_info["source_job_id"]) or by_identity.get(identity)
                 if row is None:
                     row = JobDescription(
                         employer_id="guoqi",

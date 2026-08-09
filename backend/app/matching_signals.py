@@ -1,9 +1,9 @@
 """
-匹配补充信号层 — 参与总分或仅展示（不参与总分以避免偏见）。
+匹配补充信号层 — 只保留与岗位任务和候选人行动直接相关的信号。
 
 参考 v2.0 设计：
   - 计入总分：impact, industry_match, growth_potential
-  - 仅展示：education_prestige, stability, upskill_difficulty, interview/offer 概率
+  - 仅展示：stability, upskill_difficulty
 """
 
 from __future__ import annotations
@@ -21,38 +21,6 @@ INDUSTRY_CLUSTERS: Dict[str, Set[str]] = {
     "gaming": {"游戏", "game", "unity", "手游"},
     "ai": {"人工智能", "机器学习", "llm", "nlp", "deep learning", "ai"},
     "quant": {"量化", "quant", "对冲基金", "hedge fund", "prop trading", "做市"},
-}
-
-# 名校（仅展示，不计入总分）
-PRESTIGE_SCHOOLS = {
-    "cmu",
-    "mit",
-    "stanford",
-    "berkeley",
-    "caltech",
-    "harvard",
-    "清华",
-    "北大",
-    "复旦",
-    "上交",
-    "浙大",
-    "中科大",
-}
-
-# 知名公司（行业匹配加分用）
-PRESTIGE_COMPANIES = {
-    "google",
-    "meta",
-    "amazon",
-    "microsoft",
-    "apple",
-    "netflix",
-    "腾讯",
-    "阿里",
-    "字节",
-    "华为",
-    "美团",
-    "京东",
 }
 
 IMPACT_PATTERNS = [
@@ -185,15 +153,6 @@ def score_industry_match(
             "overlap": sorted(overlap),
         }
 
-    # 无重叠但有相关大厂经历
-    text = _resume_full_text(resume_json)
-    if any(c in text for c in PRESTIGE_COMPANIES):
-        return 0.45, {
-            "resume_industries": sorted(resume_ind),
-            "job_industries": sorted(job_ind),
-            "overlap": [],
-            "note": "行业不完全匹配，但有知名公司经历",
-        }
     return 0.2, {
         "resume_industries": sorted(resume_ind),
         "job_industries": sorted(job_ind),
@@ -287,18 +246,6 @@ def _detect_role_key(title: str) -> str:
     return "engineering"
 
 
-def score_education_prestige(resume_json: dict) -> Tuple[float, dict]:
-    """学校背景 0~1，仅展示，不计入总分。"""
-    school = (resume_json.get("school") or resume_json.get("education") or "").lower()
-    tier = resume_json.get("school_tier") or ""
-    hits = [s for s in PRESTIGE_SCHOOLS if s in school]
-    if hits or tier in ("985", "211", "双一流"):
-        return 0.9, {"prestige_schools": hits, "school_tier": tier, "display_only": True}
-    if school:
-        return 0.5, {"prestige_schools": [], "school_tier": tier, "display_only": True}
-    return 0.0, {"prestige_schools": [], "school_tier": tier, "display_only": True}
-
-
 def score_stability(resume_json: dict) -> Tuple[float, dict]:
     """跳槽稳定性 0~1，仅展示。"""
     exps = [e for e in resume_json.get("work_experience") or [] if isinstance(e, dict)]
@@ -354,25 +301,6 @@ def estimate_upskill_difficulty(
     }
 
 
-def estimate_probabilities(
-    match_score: float,
-    stability_ratio: float,
-    impact_ratio: float,
-) -> dict:
-    """面试/Offer 概率启发式估算（0~100）。"""
-    base = match_score * 8  # 0~80
-    stability_bonus = stability_ratio * 10
-    impact_bonus = impact_ratio * 10
-    interview = min(int(base + stability_bonus * 0.5 + 10), 95)
-    offer = min(int(interview * 0.45 + impact_bonus * 0.3), 90)
-    return {
-        "interview_probability": interview,
-        "offer_probability": offer,
-        "display_only": True,
-        "note": "基于规则估算，非真实预测模型",
-    }
-
-
 def compute_supplementary_signals(
     resume_json: dict,
     job_json: dict,
@@ -384,23 +312,16 @@ def compute_supplementary_signals(
     ind_ratio, ind_detail = score_industry_match(resume_json, job_json, job_title)
     impact_ratio, impact_detail = score_impact(resume_json)
     growth_ratio, growth_detail = score_growth_potential(resume_json, job_json, job_title)
-    prestige_ratio, prestige_detail = score_education_prestige(resume_json)
     stability_ratio, stability_detail = score_stability(resume_json)
 
     upskill = estimate_upskill_difficulty(
         missing_skills or [],
         known_skills or set(),
     )
-    probs = estimate_probabilities(
-        match_score=0, stability_ratio=stability_ratio, impact_ratio=impact_ratio
-    )
-
     return {
         "industry_match": {"ratio": ind_ratio, **ind_detail},
         "impact": {"ratio": impact_ratio, **impact_detail},
         "growth_potential": {"ratio": growth_ratio, **growth_detail},
-        "education_prestige": {"ratio": prestige_ratio, **prestige_detail},
         "stability": {"ratio": stability_ratio, **stability_detail},
         "upskill_difficulty": upskill,
-        "probabilities": probs,
     }

@@ -89,7 +89,11 @@ async def list_admin_data_sources(
     current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    rows = (await db.execute(select(DataSource).order_by(DataSource.created_at.desc()))).scalars().all()
+    rows = (
+        (await db.execute(select(DataSource).order_by(DataSource.created_at.desc())))
+        .scalars()
+        .all()
+    )
     return {"sources": [_serialize_source(row) for row in rows]}
 
 
@@ -201,12 +205,16 @@ async def list_data_source_versions(
     if not await db.get(DataSource, source_id):
         raise HTTPException(status_code=404, detail="来源不存在")
     rows = (
-        await db.execute(
-            select(DataSourceVersion)
-            .where(DataSourceVersion.source_id == source_id)
-            .order_by(DataSourceVersion.created_at.desc())
+        (
+            await db.execute(
+                select(DataSourceVersion)
+                .where(DataSourceVersion.source_id == source_id)
+                .order_by(DataSourceVersion.created_at.desc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return {
         "versions": [
             {
@@ -235,9 +243,7 @@ async def check_formal_profile_gate(
     if not row:
         raise HTTPException(status_code=404, detail="来源不存在")
     try:
-        assert_source_usable_for_formal_profile(
-            {"status": row.status, "layer": row.layer}
-        )
+        assert_source_usable_for_formal_profile({"status": row.status, "layer": row.layer})
         usable = True
         reason = None
     except PermissionError as exc:

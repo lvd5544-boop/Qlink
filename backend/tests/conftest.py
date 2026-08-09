@@ -110,7 +110,14 @@ async def test_engine():
             interview_results_migration = (
                 _BACKEND_ROOT / "scripts" / "migrations" / "20260725_pr5_1_interview_results_up.sql"
             ).read_text(encoding="utf-8")
-            for sql_text in (migration, interview_results_migration):
+            structured_interview_migration = (
+                _BACKEND_ROOT / "scripts" / "migrations" / "20260729_pr12_interview_sessions_up.sql"
+            ).read_text(encoding="utf-8")
+            for sql_text in (
+                migration,
+                interview_results_migration,
+                structured_interview_migration,
+            ):
                 for statement in (part.strip() for part in sql_text.split(";")):
                     if statement:
                         await conn.exec_driver_sql(statement)

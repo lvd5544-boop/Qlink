@@ -1,6 +1,9 @@
 .DS_Store
 *.zip
 *~
+.codex_work/
+.playwright-cli/
+.ruff_cache/
 .split-backup/
 backend/.venv/
 backend/venv/
@@ -19,3 +22,21 @@ __pycache__/
 .pytest_cache/
 backend/tests/.testdata/
 backups/
+
+# Local AI/editor planning history. Keep the consolidated public plan and the
+# small set of reviewer-facing docs below; historical files already tracked by
+# Git must be removed from the index once with `git rm --cached <file>`.
+CURSOR_*.md
+PR[0-9]*_*.md
+AI_EVIDENCE_INTERVIEW_DATA_DESIGN.md
+MARKET_RESEARCH_AND_CUSTOMER_FIT_REVIEW_*.md
+NEXT_ITERATION_EXECUTABLE_PRODUCT_PLAN.md
+NEXT_STAGE_USER_CENTERED_PRODUCT_STRATEGY.md
+PRODUCT_STRATEGY_MARKET_AND_CLAIM_REVIEW.md
+REVISED_YOUTH_TALENT_PRODUCT_STRATEGY.md
+R3_LEAN_CANDIDATE_VALUE_LOOP_PLAN.md
+
+# Local presentation-generation workspace; exported showcase assets can be
+# published separately when intentionally selected.
+展示ppt/
+*.inspect.ndjson

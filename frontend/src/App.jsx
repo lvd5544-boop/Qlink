@@ -4,6 +4,7 @@ import { Spin } from 'antd';
 import ProtectedRoute from './components/ProtectedRoute';
 import CandidateLayout from './components/CandidateLayout';
 import EmployerLayout from './components/EmployerLayout';
+import { demoText, syncDemoModeFromLocation } from './utils/demoMode';
 
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
@@ -40,12 +41,13 @@ function RouteFallback() {
         placeItems: 'center',
       }}
     >
-      <Spin size="large" tip="页面加载中…" />
+      <Spin size="large" description={demoText('页面加载中…', 'Loading…')} />
     </div>
   );
 }
 
 function App() {
+  syncDemoModeFromLocation();
   return (
     <BrowserRouter>
       <Suspense fallback={<RouteFallback />}>

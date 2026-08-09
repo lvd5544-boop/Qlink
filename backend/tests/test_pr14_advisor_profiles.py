@@ -162,9 +162,7 @@ async def test_only_owning_employer_can_confirm_job_requirements(
         item["employer_confirmed"]
         for item in confirmed.json()["layers"]["target_role"]["requirements"]
     )
-    rows = (
-        await db_session.execute(select(JobRequirement))
-    ).scalars().all()
+    rows = (await db_session.execute(select(JobRequirement))).scalars().all()
     assert rows and all(row.employer_confirmed for row in rows)
 
 
@@ -207,9 +205,7 @@ async def test_employer_explicitly_selects_hard_requirements(
         {
             "requirement_id": item["id"],
             "classification": (
-                "hard"
-                if item["type"] == "skill" and item["text"] == "Python"
-                else "preferred"
+                "hard" if item["type"] == "skill" and item["text"] == "Python" else "preferred"
             ),
         }
         for item in requirements
@@ -312,11 +308,12 @@ async def test_diagnostic_creation_is_idempotent_and_conflict_safe(
         (
             await db_session.execute(
                 select(OptimizationIssue).where(
-                    OptimizationIssue.diagnostic_id
-                    == first_payload["diagnostic_id"]
+                    OptimizationIssue.diagnostic_id == first_payload["diagnostic_id"]
                 )
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
 
     replay = await client.post(
@@ -326,9 +323,7 @@ async def test_diagnostic_creation_is_idempotent_and_conflict_safe(
     )
     assert replay.status_code == 200
     assert replay.json() == first_payload
-    all_issues = (
-        await db_session.execute(select(OptimizationIssue))
-    ).scalars().all()
+    all_issues = (await db_session.execute(select(OptimizationIssue))).scalars().all()
     assert len(all_issues) == initial_issue_count
 
     conflict = await client.post(

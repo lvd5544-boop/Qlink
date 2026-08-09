@@ -163,9 +163,18 @@ function InterviewFeedback({ report }) {
 }
 
 export default function StructuredInterviewPanel() {
-  const [mode, setMode] = useState('vault_builder');
-  const [resumeId, setResumeId] = useState(null);
-  const [jobId, setJobId] = useState(null);
+  const [entryContext] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return {
+      mode: MODES.some((item) => item.value === params.get('mode')) ? params.get('mode') : 'vault_builder',
+      resumeId: params.get('resumeId'),
+      jobId: params.get('jobId'),
+      jobTitle: params.get('jobTitle'),
+    };
+  });
+  const [mode, setMode] = useState(entryContext.mode);
+  const [resumeId, setResumeId] = useState(entryContext.resumeId);
+  const [jobId, setJobId] = useState(entryContext.jobId);
   const [claimId, setClaimId] = useState(null);
   const [resumes, setResumes] = useState([]);
   const [jobs, setJobs] = useState([]);
@@ -207,12 +216,16 @@ export default function StructuredInterviewPanel() {
     ]).then(([resumeResp, jobResp, overviewResp, historyResp]) => {
       if (cancelled) return;
       setResumes(resumeResp.data || []);
-      setJobs(Array.isArray(jobResp.data) ? jobResp.data : (jobResp.data?.jobs || []));
+      const loadedJobs = Array.isArray(jobResp.data) ? jobResp.data : (jobResp.data?.jobs || []);
+      if (entryContext.jobId && !loadedJobs.some((item) => String(item.id) === String(entryContext.jobId))) {
+        loadedJobs.unshift({ id: entryContext.jobId, title: entryContext.jobTitle || '私有目标岗位' });
+      }
+      setJobs(loadedJobs);
       setClaims(overviewResp.data?.open_claims || []);
       setHistory(historyResp.data?.sessions || []);
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [entryContext]);
 
   const refreshObservations = async (sessionId) => {
     const response = await api.get(`/interview-sessions/${sessionId}/observations`);
@@ -344,7 +357,7 @@ export default function StructuredInterviewPanel() {
     : 0;
 
   return (
-    <Card title="结构化 AI 面试官（PR12）" style={{ marginBottom: 16 }}>
+    <Card title="结构化 AI 面试官" style={{ marginBottom: 16 }}>
       <Alert
         type="info"
         showIcon
@@ -353,6 +366,14 @@ export default function StructuredInterviewPanel() {
       />
       {!session ? (
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
+          {entryContext.jobId && (
+            <Alert
+              type="success"
+              showIcon
+              message="已从机会准备卡带入本次目标岗位和简历"
+              description="面试问题会使用同一份岗位要求与履历上下文。观察结果仍需要你逐条确认。"
+            />
+          )}
           <div>
             <Text type="secondary">面试模式</Text>
             <Segmented

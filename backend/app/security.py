@@ -54,3 +54,18 @@ async def owned_job_or_404(db: AsyncSession, job_id: str, user: User) -> JobDesc
     if not job or (user.role != "admin" and str(job.employer_id) != str(user.id)):
         raise HTTPException(status_code=404, detail="资源不存在或无权访问")
     return job
+
+
+def candidate_can_access_job(job: JobDescription, user_id: str) -> bool:
+    """Allow public jobs and private advisor jobs imported by this candidate."""
+    parsed = job.parsed_json or {}
+    if not parsed.get("advisor_private"):
+        return True
+    return str(parsed.get("advisor_imported_by")) == str(user_id)
+
+
+async def candidate_job_or_404(db: AsyncSession, job_id: str, user: User) -> JobDescription:
+    job = await db.get(JobDescription, job_id)
+    if not job or not candidate_can_access_job(job, str(user.id)):
+        raise HTTPException(status_code=404, detail="资源不存在或无权访问")
+    return job

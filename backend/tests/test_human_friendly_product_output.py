@@ -4,9 +4,7 @@ from app.resume_coach import build_rule_based_rewrite_suggestions
 def test_rule_fallback_returns_faithful_before_after_examples():
     resume = {
         "summary": "后端工程师",
-        "work_experience": [
-            {"company": "示例公司", "description": "负责订单系统开发与性能优化"}
-        ],
+        "work_experience": [{"company": "示例公司", "description": "负责订单系统开发与性能优化"}],
     }
 
     suggestions = build_rule_based_rewrite_suggestions(resume)
@@ -19,9 +17,7 @@ def test_rule_fallback_returns_faithful_before_after_examples():
     rendered = str(suggestions)
     assert "Kubernetes" not in rendered
     assert not any(
-        char.isdigit()
-        for suggestion in suggestions
-        for char in suggestion["example_after"]
+        char.isdigit() for suggestion in suggestions for char in suggestion["example_after"]
     )
 
 

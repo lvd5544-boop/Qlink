@@ -13,55 +13,168 @@ from typing import Any
 
 ROLE_TERMS = {
     "data_ai": {
-        "data scientist", "data analyst", "machine learning", "ml engineer",
-        "ai engineer", "research scientist", "data labeling", "data annotation",
-        "data engineer", "analytics", "business intelligence",
-        "数据科学", "数据分析", "机器学习", "人工智能", "算法", "数据标注",
+        "data scientist",
+        "data analyst",
+        "machine learning",
+        "ml engineer",
+        "ai engineer",
+        "research scientist",
+        "data labeling",
+        "data annotation",
+        "data engineer",
+        "analytics",
+        "business intelligence",
+        "数据科学",
+        "数据分析",
+        "机器学习",
+        "人工智能",
+        "算法",
+        "数据标注",
     },
     "software": {
-        "software engineer", "software developer", "backend", "frontend",
-        "full stack", "fullstack", "platform engineer", "devops", "sre",
-        "web developer", "cloud developer", "cloud engineer", "security engineer",
-        "developer", "软件工程", "后端", "前端", "开发工程师", "研发工程师",
+        "software engineer",
+        "software developer",
+        "backend",
+        "frontend",
+        "full stack",
+        "fullstack",
+        "platform engineer",
+        "devops",
+        "sre",
+        "web developer",
+        "cloud developer",
+        "cloud engineer",
+        "security engineer",
+        "developer",
+        "软件工程",
+        "后端",
+        "前端",
+        "开发工程师",
+        "研发工程师",
     },
     "product_design": {
-        "product manager", "product designer", "ux designer", "ui designer",
-        "产品经理", "产品设计", "用户体验", "交互设计",
+        "product manager",
+        "product designer",
+        "ux designer",
+        "ui designer",
+        "产品经理",
+        "产品设计",
+        "用户体验",
+        "交互设计",
     },
     "research": {
-        "research assistant", "researcher", "scientist", "laboratory",
-        "研究助理", "研究员", "科研", "实验室",
+        "research assistant",
+        "researcher",
+        "scientist",
+        "laboratory",
+        "研究助理",
+        "研究员",
+        "科研",
+        "实验室",
     },
     "finance_legal": {
-        "accountant", "controller", "auditor", "financial analyst", "lawyer",
-        "legal counsel", "finance", "financial", "payroll", "controlling",
-        "credit risk", "会计", "审计", "财务", "金融分析", "法务", "律师",
+        "accountant",
+        "controller",
+        "auditor",
+        "financial analyst",
+        "lawyer",
+        "legal counsel",
+        "finance",
+        "financial",
+        "payroll",
+        "controlling",
+        "credit risk",
+        "会计",
+        "审计",
+        "财务",
+        "金融分析",
+        "法务",
+        "律师",
     },
     "people_sales_marketing": {
-        "sales", "account executive", "customer success", "recruiter",
-        "talent acquisition", "marketing", "communications", "human resources",
-        "销售", "客户经理", "招聘", "人才招聘", "市场营销", "人力资源", "公关",
+        "sales",
+        "account executive",
+        "customer success",
+        "recruiter",
+        "talent acquisition",
+        "marketing",
+        "communications",
+        "human resources",
+        "销售",
+        "客户经理",
+        "招聘",
+        "人才招聘",
+        "市场营销",
+        "人力资源",
+        "公关",
     },
     "operations_admin": {
-        "operations", "administrator", "administrative", "receptionist",
-        "program coordinator", "office manager", "executive assistant",
-        "project coordinator", "运营", "行政", "前台", "项目协调",
+        "operations",
+        "administrator",
+        "administrative",
+        "receptionist",
+        "program coordinator",
+        "office manager",
+        "executive assistant",
+        "project coordinator",
+        "运营",
+        "行政",
+        "前台",
+        "项目协调",
     },
     "healthcare": {
-        "nurse", "physician", "medical", "clinical", "pharmacist", "therapist",
-        "护士", "医生", "医疗", "临床", "药师", "治疗师",
+        "nurse",
+        "physician",
+        "medical",
+        "clinical",
+        "pharmacist",
+        "therapist",
+        "护士",
+        "医生",
+        "医疗",
+        "临床",
+        "药师",
+        "治疗师",
     },
     "education_social": {
-        "teacher", "professor", "student support", "social worker", "veterans",
-        "教师", "教授", "学生事务", "社会工作", "退伍军人服务",
+        "teacher",
+        "professor",
+        "student support",
+        "social worker",
+        "veterans",
+        "教师",
+        "教授",
+        "学生事务",
+        "社会工作",
+        "退伍军人服务",
     },
     "hospitality_recreation": {
-        "recreation", "culture", "hospitality", "restaurant", "chef", "sports",
-        "leisure", "酒店", "餐饮", "厨师", "体育", "文体", "休闲",
+        "recreation",
+        "culture",
+        "hospitality",
+        "restaurant",
+        "chef",
+        "sports",
+        "leisure",
+        "酒店",
+        "餐饮",
+        "厨师",
+        "体育",
+        "文体",
+        "休闲",
     },
     "trades_field": {
-        "handyman", "mechanic", "electrician", "technician", "driver",
-        "construction", "维修", "电工", "司机", "施工", "技工",
+        "handyman",
+        "mechanic",
+        "electrician",
+        "technician",
+        "driver",
+        "construction",
+        "维修",
+        "电工",
+        "司机",
+        "施工",
+        "技工",
     },
 }
 
@@ -91,33 +204,111 @@ ADJACENT_ROLES = {
 
 SKILL_ROLE_HINTS = {
     "data_ai": {
-        "pandas", "numpy", "scikit", "sklearn", "tensorflow", "pytorch",
-        "machine learning", "random forest", "regression", "r²", "mse",
-        "statistics", "tableau", "power bi", "数据分析", "机器学习",
+        "pandas",
+        "numpy",
+        "scikit",
+        "sklearn",
+        "tensorflow",
+        "pytorch",
+        "machine learning",
+        "random forest",
+        "regression",
+        "r²",
+        "mse",
+        "statistics",
+        "tableau",
+        "power bi",
+        "数据分析",
+        "机器学习",
     },
     "software": {
-        "fastapi", "django", "flask", "react", "vue", "java", "spring",
-        "postgresql", "mysql", "redis", "docker", "kubernetes", "api",
+        "fastapi",
+        "django",
+        "flask",
+        "react",
+        "vue",
+        "java",
+        "spring",
+        "postgresql",
+        "mysql",
+        "redis",
+        "docker",
+        "kubernetes",
+        "api",
     },
 }
 
 INDUSTRY_TERMS = {
-    "technology": {"software", "saas", "cloud", "cybersecurity", "人工智能", "软件", "云计算", "科技"},
+    "technology": {
+        "software",
+        "saas",
+        "cloud",
+        "cybersecurity",
+        "人工智能",
+        "软件",
+        "云计算",
+        "科技",
+    },
     "finance": {
-        "bank", "fintech", "trading", "insurance", "fx", "cfd",
-        "银行", "金融", "证券", "保险", "量化", "外汇",
+        "bank",
+        "fintech",
+        "trading",
+        "insurance",
+        "fx",
+        "cfd",
+        "银行",
+        "金融",
+        "证券",
+        "保险",
+        "量化",
+        "外汇",
     },
     "healthcare": {"health", "medical", "clinical", "pharma", "医疗", "健康", "临床", "医药"},
-    "education_research": {"university", "education", "research", "college", "大学", "教育", "研究"},
-    "climate_energy": {"climate", "air quality", "energy", "environment", "气候", "空气质量", "能源", "环境"},
+    "education_research": {
+        "university",
+        "education",
+        "research",
+        "college",
+        "大学",
+        "教育",
+        "研究",
+    },
+    "climate_energy": {
+        "climate",
+        "air quality",
+        "energy",
+        "environment",
+        "气候",
+        "空气质量",
+        "能源",
+        "环境",
+    },
     "government_public": {"government", "public sector", "veterans", "政府", "公共部门", "国防"},
-    "consumer_media": {"retail", "ecommerce", "game", "gaming", "media", "零售", "电商", "游戏", "媒体"},
+    "consumer_media": {
+        "retail",
+        "ecommerce",
+        "game",
+        "gaming",
+        "media",
+        "零售",
+        "电商",
+        "游戏",
+        "媒体",
+    },
     "manufacturing": {"manufacturing", "automotive", "semiconductor", "制造", "汽车", "半导体"},
 }
 
 GENERIC_OR_BROKEN_TITLES = {
-    "join us", "job details", "job posting title", "jop posting title", "full",
-    "free", "pushdown", "deep ocean", "ottawa on", "pretty redible",
+    "join us",
+    "job details",
+    "job posting title",
+    "jop posting title",
+    "full",
+    "free",
+    "pushdown",
+    "deep ocean",
+    "ottawa on",
+    "pretty redible",
 }
 
 
@@ -173,9 +364,7 @@ def infer_candidate_intent(resume: dict) -> dict[str, Any]:
     for item in resume.get("projects") or []:
         if not isinstance(item, dict):
             continue
-        project_text = " ".join(
-            str(item.get(key) or "") for key in ("name", "role", "description")
-        )
+        project_text = " ".join(str(item.get(key) or "") for key in ("name", "role", "description"))
         for role, value in _role_scores(project_text).items():
             scores[role] += value * 2
 
@@ -238,11 +427,13 @@ def infer_job_industries(job: dict, title: str) -> list[str]:
         for key in ("industry", "industries", "category", "sector")
         if job.get(key)
     )
-    identity = " ".join([
-        title,
-        str(job.get("company_name") or ""),
-        explicit,
-    ])
+    identity = " ".join(
+        [
+            title,
+            str(job.get("company_name") or ""),
+            explicit,
+        ]
+    )
     return infer_industries(identity)
 
 
@@ -279,9 +470,7 @@ def apply_preference_policy(
     preferences = resume.get("match_preferences") or {}
     strictness = str(preferences.get("strictness") or "focused")
     candidate_role = candidate["primary_role"]
-    target_role = (
-        job_role["primary_role"] if job_role["confidence"] >= 0.55 else "unknown"
-    )
+    target_role = job_role["primary_role"] if job_role["confidence"] >= 0.55 else "unknown"
     job_role["effective_role"] = target_role
     exact_role = candidate_role != "unknown" and candidate_role == target_role
     adjacent_role = (
@@ -290,21 +479,25 @@ def apply_preference_policy(
         and frozenset({candidate_role, target_role}) in ADJACENT_ROLES
     )
 
-    resume_blob = " ".join([
-        str(resume.get("expected_job_title") or ""),
-        str(resume.get("summary") or ""),
-        " ".join(
-            " ".join(str(item.get(key) or "") for key in ("company", "position", "description"))
-            for item in resume.get("work_experience") or []
-            if isinstance(item, dict)
-        ),
-        " ".join(
-            " ".join(str(item.get(key) or "") for key in ("name", "role", "description"))
-            for item in resume.get("projects") or []
-            if isinstance(item, dict)
-        ),
-    ])
-    candidate_industries = list(preferences.get("preferred_industries") or []) or infer_industries(resume_blob)
+    resume_blob = " ".join(
+        [
+            str(resume.get("expected_job_title") or ""),
+            str(resume.get("summary") or ""),
+            " ".join(
+                " ".join(str(item.get(key) or "") for key in ("company", "position", "description"))
+                for item in resume.get("work_experience") or []
+                if isinstance(item, dict)
+            ),
+            " ".join(
+                " ".join(str(item.get(key) or "") for key in ("name", "role", "description"))
+                for item in resume.get("projects") or []
+                if isinstance(item, dict)
+            ),
+        ]
+    )
+    candidate_industries = list(preferences.get("preferred_industries") or []) or infer_industries(
+        resume_blob
+    )
     job_industries = infer_job_industries(job, title)
     excluded_industries = set(preferences.get("excluded_industries") or [])
     industry_overlap = sorted(set(candidate_industries) & set(job_industries))
@@ -328,11 +521,7 @@ def apply_preference_policy(
     if set(job_industries) & excluded_industries:
         eligible = False
         exclusion_reasons.append("命中用户明确排除的行业")
-    if (
-        preferences.get("preferred_industries")
-        and not industry_overlap
-        and strictness == "focused"
-    ):
+    if preferences.get("preferred_industries") and not industry_overlap and strictness == "focused":
         eligible = False
         exclusion_reasons.append(
             "不在用户选择的目标行业内"
@@ -349,13 +538,15 @@ def apply_preference_policy(
         role_ratio = 0.7
     else:
         role_ratio = 0.1 if target_role != "unknown" else 0.0
-    role_dimension.update({
-        "score": round(role_weight * role_ratio, 2),
-        "ratio": role_ratio,
-        "resume_family": candidate_role,
-        "job_family": target_role,
-        "family_mismatch": not exact_role,
-    })
+    role_dimension.update(
+        {
+            "score": round(role_weight * role_ratio, 2),
+            "ratio": role_ratio,
+            "resume_family": candidate_role,
+            "job_family": target_role,
+            "family_mismatch": not exact_role,
+        }
+    )
 
     industry_dimension = dict(breakdown.get("industry_match") or {})
     industry_weight = float(industry_dimension.get("weight") or 1.0)
@@ -366,13 +557,15 @@ def apply_preference_policy(
         industry_ratio = 0.5
     else:
         industry_ratio = 0.2
-    industry_dimension.update({
-        "score": round(industry_weight * industry_ratio, 2),
-        "ratio": industry_ratio,
-        "resume_industries": candidate_industries,
-        "job_industries": job_industries,
-        "overlap": industry_overlap,
-    })
+    industry_dimension.update(
+        {
+            "score": round(industry_weight * industry_ratio, 2),
+            "ratio": industry_ratio,
+            "resume_industries": candidate_industries,
+            "job_industries": job_industries,
+            "overlap": industry_overlap,
+        }
+    )
 
     corrected_base = (
         base_score
@@ -412,14 +605,16 @@ def apply_preference_policy(
         "score_adjustment": round(adjustment, 2),
     }
     updated = dict(breakdown)
-    updated.update({
-        "source": "human_preference_v3",
-        "version": 3,
-        "total": score,
-        "role_match": role_dimension,
-        "industry_match": industry_dimension,
-        "preference_policy": preference_meta,
-    })
+    updated.update(
+        {
+            "source": "human_preference_v3",
+            "version": 3,
+            "total": score,
+            "role_match": role_dimension,
+            "industry_match": industry_dimension,
+            "preference_policy": preference_meta,
+        }
+    )
     if eligible:
         reason = "；".join(positive_reasons) or "岗位通过职业方向与质量门槛"
     else:

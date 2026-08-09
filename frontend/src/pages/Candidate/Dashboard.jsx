@@ -10,6 +10,9 @@ import {
   MedicineBoxOutlined,
   RiseOutlined,
   ReloadOutlined,
+  ArrowRightOutlined,
+  CheckCircleFilled,
+  RocketOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/PageHeader';
@@ -109,8 +112,57 @@ export default function Dashboard() {
     <div>
       <PageHeader
         title="工作台"
-        description="体检分、完整度、匹配分三指标联动，优化简历后实时更新"
+        description="从一个目标岗位开始，完成分析、优化和投递准备"
       />
+
+      <section className="workflow-hero" aria-labelledby="workflow-hero-title">
+        <div className="workflow-hero-content">
+          <div className="workflow-hero-kicker">
+            <RocketOutlined /> QLink 主推 · AI 求职工作流
+          </div>
+          <Typography.Title id="workflow-hero-title" level={2}>
+            把目标岗位，变成一份更能打的申请方案
+          </Typography.Title>
+          <Typography.Paragraph>
+            选定岗位和简历，AI 先告诉你“最该做什么”，再带你生成当前可投版本和提升行动。
+          </Typography.Paragraph>
+          <Space wrap size={12} className="workflow-hero-actions">
+            <Button
+              type="primary"
+              size="large"
+              icon={<RocketOutlined />}
+              onClick={() => navigate('/candidate/advisor')}
+            >
+              开始我的求职工作流
+            </Button>
+            <Button
+              size="large"
+              onClick={() => navigate('/candidate/advisor?import=1')}
+            >
+              粘贴外部 JD <ArrowRightOutlined />
+            </Button>
+          </Space>
+          <div className="workflow-trust-row" aria-label="工作流保障">
+            <span><CheckCircleFilled /> 不虚构经历</span>
+            <span><CheckCircleFilled /> 建议可核验</span>
+            <span><CheckCircleFilled /> 你决定是否采用</span>
+          </div>
+        </div>
+        <ol className="workflow-steps" aria-label="AI 求职工作流步骤">
+          <li>
+            <span>01</span>
+            <div><strong>选目标岗位</strong><small>平台岗位或外部 JD</small></div>
+          </li>
+          <li>
+            <span>02</span>
+            <div><strong>对照真实履历</strong><small>找优势、缺口与优先级</small></div>
+          </li>
+          <li>
+            <span>03</span>
+            <div><strong>生成可投方案</strong><small>简历版本与下一步行动</small></div>
+          </li>
+        </ol>
+      </section>
 
       <Spin spinning={loading}>
         <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>

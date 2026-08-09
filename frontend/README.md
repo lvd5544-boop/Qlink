@@ -1,16 +1,25 @@
-# React + Vite
+# QLink Frontend / QLink 前端
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+QLink 的 React + Vite 客户端。项目介绍、完整启动方式和产品边界请阅读 [根目录 README](../README.md)。
 
-Currently, two official plugins are available:
+React + Vite client for QLink. See the [root README](../README.md) for the product overview, full-stack setup, and trust boundaries.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Local development / 本地开发
 
-## React Compiler
+```bash
+npm ci
+npm run dev
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+The development server expects the API at `/api`; the full Docker Compose stack provides the production-style proxy configuration.
 
-## Expanding the ESLint configuration
+开发服务默认通过 `/api` 访问后端；根目录的 Docker Compose 会提供与生产一致的反向代理。
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Quality gates / 质量门禁
+
+```bash
+npm test
+npm run lint
+npm run build
+npm run e2e
+```

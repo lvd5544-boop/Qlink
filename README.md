@@ -1,102 +1,144 @@
-# AI Job Platform
+# QLink · Evidence-Grounded AI Job Workflow
 
-单机生产交付采用 Docker Compose：Nginx 同时提供前端静态文件与唯一公网入口，
-`/api` 转发 HTTP API，`/ws` 转发 WebSocket。PostgreSQL、Redis、Backend 和
-Scheduler 都不直接暴露端口。
+> 基于真实经历的 AI 求职决策与面试训练工作流<br>
+> An evidence-grounded AI workflow for job decisions, application preparation, and interview practice.
 
-## 三分钟启动
+[English](#english) · [中文](#中文) · [Product plan / 产品计划](./R3_CONSOLIDATED_PRODUCT_AND_SCALE_PLAN.md) · [Contributing / 贡献](./CONTRIBUTING.md)
 
-1. 复制配置并替换所有 `CHANGE_ME`：
+---
 
-   ```bash
-   cp .env.example .env
-   ```
+## 中文
 
-2. 启动：
+### 项目简介
 
-   ```bash
-   make config
-   make up
-   ```
+QLink 面向应届生和工作 0–3 年的年轻求职者。用户可以导入真实简历和目标岗位 JD，系统将岗位要求与用户已提供的经历和证据建立联系，帮助用户回答三个问题：
 
-3. 打开 `http://localhost:8080`。进程存活检查为 `/api/health`，依赖就绪检查为
-   `/api/ready`。详细依赖诊断只允许管理员访问 `/api/admin/readiness`。
+- 这个岗位现在是否值得投？
+- 哪些真实经历可以在申请和面试中说清楚？
+- 今天最值得补充的信息、证据或行动是什么？
 
-首次启动顺序固定为：PostgreSQL/Redis 健康 → 一次性 migration 成功 →
-Backend/Worker/Scheduler → Frontend。Web、Worker 与 Scheduler 只校验 schema 版本，
-不执行 DDL。上传后的匹配任务通过 Redis Stream 交给 Worker，失败消息保留为 pending，
-不会在 Web worker 中“发后即忘”。
+QLink 不预测录用概率，不把简历没写的内容直接判定为“不具备”，也不会把模型生成的经历写回用户简历。
 
-## 模型与降级
+### 核心体验
 
-默认 `MODEL_REQUIRED=false`：缺少 `DEEPSEEK_API_KEY` 时服务仍可启动，公开
-readiness 和管理员诊断会显示 `rules_only`。准备开放免费 AI 面试的试点应同时配置
-Key 并设置 `MODEL_REQUIRED=true`，把供应商可用性变成 readiness 门禁。候选人界面
-始终不会看到 token 或实际供应商成本。
-
-仅验收规则路径时保持 `DEEPSEEK_API_KEY=` 为空，不要把 `CHANGE_ME` 等占位符当作
-Key；需要验收真实 AI 调用时才填写真实 Key，并将 `MODEL_REQUIRED=true`。
-
-## 日常命令
-
-```bash
-make ps
-make logs
-make test
-make down
+```text
+真实背景 → 目标 JD / 同领域方向 → 岗位要求与证据映射
+        → 机会准备卡 → 结构化 AI 面试 → 用户确认观察结果
 ```
 
-更新代码后执行 `make up` 会重建镜像；migration 具有版本账本与 checksum，
-已应用 SQL 被修改时会拒绝启动，必须新增迁移文件。
+已实现的主要能力：
 
-升级前先执行 `make backup`，再拉取受信任版本并运行 `make up`。若新版本应用层异常，
-可回退到上一镜像；若 schema 或数据语义不兼容，使用同一备份按下节恢复。为保护
-供应商成本与订阅审计链，生产降级以“镜像回退 + 备份恢复”为权威路径，不执行
-破坏性自动 down migration。
+- 私有 JD 导入与所有权隔离；
+- 同职业族的“当前 / 相邻 / 挑战”方向探索；
+- 五状态岗位准备度：现在可用、需要说清、发展行动、现实约束、待验证假设；
+- 与同一份目标岗位和履历素材连通的结构化面试；
+- 用户确认后才能写回的 Interview Observation / Claim 机制；
+- Docker Compose 生产式本地交付，包含 PostgreSQL、Redis、Worker、Scheduler、Nginx 和健康检查。
 
-## 备份与恢复
+### 三分钟启动
 
-创建数据库与上传文件的一致交付备份：
-
-```bash
-make backup
-```
-
-恢复会覆盖当前数据库和上传目录，必须显式确认：
+前置条件：Docker Desktop（含 Docker Compose）。
 
 ```bash
-CONFIRM_RESTORE=RESTORE_AND_OVERWRITE \
-  ./scripts/restore.sh backups/20260725T120000Z
+cp .env.example .env
+# 将 .env 中的 CHANGE_ME 替换为本地安全值
+make config
+make up
 ```
 
-恢复前脚本校验 SHA-256，并先停止 Backend 与 Scheduler。正式环境应把 `backups/`
-同步到独立存储，并定期演练恢复。
+打开 `http://localhost:8080`。英文展示模式可使用 `http://localhost:8080/?demo=en`；关闭持久英文展示可使用 `?demo=off`。
 
-## 计费规则
+- 存活检查：`/api/health`
+- 就绪检查：`/api/ready`
+- 管理员依赖诊断：`/api/admin/readiness`
 
-- Candidate Pro：¥20/月；
-- Candidate Free 与 Pro：Coach 50 次/月、忠实重写 50 次/月；
-- 企业席位：¥300/席位/月，共享可信度审计 300 credits/月；
-- 企业加购包：¥100/100 credits；
-- AI 面试免费但受公平使用限制：50 sessions/日、50 turns/session；
-- 失败或未调用模型的请求释放预占，不扣 AI credits；
-- 供应商 token 与实际成本只在管理员接口中可见；
-- 币种为 CNY（界面显示 RMB），额度周期按 `Asia/Shanghai` 重置。
+没有配置模型 Key 时，默认 `MODEL_REQUIRED=false`，系统会以明确的 `rules_only` 状态运行，不会伪装 AI 供应商已就绪。
 
-当前代码只建立套餐、权益、预占/结算和管理员成本账；真实支付收单、发票和自动续费
-仍需接入支付服务商后才能对外收费。
+### 验收与常用命令
 
-## 常见问题
+```bash
+make test          # 后端测试 + 前端测试、Lint、构建
+make ps            # 查看服务状态
+make logs          # 查看服务日志
+make backup        # 备份数据库与上传文件
+make down          # 停止服务，保留数据卷
+```
 
-- `migration exited (1)`：先查看 `docker compose logs migration`；checksum 不一致时
-  不要修改已发布 SQL，应新增迁移。
-- `/api/ready` 返回 503：管理员查看 `/api/admin/readiness`；常见原因是 migration
-  未完成、Redis 不可用、Worker/Scheduler 心跳缺失，或生产要求模型但未配置 Key。
-- AI 功能处于 `rules_only`：配置 `DEEPSEEK_API_KEY` 后重建/重启；免费面试本身不扣
-  credits，但仍需要真实模型供应商。
-- 上传重启后丢失：确认 `uploads_data` 卷存在，且没有使用 `docker compose down -v`。
-- 端口占用：在 `.env` 修改 `APP_PORT` 与 `PUBLIC_ORIGIN`，再执行 `make up`。
+详细人工验收见 [MANUAL_ACCEPTANCE_GUIDE.md](./MANUAL_ACCEPTANCE_GUIDE.md)，公平性基线见 [FAIRNESS_BASELINE_PROTOCOL.md](./FAIRNESS_BASELINE_PROTOCOL.md)。
 
-PWA manifest 与 Service Worker 已随前端交付，支持添加到主屏幕并具备 Web Push
-接收能力；向浏览器申请通知权限、保存 push subscription、发送 VAPID 消息属于
-后续通知中心接入，当前版本不会在未征得用户同意时弹出权限请求。
+### 代码结构
+
+```text
+backend/
+  app/                 FastAPI 模块化单体：路由、领域服务、AI 网关、数据模型
+  tests/               所有权、幂等、匹配、面试和业务回归测试
+frontend/
+  src/pages/           候选人、招聘方和管理员页面
+  src/components/      可复用业务组件
+  src/utils/           无 UI 状态、格式化与传输工具
+  e2e/                 Playwright 主用户链路
+scripts/               备份、恢复和验收脚本
+```
+
+### 当前边界
+
+这是可运行的试点版 Demo，不是已上线的全功能 ATS。真实支付、发票、自动续费、外部邮件/ATS 结果集成仍在路线图中。产品不做自动拒绝、录用概率或基于学校/公司品牌的加分。
+
+---
+
+## English
+
+### What is QLink?
+
+QLink is an AI-assisted job workflow for students, new graduates, and early-career candidates. A candidate brings a real resume and a real target job description. QLink maps job requirements to candidate-provided experience, then helps answer:
+
+- Is this opportunity worth pursuing now?
+- Which real experiences can I explain clearly in an application or interview?
+- What is the highest-value clarification, evidence item, or action to complete next?
+
+QLink does not predict hiring probability, treat an omitted keyword as proof of missing ability, or write model-invented experience into a resume.
+
+### Core workflow
+
+```text
+Real background → Target JD / in-domain direction → Requirement-to-evidence map
+                → Opportunity preparation card → Structured AI interview
+                → Candidate-confirmed observations
+```
+
+Key capabilities include private-JD ownership controls, current/adjacent/stretch career directions, a five-state readiness model, evidence-grounded preparation, structured interview sessions, consent-gated observation writeback, and a Docker Compose deployment with PostgreSQL, Redis, workers, scheduling, Nginx, and health checks.
+
+### Quick start
+
+Prerequisite: Docker Desktop with Docker Compose.
+
+```bash
+cp .env.example .env
+# Replace every CHANGE_ME value in .env with a safe local value.
+make config
+make up
+```
+
+Open `http://localhost:8080`. Use `http://localhost:8080/?demo=en` for the persistent English showcase mode and `?demo=off` to turn it off.
+
+Without a model API key, the default `MODEL_REQUIRED=false` configuration starts in an explicit `rules_only` mode. The application does not pretend that an AI provider is available.
+
+### Verification
+
+```bash
+make test          # Backend tests + frontend tests, lint, and production build
+make ps            # Service status
+make logs          # Service logs
+make backup        # Consistent database and upload backup
+make down          # Stop services without deleting data volumes
+```
+
+See the [manual acceptance guide](./MANUAL_ACCEPTANCE_GUIDE.md), [fairness baseline](./FAIRNESS_BASELINE_PROTOCOL.md), and [consolidated product and scale plan](./R3_CONSOLIDATED_PRODUCT_AND_SCALE_PLAN.md).
+
+### Project status
+
+QLink is a runnable pilot Demo, not a production-wide ATS. Payment collection, invoicing, renewals, and authorized external email/ATS outcome integrations remain roadmap work. Automated rejection, hiring-probability claims, and school/company prestige scoring are deliberately out of scope.
+
+---
+
+Built as an iterative, test-gated AI product engineering project. Issues and focused contributions are welcome; please read [CONTRIBUTING.md](./CONTRIBUTING.md) first.

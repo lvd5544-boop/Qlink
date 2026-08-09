@@ -8,9 +8,7 @@ LAYER_E = "E"
 FORMAL_PROFILE_LAYERS = frozenset({"A", "B", "C", "D"})
 SOURCE_STATUSES = frozenset({"pending_review", "approved", "restricted", "revoked"})
 SOURCE_LAYERS = frozenset({"A", "B", "C", "D", "E"})
-VERSION_STATUSES = frozenset(
-    {"pending_validation", "published", "superseded", "revoked"}
-)
+VERSION_STATUSES = frozenset({"pending_validation", "published", "superseded", "revoked"})
 FORMAL_PROFILE_USE = "formal_profile"
 FORUM_SOURCE_KINDS = frozenset(
     {
@@ -36,9 +34,7 @@ def assert_source_usable_for_formal_profile(source: dict[str, Any]) -> None:
     if layer == LAYER_E or layer not in FORMAL_PROFILE_LAYERS:
         raise PermissionError(f"source layer {layer!r} cannot be used for formal profiles")
     if "allowed_product_uses" in source:
-        allowed_uses = {
-            str(item).strip() for item in source.get("allowed_product_uses") or []
-        }
+        allowed_uses = {str(item).strip() for item in source.get("allowed_product_uses") or []}
         if FORMAL_PROFILE_USE not in allowed_uses:
             raise PermissionError("source is not licensed for formal_profile use")
 

@@ -130,9 +130,7 @@ def _rescore(resume: dict, job: dict, job_title: str) -> float:
         isinstance(item, dict) and str(item.get("level") or "").lower() == "planned"
         for item in (resume.get("skills") or [])
     )
-    score, _, _, _ = hybrid_score_v2(
-        resume, job, job_title, include_planned=has_planned
-    )
+    score, _, _, _ = hybrid_score_v2(resume, job, job_title, include_planned=has_planned)
     return score
 
 

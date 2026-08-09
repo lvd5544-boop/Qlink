@@ -278,9 +278,7 @@ async def run_full_analytics_rebuild():
     async with AsyncSessionLocal() as db:
         await seed_companies(db)
         await rebuild_market_insights(db)
-        logger.info(
-            "正式市场分析仅从岗位数据重建；E 层论坛内容不进入岗位画像或录用判断"
-        )
+        logger.info("正式市场分析仅从岗位数据重建；E 层论坛内容不进入岗位画像或录用判断")
 
 
 def insight_to_dict(insight: MarketInsight) -> dict:

@@ -13,15 +13,17 @@ async def test_greenhouse_public_jobs_are_normalized_with_source_attribution(mon
         return httpx.Response(
             200,
             json={
-                "jobs": [{
-                    "id": 1,
-                    "title": "Data Scientist",
-                    "absolute_url": "https://boards.greenhouse.io/example/jobs/1",
-                    "location": {"name": "New York"},
-                    "content": "<p>Build forecasting models &amp; explain trade-offs.</p>",
-                    "departments": [{"name": "Data"}],
-                    "offices": [],
-                }]
+                "jobs": [
+                    {
+                        "id": 1,
+                        "title": "Data Scientist",
+                        "absolute_url": "https://boards.greenhouse.io/example/jobs/1",
+                        "location": {"name": "New York"},
+                        "content": "<p>Build forecasting models &amp; explain trade-offs.</p>",
+                        "departments": [{"name": "Data"}],
+                        "offices": [],
+                    }
+                ]
             },
         )
 

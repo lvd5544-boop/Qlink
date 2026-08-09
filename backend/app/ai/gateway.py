@@ -74,7 +74,9 @@ def _extract_json_text(content: str) -> str:
     return text
 
 
-def _validate_ids(data: dict[str, Any], id_fields: tuple[str, ...], allowed: frozenset[str]) -> None:
+def _validate_ids(
+    data: dict[str, Any], id_fields: tuple[str, ...], allowed: frozenset[str]
+) -> None:
     if not id_fields:
         return
     for field_name in id_fields:

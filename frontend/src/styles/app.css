@@ -32,7 +32,12 @@ body {
   flex-direction: column;
   justify-content: center;
   padding: 48px;
-  background: linear-gradient(135deg, #312e81 0%, #4f46e5 50%, #6366f1 100%);
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 82% 18%, rgba(129, 140, 248, .45), transparent 26%),
+    radial-gradient(circle at 12% 86%, rgba(45, 212, 191, .18), transparent 28%),
+    linear-gradient(145deg, #111938 0%, #253b88 55%, #4f46e5 100%);
   color: #fff;
 }
 
@@ -44,18 +49,34 @@ body {
 
 .auth-brand h1 {
   margin: 0 0 12px;
-  font-size: 32px;
-  font-weight: 600;
+  font-size: clamp(34px, 4vw, 54px);
+  font-weight: 750;
   color: #fff;
-  letter-spacing: -0.5px;
+  letter-spacing: -1.5px;
+  line-height: 1.16;
 }
 
-.auth-brand p {
+.auth-brand-description.ant-typography {
   margin: 0;
   font-size: 16px;
   line-height: 1.7;
-  color: rgba(255, 255, 255, 0.85);
-  max-width: 400px;
+  color: rgba(255, 255, 255, 0.78) !important;
+  max-width: 560px;
+}
+
+.auth-brand-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  margin-bottom: 18px;
+  padding: 7px 12px;
+  border: 1px solid rgba(255, 255, 255, .22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .1);
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: .04em;
 }
 
 .auth-brand-features {
@@ -67,16 +88,49 @@ body {
 
 .auth-brand-feature {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
+  max-width: 570px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .075);
   font-size: 14px;
   color: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
 }
 
-.auth-brand-feature .anticon {
-  font-size: 20px;
-  margin-top: 2px;
-  opacity: 0.9;
+.auth-brand-feature-step {
+  color: rgba(255, 255, 255, .5);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.auth-brand-feature-icon {
+  display: grid;
+  flex: 0 0 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .13);
+  font-size: 18px;
+}
+
+.auth-brand-feature strong,
+.auth-brand-feature small {
+  display: block;
+}
+
+.auth-brand-feature small {
+  margin-top: 3px;
+  color: rgba(255, 255, 255, .64);
+  line-height: 1.5;
+}
+
+.auth-brand-proof {
+  margin-top: 22px;
+  color: rgba(255, 255, 255, .62);
+  font-size: 12px;
 }
 
 .auth-form-panel {
@@ -97,6 +151,35 @@ body {
 
 .auth-card .ant-card-body {
   padding: 32px !important;
+}
+
+.auth-mobile-pitch {
+  display: none;
+}
+
+@media (max-width: 899px) {
+  .auth-mobile-pitch {
+    display: grid;
+    gap: 4px;
+    margin: -8px -8px 24px;
+    padding: 13px 14px;
+    border: 1px solid #e0e7ff;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #eef2ff, #f5f3ff);
+  }
+
+  .auth-mobile-pitch span {
+    color: #4f46e5;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .04em;
+  }
+
+  .auth-mobile-pitch strong {
+    color: #273454;
+    font-size: 13px;
+    line-height: 1.5;
+  }
 }
 
 .auth-logo {
@@ -163,6 +246,23 @@ body {
   white-space: nowrap;
 }
 
+.featured-menu-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.featured-menu-badge {
+  padding: 1px 6px;
+  border: 1px solid rgba(199, 210, 254, .36);
+  border-radius: 999px;
+  background: rgba(99, 102, 241, .3);
+  color: #e0e7ff;
+  font-size: 10px;
+  line-height: 18px;
+}
+
 .app-header {
   background: #fff !important;
   padding: 0 24px !important;
@@ -204,6 +304,136 @@ body {
 .page-header-desc {
   margin: 4px 0 0 !important;
   color: #64748b;
+}
+
+/* —— 主推求职工作流 —— */
+.workflow-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(290px, .7fr);
+  gap: 28px;
+  overflow: hidden;
+  margin-bottom: 24px;
+  padding: clamp(24px, 4vw, 42px);
+  border: 1px solid rgba(79, 70, 229, .14);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 92% 8%, rgba(129, 140, 248, .22), transparent 30%),
+    linear-gradient(135deg, #101936 0%, #243b84 60%, #4f46e5 100%);
+  box-shadow: 0 22px 55px rgba(30, 41, 89, .18);
+  color: #fff;
+}
+
+.workflow-hero-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 12px;
+  color: #c7d2fe;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.workflow-hero h2.ant-typography {
+  max-width: 680px;
+  margin: 0 0 12px;
+  color: #fff;
+  font-size: clamp(28px, 3.2vw, 42px);
+  line-height: 1.18;
+  letter-spacing: -.8px;
+}
+
+.workflow-hero p.ant-typography {
+  max-width: 650px;
+  margin-bottom: 22px;
+  color: rgba(255, 255, 255, .74);
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.workflow-hero-actions .ant-btn-primary {
+  background: #fff;
+  color: #273c84;
+  box-shadow: 0 8px 20px rgba(11, 18, 50, .25);
+}
+
+.workflow-hero-actions .ant-btn-default {
+  border-color: rgba(255, 255, 255, .34);
+  background: rgba(255, 255, 255, .09);
+  color: #fff;
+}
+
+.workflow-trust-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px 18px;
+  margin-top: 20px;
+  color: rgba(255, 255, 255, .62);
+  font-size: 12px;
+}
+
+.workflow-trust-row .anticon {
+  margin-right: 4px;
+  color: #5eead4;
+}
+
+.workflow-steps {
+  display: grid;
+  align-content: center;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workflow-steps li {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 11px;
+  align-items: center;
+  padding: 13px;
+  border: 1px solid rgba(255, 255, 255, .13);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .085);
+  backdrop-filter: blur(8px);
+}
+
+.workflow-steps li > span {
+  color: #a5b4fc;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.workflow-steps strong,
+.workflow-steps small {
+  display: block;
+}
+
+.workflow-steps strong {
+  color: #fff;
+  font-size: 14px;
+}
+
+.workflow-steps small {
+  margin-top: 3px;
+  color: rgba(255, 255, 255, .58);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+@media (max-width: 860px) {
+  .workflow-hero {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .workflow-hero-actions,
+  .workflow-hero-actions .ant-space-item,
+  .workflow-hero-actions .ant-btn {
+    width: 100%;
+  }
 }
 
 /* —— 统计卡片 —— */

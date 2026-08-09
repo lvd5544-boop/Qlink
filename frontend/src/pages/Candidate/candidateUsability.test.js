@@ -11,10 +11,13 @@ const passport = fs.readFileSync(new URL('./CareerPassport.jsx', import.meta.url
 const advisor = fs.readFileSync(new URL('./Advisor.jsx', import.meta.url), 'utf8');
 const analytics = fs.readFileSync(new URL('./Analytics.jsx', import.meta.url), 'utf8');
 
-test('candidate navigation uses task language and removes the persistent process bar', () => {
+test('candidate navigation uses task language and promotes the primary workflow', () => {
   for (const label of ['找岗位', '优化简历', 'AI 面试', '投递进度', '更多']) {
     assert.match(layout, new RegExp(label));
   }
+  assert.match(layout, /AI 求职工作流/);
+  assert.match(layout, /主推/);
+  assert.match(layout, /key: '\/candidate\/advisor'/);
   assert.doesNotMatch(layout, /journey=\{/);
 });
 

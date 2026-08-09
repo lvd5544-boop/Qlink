@@ -16,9 +16,7 @@ from app.models_db import User
 
 async def create_admin(email: str, password: str) -> str:
     async with AsyncSessionLocal() as session:
-        row = (
-            await session.execute(select(User).where(User.email == email))
-        ).scalar_one_or_none()
+        row = (await session.execute(select(User).where(User.email == email))).scalar_one_or_none()
         if row is None:
             row = User(email=email, password_hash=get_password_hash(password), role="admin")
             session.add(row)

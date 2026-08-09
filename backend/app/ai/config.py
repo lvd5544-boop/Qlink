@@ -11,19 +11,15 @@ def ai_enabled() -> bool:
 
 
 def primary_api_key() -> str:
-    return (
-        os.getenv("AI_PRIMARY_API_KEY")
-        or os.getenv("DEEPSEEK_API_KEY")
-        or ""
-    ).strip()
+    return (os.getenv("AI_PRIMARY_API_KEY") or os.getenv("DEEPSEEK_API_KEY") or "").strip()
 
 
 def primary_base_url() -> str:
     return (
-        os.getenv("AI_PRIMARY_BASE_URL")
-        or os.getenv("DEEPSEEK_BASE_URL")
-        or ""
-    ).strip().rstrip("/")
+        (os.getenv("AI_PRIMARY_BASE_URL") or os.getenv("DEEPSEEK_BASE_URL") or "")
+        .strip()
+        .rstrip("/")
+    )
 
 
 def primary_provider_name() -> str:
@@ -36,9 +32,7 @@ def data_region() -> str:
 
 def request_timeout_seconds() -> float:
     return float(
-        os.getenv("AI_REQUEST_TIMEOUT_SECONDS")
-        or os.getenv("MODEL_LLM_TIMEOUT_SECONDS")
-        or "60"
+        os.getenv("AI_REQUEST_TIMEOUT_SECONDS") or os.getenv("MODEL_LLM_TIMEOUT_SECONDS") or "60"
     )
 
 

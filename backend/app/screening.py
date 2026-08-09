@@ -456,7 +456,9 @@ def evaluate_hard_rules(
                     "field": rule.field,
                     "status": "unknown",
                     "reason": "insufficient_resume_signal",
-                    "requirement_id": str(rule.job_requirement_id) if rule.job_requirement_id else None,
+                    "requirement_id": str(rule.job_requirement_id)
+                    if rule.job_requirement_id
+                    else None,
                 }
             )
         elif matched:
@@ -466,7 +468,9 @@ def evaluate_hard_rules(
                     "rule_id": str(rule.id),
                     "field": rule.field,
                     "status": "pass",
-                    "requirement_id": str(rule.job_requirement_id) if rule.job_requirement_id else None,
+                    "requirement_id": str(rule.job_requirement_id)
+                    if rule.job_requirement_id
+                    else None,
                 }
             )
         else:
@@ -476,7 +480,9 @@ def evaluate_hard_rules(
                     "rule_id": str(rule.id),
                     "field": rule.field,
                     "status": "fail",
-                    "requirement_id": str(rule.job_requirement_id) if rule.job_requirement_id else None,
+                    "requirement_id": str(rule.job_requirement_id)
+                    if rule.job_requirement_id
+                    else None,
                 }
             )
 
@@ -550,9 +556,7 @@ def _rules_only_llm_fallback(
             "简历未写明不等于事实缺失。",
         ],
         suggested_followups=followups[:5],
-        gap_findings=[
-            f"未命中规则 {hit.get('rule_id')}" for hit in missing[:5]
-        ],
+        gap_findings=[f"未命中规则 {hit.get('rule_id')}" for hit in missing[:5]],
         consistency_findings=[],
     )
 
@@ -668,13 +672,17 @@ async def _authorized_applications(
     employer_id: str,
 ) -> list[JobApplication]:
     rows = (
-        await db.execute(
-            select(JobApplication).where(
-                JobApplication.job_id == str(job_id),
-                JobApplication.employer_id == str(employer_id),
+        (
+            await db.execute(
+                select(JobApplication).where(
+                    JobApplication.job_id == str(job_id),
+                    JobApplication.employer_id == str(employer_id),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [row for row in rows if application_has_candidate_authorization(row)]
 
 
@@ -703,27 +711,27 @@ async def execute_screening_run(
         raise ValueError("profile_snapshot_mismatch")
 
     rules = (
-        await db.execute(
-            select(ScreeningRule)
-            .where(ScreeningRule.run_id == str(run.id), ScreeningRule.enabled.is_(True))
-            .order_by(ScreeningRule.order_no, ScreeningRule.created_at)
+        (
+            await db.execute(
+                select(ScreeningRule)
+                .where(ScreeningRule.run_id == str(run.id), ScreeningRule.enabled.is_(True))
+                .order_by(ScreeningRule.order_no, ScreeningRule.created_at)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     if not rules:
         raise ValueError("rules_required")
 
-    requirement_ids = [
-        str(rule.job_requirement_id)
-        for rule in rules
-        if rule.job_requirement_id
-    ]
+    requirement_ids = [str(rule.job_requirement_id) for rule in rules if rule.job_requirement_id]
     requirements = {}
     if requirement_ids:
         rows = (
-            await db.execute(
-                select(JobRequirement).where(JobRequirement.id.in_(requirement_ids))
-            )
-        ).scalars().all()
+            (await db.execute(select(JobRequirement).where(JobRequirement.id.in_(requirement_ids))))
+            .scalars()
+            .all()
+        )
         requirements = {str(row.id): row for row in rows}
 
     applications = await _authorized_applications(
@@ -739,10 +747,10 @@ async def execute_screening_run(
     existing = {
         str(row.application_id): row
         for row in (
-            await db.execute(
-                select(ScreeningResult).where(ScreeningResult.run_id == str(run.id))
-            )
-        ).scalars().all()
+            await db.execute(select(ScreeningResult).where(ScreeningResult.run_id == str(run.id)))
+        )
+        .scalars()
+        .all()
     }
 
     for application in applications:
@@ -825,11 +833,7 @@ async def execute_screening_run(
             ],
             findings=list(llm_output.gap_findings) + list(llm_output.consistency_findings),
             alternative_explanations=list(llm_output.alternative_explanations),
-            uncertainties=[
-                reason
-                for reason in hard_reasons
-                if reason.get("status") == "unknown"
-            ]
+            uncertainties=[reason for reason in hard_reasons if reason.get("status") == "unknown"]
             + (
                 [{"category": "application_snapshot_missing"}]
                 if snapshot_status == "missing"
@@ -880,13 +884,17 @@ async def execute_screening_run(
         except IntegrityError:
             # Different Idempotency-Key concurrent executes converge on UNIQUE(run_id, application_id).
             existing_row = (
-                await db.execute(
-                    select(ScreeningResult).where(
-                        ScreeningResult.run_id == str(run.id),
-                        ScreeningResult.application_id == str(application.id),
+                (
+                    await db.execute(
+                        select(ScreeningResult).where(
+                            ScreeningResult.run_id == str(run.id),
+                            ScreeningResult.application_id == str(application.id),
+                        )
                     )
                 )
-            ).scalars().first()
+                .scalars()
+                .first()
+            )
             if existing_row is not None:
                 existing[str(application.id)] = existing_row
             continue
@@ -977,12 +985,16 @@ async def serialize_result(
 
 async def serialize_run(db: AsyncSession, run: ScreeningRun) -> dict[str, Any]:
     rules = (
-        await db.execute(
-            select(ScreeningRule)
-            .where(ScreeningRule.run_id == str(run.id))
-            .order_by(ScreeningRule.order_no, ScreeningRule.created_at)
+        (
+            await db.execute(
+                select(ScreeningRule)
+                .where(ScreeningRule.run_id == str(run.id))
+                .order_by(ScreeningRule.order_no, ScreeningRule.created_at)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return {
         "id": str(run.id),
         "job_id": str(run.job_id),
@@ -1036,33 +1048,33 @@ async def list_results_page(
     if review_status:
         conditions.append(ScreeningResult.status == review_status)
     total = int(
-        (
-            await db.execute(
-                select(func.count(ScreeningResult.id)).where(*conditions)
-            )
-        ).scalar_one()
+        (await db.execute(select(func.count(ScreeningResult.id)).where(*conditions))).scalar_one()
     )
     page = (
-        await db.execute(
-            select(ScreeningResult)
-            .where(*conditions)
-            .order_by(
-                case(
-                    (ScreeningResult.status == "pending_review", 0),
-                    (ScreeningResult.status == "clarification_requested", 1),
-                    else_=2,
-                ),
-                case(
-                    (ScreeningResult.hard_filter_status == "fail", 0),
-                    (ScreeningResult.hard_filter_status == "unknown", 1),
-                    else_=2,
-                ),
-                ScreeningResult.created_at,
+        (
+            await db.execute(
+                select(ScreeningResult)
+                .where(*conditions)
+                .order_by(
+                    case(
+                        (ScreeningResult.status == "pending_review", 0),
+                        (ScreeningResult.status == "clarification_requested", 1),
+                        else_=2,
+                    ),
+                    case(
+                        (ScreeningResult.hard_filter_status == "fail", 0),
+                        (ScreeningResult.hard_filter_status == "unknown", 1),
+                        else_=2,
+                    ),
+                    ScreeningResult.created_at,
+                )
+                .offset(offset)
+                .limit(limit)
             )
-            .offset(offset)
-            .limit(limit)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     has_more = offset + len(page) < total
     return {
         "run_id": str(run.id),
@@ -1070,9 +1082,7 @@ async def list_results_page(
         "offset": offset,
         "has_more": has_more,
         "total": total,
-        "items": [
-            await serialize_result(db, row, include_trace=False) for row in page
-        ],
+        "items": [await serialize_result(db, row, include_trace=False) for row in page],
     }
 
 
@@ -1088,13 +1098,17 @@ async def mark_results_reviewed(
     if not unique_ids:
         raise ValueError("result_ids_required")
     rows = (
-        await db.execute(
-            select(ScreeningResult).where(
-                ScreeningResult.run_id == str(run.id),
-                ScreeningResult.id.in_(unique_ids),
+        (
+            await db.execute(
+                select(ScreeningResult).where(
+                    ScreeningResult.run_id == str(run.id),
+                    ScreeningResult.id.in_(unique_ids),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     if len(rows) != len(unique_ids):
         raise _not_found_error()
     now = _utcnow()

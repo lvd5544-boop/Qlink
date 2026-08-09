@@ -387,11 +387,31 @@ async def list_data_sources(current_user: User = Depends(get_current_user)):
             },
         ],
         "planned_sources": [
-            {"name": "ESCO v1.2.1", "status": "许可可用，待版本化导入", "note": "欧盟官方多语言职业/技能分类；记录版本与 attribution"},
-            {"name": "O*NET Database", "status": "CC BY 4.0，待 attribution 实现", "note": "职业任务、技能与工作活动；不得改写成企业要求"},
-            {"name": "BLS OEWS", "status": "官方统计，待 SOC crosswalk", "note": "职业就业与薪资统计，只用于市场背景"},
-            {"name": "USAJOBS Historic JOA", "status": "公开 API，待增量管道", "note": "历史政府职位数据，用于岗位趋势而非当前招聘"},
-            {"name": "高校就业质量报告", "status": "待逐校许可与结构评估", "note": "只使用官方公开 PDF/网页并保留页码引用"},
+            {
+                "name": "ESCO v1.2.1",
+                "status": "许可可用，待版本化导入",
+                "note": "欧盟官方多语言职业/技能分类；记录版本与 attribution",
+            },
+            {
+                "name": "O*NET Database",
+                "status": "CC BY 4.0，待 attribution 实现",
+                "note": "职业任务、技能与工作活动；不得改写成企业要求",
+            },
+            {
+                "name": "BLS OEWS",
+                "status": "官方统计，待 SOC crosswalk",
+                "note": "职业就业与薪资统计，只用于市场背景",
+            },
+            {
+                "name": "USAJOBS Historic JOA",
+                "status": "公开 API，待增量管道",
+                "note": "历史政府职位数据，用于岗位趋势而非当前招聘",
+            },
+            {
+                "name": "高校就业质量报告",
+                "status": "待逐校许可与结构评估",
+                "note": "只使用官方公开 PDF/网页并保留页码引用",
+            },
         ],
         "compliance": [
             "仅抓取公开可访问内容",

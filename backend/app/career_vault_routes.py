@@ -49,12 +49,32 @@ from .virus_scan import scan_bytes
 router = APIRouter(tags=["Career Passport", "Evidence Vault"])
 
 EXPERIENCE_TYPES = {"work", "project", "education", "volunteer", "freelance", "award", "other"}
-ARTIFACT_TYPES = {"document", "link", "code", "sample", "certificate", "image", "user_statement", "other"}
+ARTIFACT_TYPES = {
+    "document",
+    "link",
+    "code",
+    "sample",
+    "certificate",
+    "image",
+    "user_statement",
+    "other",
+}
 ALLOWED_USES = {"resume_assistance", "application_share", "model_improvement"}
 RELATIONSHIPS = {"supports", "contradicts", "related"}
 EVIDENCE_FILE_EXTENSIONS = {
-    ".pdf", ".docx", ".txt", ".md", ".py", ".ipynb", ".js", ".ts",
-    ".java", ".go", ".rs", ".sql", ".csv",
+    ".pdf",
+    ".docx",
+    ".txt",
+    ".md",
+    ".py",
+    ".ipynb",
+    ".js",
+    ".ts",
+    ".java",
+    ".go",
+    ".rs",
+    ".sql",
+    ".csv",
 }
 
 
@@ -137,25 +157,50 @@ class ClaimSplitBody(BaseModel):
 
 
 @router.get("/career-passport/overview")
-async def overview(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def overview(
+    current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+):
     user_id = _candidate(current_user)
     counts = {}
     for key, model, condition in (
         ("experiences", CareerExperience, CareerExperience.user_id == user_id),
         ("claims", ResumeClaim, ResumeClaim.user_id == user_id),
-        ("artifacts", EvidenceArtifact, (EvidenceArtifact.owner_user_id == user_id) & EvidenceArtifact.deleted_at.is_(None)),
+        (
+            "artifacts",
+            EvidenceArtifact,
+            (EvidenceArtifact.owner_user_id == user_id) & EvidenceArtifact.deleted_at.is_(None),
+        ),
         ("resume_versions", ResumeVersion, ResumeVersion.user_id == user_id),
     ):
-        counts[key] = int(await db.scalar(select(func.count()).select_from(model).where(condition)) or 0)
-    open_claims = (
-        await db.execute(
-            select(ResumeClaim).where(
-                ResumeClaim.user_id == user_id,
-                ResumeClaim.workflow_state == "open",
-            ).order_by(ResumeClaim.updated_at.desc()).limit(20)
+        counts[key] = int(
+            await db.scalar(select(func.count()).select_from(model).where(condition)) or 0
         )
-    ).scalars().all()
-    return {"counts": counts, "open_claims": [{"id": str(row.id), "text": row.current_text, "confirmation_state": row.confirmation_state} for row in open_claims]}
+    open_claims = (
+        (
+            await db.execute(
+                select(ResumeClaim)
+                .where(
+                    ResumeClaim.user_id == user_id,
+                    ResumeClaim.workflow_state == "open",
+                )
+                .order_by(ResumeClaim.updated_at.desc())
+                .limit(20)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return {
+        "counts": counts,
+        "open_claims": [
+            {
+                "id": str(row.id),
+                "text": row.current_text,
+                "confirmation_state": row.confirmation_state,
+            }
+            for row in open_claims
+        ],
+    }
 
 
 @router.post("/career-passport/import-resumes")
@@ -166,12 +211,14 @@ async def import_resumes_to_memory(
     """Idempotently project existing resumes into the career-memory network."""
     user_id = _candidate(current_user)
     resumes = (
-        await db.execute(
-            select(Resume)
-            .where(Resume.user_id == user_id)
-            .order_by(Resume.uploaded_at.asc())
+        (
+            await db.execute(
+                select(Resume).where(Resume.user_id == user_id).order_by(Resume.uploaded_at.asc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     claim_count = 0
     for resume in resumes:
         claims = await sync_resume_claims(
@@ -209,24 +256,62 @@ async def timeline(
 ):
     user_id = _candidate(current_user)
     experiences = (
-        await db.execute(
-            select(CareerExperience).where(CareerExperience.user_id == user_id).order_by(CareerExperience.start_date.desc(), CareerExperience.created_at.desc())
+        (
+            await db.execute(
+                select(CareerExperience)
+                .where(CareerExperience.user_id == user_id)
+                .order_by(CareerExperience.start_date.desc(), CareerExperience.created_at.desc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     versions = (
-        await db.execute(
-            select(ResumeVersion).where(ResumeVersion.user_id == user_id).order_by(ResumeVersion.created_at.desc())
+        (
+            await db.execute(
+                select(ResumeVersion)
+                .where(ResumeVersion.user_id == user_id)
+                .order_by(ResumeVersion.created_at.desc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     items = [
-        {"type": "experience", "occurred_at": (row.start_date.isoformat() if row.start_date else (row.created_at.isoformat() if row.created_at else None)), "data": serialize_experience(row)}
+        {
+            "type": "experience",
+            "occurred_at": (
+                row.start_date.isoformat()
+                if row.start_date
+                else (row.created_at.isoformat() if row.created_at else None)
+            ),
+            "data": serialize_experience(row),
+        }
         for row in experiences
     ] + [
-        {"type": "resume_version", "occurred_at": row.created_at.isoformat() if row.created_at else None, "data": {"id": str(row.id), "resume_id": str(row.resume_id), "version_number": row.version_number, "created_reason": row.created_reason, "content_hash": row.content_hash}}
+        {
+            "type": "resume_version",
+            "occurred_at": row.created_at.isoformat() if row.created_at else None,
+            "data": {
+                "id": str(row.id),
+                "resume_id": str(row.resume_id),
+                "version_number": row.version_number,
+                "created_reason": row.created_reason,
+                "content_hash": row.content_hash,
+            },
+        }
         for row in versions
     ]
     items.sort(key=lambda item: item["occurred_at"] or "", reverse=True)
-    return {"items": items[offset : offset + limit], "page": {"offset": offset, "limit": limit, "total": len(items), "has_more": offset + limit < len(items)}}
+    return {
+        "items": items[offset : offset + limit],
+        "page": {
+            "offset": offset,
+            "limit": limit,
+            "total": len(items),
+            "has_more": offset + limit < len(items),
+        },
+    }
 
 
 @router.get("/career-passport/map")
@@ -260,7 +345,12 @@ async def create_experience(
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
     user_id = _candidate(current_user)
-    if body.experience_type not in EXPERIENCE_TYPES or body.date_precision not in {"day", "month", "year", "unknown"}:
+    if body.experience_type not in EXPERIENCE_TYPES or body.date_precision not in {
+        "day",
+        "month",
+        "year",
+        "unknown",
+    }:
         raise HTTPException(status_code=422, detail="经历类型或日期精度无效")
     if body.workflow_state not in {"active", "archived", "withdrawn"}:
         raise HTTPException(status_code=422, detail="经历状态无效")
@@ -332,19 +422,33 @@ async def create_experience_claim(
             return gate.replay
         experience = await db.get(CareerExperience, experience_id)
         resume = await db.get(Resume, body.resume_id)
-        if not experience or experience.user_id != user_id or not resume or str(resume.user_id) != user_id:
+        if (
+            not experience
+            or experience.user_id != user_id
+            or not resume
+            or str(resume.user_id) != user_id
+        ):
             raise HTTPException(status_code=404, detail="经历或简历不存在")
         claim = ResumeClaim(
-            id=str(uuid.uuid4()), resume_id=str(resume.id), user_id=user_id,
-            career_experience_id=str(experience.id), source_key=f"manual:{uuid.uuid4()}",
-            section="career_experience", field_path=body.field_path, claim_type=body.claim_type,
-            original_text=body.text.strip(), current_text=body.text.strip(),
-            origin_kind="manual", source_object_type="career_experience",
+            id=str(uuid.uuid4()),
+            resume_id=str(resume.id),
+            user_id=user_id,
+            career_experience_id=str(experience.id),
+            source_key=f"manual:{uuid.uuid4()}",
+            section="career_experience",
+            field_path=body.field_path,
+            claim_type=body.claim_type,
+            original_text=body.text.strip(),
+            current_text=body.text.strip(),
+            origin_kind="manual",
+            source_object_type="career_experience",
             source_object_id=str(experience.id),
         )
         db.add(claim)
         await db.flush()
-        await _event(db, str(claim.id), "claim_created", actor_id=user_id, payload={"origin_kind": "manual"})
+        await _event(
+            db, str(claim.id), "claim_created", actor_id=user_id, payload={"origin_kind": "manual"}
+        )
         payload = {"claim_id": str(claim.id)}
         gate.set_response(200, payload)
         await db.commit()
@@ -488,14 +592,18 @@ async def merge_claims(
             return gate.replay
         ids = list(dict.fromkeys(body.claim_ids))
         claims = (
-            await db.execute(
-                select(ResumeClaim).where(
-                    ResumeClaim.id.in_(ids),
-                    ResumeClaim.user_id == user_id,
-                    ResumeClaim.workflow_state != "withdrawn",
+            (
+                await db.execute(
+                    select(ResumeClaim).where(
+                        ResumeClaim.id.in_(ids),
+                        ResumeClaim.user_id == user_id,
+                        ResumeClaim.workflow_state != "withdrawn",
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         if len(claims) != len(ids):
             raise HTTPException(status_code=404, detail="一个或多个 Claim 不存在或无权访问")
         primary = claims[0]
@@ -519,8 +627,20 @@ async def merge_claims(
         for claim in claims:
             claim.superseded_by_claim_id = str(merged.id)
             claim.workflow_state = "withdrawn"
-            await _event(db, str(claim.id), "claim_merged", actor_id=user_id, payload={"merged_claim_id": str(merged.id)})
-        await _event(db, str(merged.id), "claim_created_from_merge", actor_id=user_id, payload={"source_claim_ids": ids})
+            await _event(
+                db,
+                str(claim.id),
+                "claim_merged",
+                actor_id=user_id,
+                payload={"merged_claim_id": str(merged.id)},
+            )
+        await _event(
+            db,
+            str(merged.id),
+            "claim_created_from_merge",
+            actor_id=user_id,
+            payload={"source_claim_ids": ids},
+        )
         payload = {"claim_id": str(merged.id), "source_claim_ids": ids}
         gate.set_response(200, payload)
         await db.commit()
@@ -573,9 +693,21 @@ async def split_claim(
         await db.flush()
         claim.workflow_state = "withdrawn"
         claim.superseded_by_claim_id = str(children[0].id)
-        await _event(db, str(claim.id), "claim_split", actor_id=user_id, payload={"child_claim_ids": [str(row.id) for row in children]})
+        await _event(
+            db,
+            str(claim.id),
+            "claim_split",
+            actor_id=user_id,
+            payload={"child_claim_ids": [str(row.id) for row in children]},
+        )
         for child in children:
-            await _event(db, str(child.id), "claim_created_from_split", actor_id=user_id, payload={"source_claim_id": str(claim.id)})
+            await _event(
+                db,
+                str(child.id),
+                "claim_created_from_split",
+                actor_id=user_id,
+                payload={"source_claim_id": str(claim.id)},
+            )
         payload = {"source_claim_id": str(claim.id), "claim_ids": [str(row.id) for row in children]}
         gate.set_response(200, payload)
         await db.commit()
@@ -583,13 +715,41 @@ async def split_claim(
 
 
 @router.get("/career-passport/claims/{claim_id}/history")
-async def claim_history(claim_id: str, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def claim_history(
+    claim_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     claim = await owned_claim(db, claim_id, _candidate(current_user))
     if not claim:
         raise HTTPException(status_code=404, detail="主张不存在或无权访问")
-    evidence = (await db.execute(select(ClaimEvidence).where(ClaimEvidence.claim_id == claim_id))).scalars().all()
-    revisions = (await db.execute(select(ClaimRevision).where(ClaimRevision.claim_id == claim_id).order_by(ClaimRevision.created_at.desc()))).scalars().all()
-    events = (await db.execute(select(ClaimEvent).where(ClaimEvent.claim_id == claim_id).order_by(ClaimEvent.created_at.desc()))).scalars().all()
+    evidence = (
+        (await db.execute(select(ClaimEvidence).where(ClaimEvidence.claim_id == claim_id)))
+        .scalars()
+        .all()
+    )
+    revisions = (
+        (
+            await db.execute(
+                select(ClaimRevision)
+                .where(ClaimRevision.claim_id == claim_id)
+                .order_by(ClaimRevision.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    events = (
+        (
+            await db.execute(
+                select(ClaimEvent)
+                .where(ClaimEvent.claim_id == claim_id)
+                .order_by(ClaimEvent.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
     return {"claim": serialize_claim(claim, evidence, revisions, events)}
 
 
@@ -673,17 +833,25 @@ async def add_chat_message(
 
 
 @router.get("/career-passport/claims/{claim_id}/chat/messages")
-async def list_chat_messages(claim_id: str, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def list_chat_messages(
+    claim_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     claim = await owned_claim(db, claim_id, _candidate(current_user))
     if not claim:
         raise HTTPException(status_code=404, detail="主张不存在或无权访问")
     rows = (
-        await db.execute(
-            select(ClaimEvent)
-            .where(ClaimEvent.claim_id == claim_id, ClaimEvent.event_type.like("chat_%"))
-            .order_by(ClaimEvent.created_at.asc())
+        (
+            await db.execute(
+                select(ClaimEvent)
+                .where(ClaimEvent.claim_id == claim_id, ClaimEvent.event_type.like("chat_%"))
+                .order_by(ClaimEvent.created_at.asc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return {
         "messages": [
             {
@@ -695,9 +863,7 @@ async def list_chat_messages(claim_id: str, current_user: User = Depends(get_cur
             for row in rows
         ],
         "ai_connected": False,
-        "clarification_connected": any(
-            row.event_type == "chat_assistant_message" for row in rows
-        ),
+        "clarification_connected": any(row.event_type == "chat_assistant_message" for row in rows),
     }
 
 
@@ -751,7 +917,9 @@ async def init_artifact(
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
     user_id = _candidate(current_user)
-    if body.artifact_type not in ARTIFACT_TYPES or not set(body.allowed_uses).issubset(ALLOWED_USES):
+    if body.artifact_type not in ARTIFACT_TYPES or not set(body.allowed_uses).issubset(
+        ALLOWED_USES
+    ):
         raise HTTPException(status_code=422, detail="证据类型或用途无效")
     if body.default_visibility not in {"private", "application_selected"}:
         raise HTTPException(status_code=422, detail="可见范围无效")
@@ -837,7 +1005,9 @@ async def complete_artifact_upload(
                 raise HTTPException(
                     status_code=503 if scanner_unavailable else 422,
                     detail={
-                        "error": "scanner_unavailable" if scanner_unavailable else "malware_detected",
+                        "error": "scanner_unavailable"
+                        if scanner_unavailable
+                        else "malware_detected",
                         "engine": scan.engine,
                         "detail": scan.detail,
                     },
@@ -870,11 +1040,45 @@ async def complete_artifact_upload(
 
 
 @router.get("/evidence-vault/artifacts")
-async def list_artifacts(offset: int = Query(default=0, ge=0), limit: int = Query(default=50, ge=1, le=100), current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def list_artifacts(
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     user_id = _candidate(current_user)
-    rows = (await db.execute(select(EvidenceArtifact).where(EvidenceArtifact.owner_user_id == user_id, EvidenceArtifact.deleted_at.is_(None)).order_by(EvidenceArtifact.created_at.desc()).offset(offset).limit(limit))).scalars().all()
-    total = int(await db.scalar(select(func.count()).select_from(EvidenceArtifact).where(EvidenceArtifact.owner_user_id == user_id, EvidenceArtifact.deleted_at.is_(None))) or 0)
-    return {"artifacts": [serialize_artifact(row) for row in rows], "page": {"offset": offset, "limit": limit, "total": total, "has_more": offset + limit < total}}
+    rows = (
+        (
+            await db.execute(
+                select(EvidenceArtifact)
+                .where(
+                    EvidenceArtifact.owner_user_id == user_id, EvidenceArtifact.deleted_at.is_(None)
+                )
+                .order_by(EvidenceArtifact.created_at.desc())
+                .offset(offset)
+                .limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    total = int(
+        await db.scalar(
+            select(func.count())
+            .select_from(EvidenceArtifact)
+            .where(EvidenceArtifact.owner_user_id == user_id, EvidenceArtifact.deleted_at.is_(None))
+        )
+        or 0
+    )
+    return {
+        "artifacts": [serialize_artifact(row) for row in rows],
+        "page": {
+            "offset": offset,
+            "limit": limit,
+            "total": total,
+            "has_more": offset + limit < total,
+        },
+    }
 
 
 async def _owned_artifact(db: AsyncSession, artifact_id: str, user_id: str) -> EvidenceArtifact:
@@ -885,8 +1089,16 @@ async def _owned_artifact(db: AsyncSession, artifact_id: str, user_id: str) -> E
 
 
 @router.get("/evidence-vault/artifacts/{artifact_id}")
-async def get_artifact(artifact_id: str, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    return {"artifact": serialize_artifact(await _owned_artifact(db, artifact_id, _candidate(current_user)))}
+async def get_artifact(
+    artifact_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return {
+        "artifact": serialize_artifact(
+            await _owned_artifact(db, artifact_id, _candidate(current_user))
+        )
+    }
 
 
 @router.get("/evidence-vault/artifacts/{artifact_id}/download-url")
@@ -1000,13 +1212,17 @@ async def delete_artifact(
         row.withdrawn_at = row.deleted_at
         row.verification_status = "withdrawn"
         links = (
-            await db.execute(
-                select(ClaimEvidence).where(
-                    ClaimEvidence.artifact_id == artifact_id,
-                    ClaimEvidence.verification_status != "withdrawn",
+            (
+                await db.execute(
+                    select(ClaimEvidence).where(
+                        ClaimEvidence.artifact_id == artifact_id,
+                        ClaimEvidence.verification_status != "withdrawn",
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for link in links:
             link.verification_status = "withdrawn"
             link.withdrawn_at = row.deleted_at
@@ -1040,7 +1256,10 @@ async def link_artifact(
             raise HTTPException(status_code=404, detail="主张不存在或无权访问")
         if artifact.withdrawn_at or artifact.verification_status == "withdrawn":
             raise HTTPException(status_code=409, detail="已撤回证据不能建立新关系")
-        if body.relationship not in RELATIONSHIPS or body.access_scope not in {"private", "application_selected"}:
+        if body.relationship not in RELATIONSHIPS or body.access_scope not in {
+            "private",
+            "application_selected",
+        }:
             raise HTTPException(status_code=422, detail="证据关系或访问范围无效")
         link = ClaimEvidence(
             id=str(uuid.uuid4()),
@@ -1093,7 +1312,9 @@ async def unlink_artifact(
             raise HTTPException(status_code=404, detail="证据关系不存在或无权访问")
         link.verification_status = "withdrawn"
         link.withdrawn_at = now_utc()
-        await _event(db, claim_id, "evidence_unlinked", actor_id=user_id, payload={"link_id": link_id})
+        await _event(
+            db, claim_id, "evidence_unlinked", actor_id=user_id, payload={"link_id": link_id}
+        )
         payload = {"status": "withdrawn"}
         gate.set_response(200, payload)
         await db.commit()
@@ -1119,7 +1340,10 @@ async def patch_permissions(
         if gate.replay is not None:
             return gate.replay
         row = await _owned_artifact(db, artifact_id, user_id)
-        if not set(body.allowed_uses).issubset(ALLOWED_USES) or body.default_visibility not in {"private", "application_selected"}:
+        if not set(body.allowed_uses).issubset(ALLOWED_USES) or body.default_visibility not in {
+            "private",
+            "application_selected",
+        }:
             raise HTTPException(status_code=422, detail="用途或可见范围无效")
         row.allowed_uses = list(dict.fromkeys(body.allowed_uses))
         row.default_visibility = body.default_visibility

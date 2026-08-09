@@ -1062,11 +1062,7 @@ async def _snapshot_material(
     return {
         "version_id": version_id or data.get("version_id"),
         "resume_id": resume_id,
-        "parsed_json": deepcopy(
-            data.get("parsed_json")
-            or data.get("snapshot_json")
-            or {}
-        ),
+        "parsed_json": deepcopy(data.get("parsed_json") or data.get("snapshot_json") or {}),
         "raw_text": raw_text or "",
         "captured_at": data.get("captured_at") or data.get("created_at"),
         "source": data.get("source"),
