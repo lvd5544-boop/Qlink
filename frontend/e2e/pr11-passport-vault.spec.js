@@ -57,23 +57,23 @@ test('career passport and evidence vault candidate UI', async ({ page }) => {
   await sessionAs(page, token, 'candidate', login.user_id);
 
   await page.goto('/candidate/career-passport');
-  await expect(page.getByRole('heading', { name: '我的职业档案' })).toBeVisible({ timeout: 20000 });
-  await page.getByRole('button', { name: '添加经历' }).click();
+  await expect(page.getByRole('heading', { name: '我的经历与能力' })).toBeVisible({ timeout: 20000 });
+  await page.getByRole('button', { name: '补充一段经历' }).click();
   await page.getByLabel('经历类型').click();
   await page.getByText('项目', { exact: true }).click();
   await page.getByLabel('组织/学校').fill('PR11 E2E Org');
   await page.getByLabel('职位/项目标题').fill('PR11 E2E Role');
   await page.getByRole('button', { name: '保存到职业档案' }).click();
-  await expect(page.getByRole('strong').filter({ hasText: 'PR11 E2E Role' })).toBeVisible({
+  await expect(page.getByRole('heading', { name: 'PR11 E2E Role' })).toBeVisible({
     timeout: 20000,
   });
 
   await page.goto('/candidate/evidence-vault');
-  await expect(page.getByRole('heading', { name: 'Evidence Vault' })).toBeVisible({ timeout: 20000 });
-  await page.getByRole('button', { name: '添加 Evidence' }).click();
+  await expect(page.getByRole('heading', { name: '经历材料库（可选补充）' })).toBeVisible({ timeout: 20000 });
+  await page.getByRole('button', { name: '添加说明、链接或文件' }).click();
   const dialog = page.getByRole('dialog');
-  await expect(dialog.getByText('添加 Evidence')).toBeVisible();
-  await dialog.getByLabel('Evidence 类型').click();
+  await expect(dialog.getByText('补充经历依据（可选）')).toBeVisible();
+  await dialog.getByLabel('材料类型').click();
   await page.getByText('文档', { exact: true }).click();
   await dialog.getByLabel('标题').fill('PR11 E2E Evidence.txt');
   await dialog.locator('input[type="file"]').setInputFiles({

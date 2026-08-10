@@ -161,7 +161,7 @@ test('full hiring chain in browser', async ({ page }) => {
   expect(passportSnapshot.claims.length).toBeGreaterThan(0);
   await page.goto('/candidate/my-resumes');
   await page.getByRole('button', { name: '进入工作台' }).first().click();
-  await expect(page.getByText('履历主张（Claim Passport）')).toBeVisible({ timeout: 30000 });
+  await expect(page.getByText('④ 经历澄清卡')).toBeVisible({ timeout: 30000 });
   await expect(page.getByText('可提升空间模拟')).toBeVisible({ timeout: 30000 });
   await page.getByRole('button', { name: '按所选策略重新模拟' }).click();
   await expect(page.getByText('模型内模拟，不代表面试或录用承诺。')).toBeVisible();
@@ -244,12 +244,15 @@ test('full hiring chain in browser', async ({ page }) => {
   // 7) Candidate interview consent surface
   await sessionAs(page, candidateToken, 'candidate', candidateLogin.user_id);
   await page.goto(`/candidate/interview?applicationId=${applicationId}`);
-  await expect(page.getByText('本次面试的用途偏好')).toBeVisible({ timeout: 20000 });
+  await expect(page.getByText('结构化 AI 面试官')).toBeVisible({ timeout: 20000 });
+  for (const consent of ['简历写回', '岗位推荐', '分享给招聘方', '模型改进']) {
+    await expect(page.getByText(consent, { exact: true })).toBeVisible();
+  }
   const checks = page.locator('.ant-checkbox-input:not([disabled])');
   const checkCount = await checks.count();
   expect(checkCount).toBeGreaterThan(0);
   for (let i = 0; i < checkCount; i += 1) {
     await checks.nth(i).check({ force: true });
   }
-  await expect(page.getByRole('button', { name: /开始面试/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: '开始结构化面试' })).toBeVisible();
 });

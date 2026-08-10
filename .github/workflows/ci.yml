@@ -160,11 +160,15 @@ jobs:
           python - <<'PY'
           import json
           data = json.load(open("/tmp/ready.json"))
-          # Public /ready is a coarse gate only; detailed checks live on
-          # /admin/readiness (admin-auth). Smoke must match that contract.
+          # Public /ready exposes only the safe model state used by the
+          # rules-only availability banner. All infrastructure details remain
+          # restricted to /admin/readiness.
           assert data["status"] == "ready", data
           assert data["model_mode"] == "rules_only", data
-          assert "checks" not in data, data
+          assert set(data["checks"]) == {"model"}, data
+          assert data["checks"]["model"]["mode"] == "rules_only", data
+          serialized = json.dumps(data).lower()
+          assert "api_key" not in serialized and "secret" not in serialized, data
           print("ready smoke ok")
           PY
 
@@ -210,7 +214,9 @@ jobs:
       E2E_PORT: "4173"
       PYTHONPATH: backend
       BACKGROUND_JOBS_INLINE: "0"
+      VIRUS_SCAN_ENABLED: "false"
       UPLOAD_DIR: /home/runner/work/uploads
+      EVIDENCE_VAULT_DIR: /home/runner/work/evidence-vault
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -232,7 +238,7 @@ jobs:
           npm ci
           npx playwright install --with-deps chromium
       - name: Prepare upload dir
-        run: mkdir -p /home/runner/work/uploads
+        run: mkdir -p /home/runner/work/uploads /home/runner/work/evidence-vault
       - name: Run browser E2E
         run: bash scripts/run_browser_e2e.sh
 

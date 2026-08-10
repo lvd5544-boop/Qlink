@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
-const BASE_URL = process.env.E2E_BASE_URL || 'http://127.0.0.1:8080';
+const BASE_URL = process.env.E2E_BASE_URL
+  || `http://127.0.0.1:${process.env.E2E_PORT || '4173'}`;
 const API_URL = new URL('/api/', BASE_URL).toString().replace(/\/$/, '');
 const INVITE = process.env.EMPLOYER_INVITE_CODE || 'e2e-employer-invite';
 const PASSWORD = 'QLinkE2ePass9!';

@@ -24,8 +24,10 @@ export E2E_API_ORIGIN="${E2E_API_ORIGIN:-http://127.0.0.1:8000}"
 export E2E_PORT="${E2E_PORT:-4173}"
 export TESTING=0
 export BACKGROUND_JOBS_INLINE=0
+export VIRUS_SCAN_ENABLED=false
 export UPLOAD_DIR="${UPLOAD_DIR:-${ROOT}/backend/uploads/e2e}"
-mkdir -p "${UPLOAD_DIR}"
+export EVIDENCE_VAULT_DIR="${EVIDENCE_VAULT_DIR:-${UPLOAD_DIR}/evidence-vault}"
+mkdir -p "${UPLOAD_DIR}" "${EVIDENCE_VAULT_DIR}"
 
 cd "${ROOT}/backend"
 "${PYTHON_BIN}" scripts/migrate.py
@@ -59,4 +61,4 @@ npm run build
 node e2e/proxy-server.mjs &
 PROXY_PID=$!
 sleep 1
-npx playwright test
+npx playwright test "$@"

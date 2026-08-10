@@ -92,30 +92,26 @@ test('PR14 advisor profile, readiness and cited answer', async ({ page }) => {
 
   await page.goto(`/candidate/advisor?job_id=${jobId}`);
   await expect(
-    page.getByRole('heading', { name: '目标岗位画像与 AI 求职顾问' }),
+    page.getByRole('heading', { name: '岗位准备助手' }),
   ).toBeVisible();
-  for (const heading of [
-    '这个企业这个岗位明确要求什么',
-    '该职业通常需要什么',
-    '公司公开业务和工作语境是什么',
-    '市场中出现了什么趋势',
-  ]) {
-    await expect(page.getByRole('heading', { name: heading })).toBeVisible();
-  }
-  await expect(page.getByText('软件和信息技术服务人员')).toBeVisible();
+  await expect(page.getByText('这个岗位最看重什么')).toBeVisible();
+  await page.getByText('查看职业参考、公司背景和信息来源（可选）').click();
+  await expect(page.getByText('A · 企业岗位真相源')).toBeVisible();
+  await expect(page.getByText('B · 职业通用参考')).toBeVisible();
+  await expect(page.getByText('C · 公司公开语境')).toBeVisible();
+  await expect(page.getByText('D · 经许可市场信号')).toBeVisible();
 
   const readiness = page.getByRole('button', {
-    name: '生成岗位准备度与行动建议',
+    name: '分析我该先做什么',
   });
   await expect(readiness).toBeEnabled();
   await readiness.click();
-  await expect(page.getByText('当前材料支持的准备度')).toBeVisible();
-  await expect(
-    page.getByText('未来行动仅为反事实情景，不会提高当前准备度'),
-  ).toBeVisible();
+  await expect(page.getByText('先处理能改变这次申请的事项')).toBeVisible();
+  await page.getByText('查看准备度参考（可选）').click();
+  await expect(page.getByText('当前材料覆盖情况')).toBeVisible();
 
   await page
-    .getByPlaceholder('围绕这个岗位提问。顾问不会把市场趋势或公司年报说成招聘要求。')
+    .getByPlaceholder('例如：我应该先改哪一段经历？')
     .fill('我应该优先准备什么？');
   await page.getByRole('button', { name: '发送' }).click();
   await expect(page.locator('.advisor-message-ai')).toBeVisible();
