@@ -13,6 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .career_vault import canonical_hash, create_resume_version
 from .claim_passport import sync_resume_claims
 from .evidence_followup import assess_fidelity
+from .inference_hypotheses import (
+    create_issue_hypotheses,
+    hypotheses_by_issue,
+    serialize_hypothesis,
+)
 from .models_db import (
     ClaimEvidence,
     EvidenceArtifact,
@@ -221,6 +226,11 @@ async def generate_diagnostic(
         )
         db.add(issue)
         await db.flush()
+        await create_issue_hypotheses(
+            db,
+            issue=issue,
+            has_candidate_claims=bool(item.get("claim_ids")),
+        )
         for claim_id in item.get("claim_ids") or []:
             db.add(
                 OptimizationIssueClaimLink(
@@ -310,6 +320,7 @@ async def serialize_diagnostic(
         .scalars()
         .all()
     )
+    hypotheses = await hypotheses_by_issue(db, issue_ids=issue_ids, user_id=user_id)
     strategies_by_issue: dict[str, list[OptimizationStrategyOption]] = {}
     for row in strategies:
         strategies_by_issue.setdefault(str(row.issue_id), []).append(row)
@@ -360,6 +371,9 @@ async def serialize_diagnostic(
             "source_refs": row.source_refs or [],
             "claim_ids": issue_claim_ids,
             "status": row.status,
+            "hypotheses": [
+                serialize_hypothesis(value) for value in hypotheses.get(str(row.id), [])[:2]
+            ],
             "strategies": issue_strategies,
         }
         serialized.append(item)

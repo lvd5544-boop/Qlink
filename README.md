@@ -3,11 +3,11 @@
 > 基于真实经历、由用户控制的 AI 求职准备与招聘协作平台。<br>
 > An evidence-grounded, user-controlled workflow for job preparation and hiring collaboration.
 
-[中文](#中文) · [English](#english) · [用户手册](./docs/USER_GUIDE.md) · [Agent 接入](./docs/AGENT_INTEGRATION.md) · [产品路线图](./R3_CONSOLIDATED_PRODUCT_AND_SCALE_PLAN.md)
+[五分钟项目案例 / Five-minute case study](./docs/PROJECT_CASE_STUDY.md) · [中文](#中文) · [English](#english) · [用户手册](./docs/USER_GUIDE.md) · [排序评测](./docs/EVALUATION.md) · [假设评测](./docs/HYPOTHESIS_EVALUATION.md) · [标注协议](./docs/RANKING_ANNOTATION_PROTOCOL.md) · [Agent 接入](./docs/AGENT_INTEGRATION.md) · [产品路线图](./R3_CONSOLIDATED_PRODUCT_AND_SCALE_PLAN.md)
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
 
-![QLink candidate workflow](./PR6_E2E_EVIDENCE/01_candidate_applied_jobs.png)
+![QLink evidence-grounded workflow: sources, five-state reasoning, user-reviewed preparation, outcome learning, and current synthetic evaluation evidence](./docs/assets/qlink-evidence-workflow.svg)
 
 ---
 
@@ -18,6 +18,8 @@
 QLink 面向学生、应届生和工作 0–3 年的年轻求职者。用户导入真实简历和目标岗位 JD 后，系统把岗位要求与用户提供的经历、作品和证据关联起来，帮助用户判断机会、准备申请并练习面试。
 
 QLink 的核心原则是：**AI 可以整理、建议和预填，但不能编造经历，也不能越过用户完成高影响操作。**
+
+如果你只有五分钟，请直接阅读[项目案例：问题、架构、实验、失败修复与申请表达](./docs/PROJECT_CASE_STUDY.md)。
 
 ### 求职者主流程
 
@@ -71,6 +73,8 @@ make up
 
 ```bash
 make test          # 后端测试 + 前端测试、Lint 与生产构建
+make evaluate-ranking # 离线复现固定排序评测集
+make evaluate-hypotheses # 离线复现 C5 合成假设边界评测
 make ps            # 查看服务状态
 make logs          # 查看服务日志
 make backup        # 备份数据库和上传文件
@@ -83,6 +87,11 @@ make down          # 停止服务并保留数据卷
 - [安全、隐私与 AI 边界](./docs/SECURITY_AND_PRIVACY.md)
 - [人工验收指南](./MANUAL_ACCEPTANCE_GUIDE.md)
 - [公平性基线](./FAIRNESS_BASELINE_PROTOCOL.md)
+- [排序评测、指标与失败案例](./docs/EVALUATION.md)
+- [五分钟项目案例与申请展示证据](./docs/PROJECT_CASE_STUDY.md)
+- [申请与面试表达（中英文）](./docs/APPLICATION_TALK_TRACK.md)
+- [C6 经同意的真实用户试点协议](./docs/C6_PILOT_PROTOCOL.md)
+- [独立复核标注协议](./docs/RANKING_ANNOTATION_PROTOCOL.md)
 - [执行与验收报告](./R3_EXECUTION_AND_ACCEPTANCE_REPORT.md)
 
 ### 项目状态
@@ -98,6 +107,8 @@ QLink 当前是可运行的试点 Demo，不是已经上线的全功能 ATS。�
 QLink is an AI-assisted workflow for students, new graduates, and early-career candidates. A candidate brings a real resume and a target job description. QLink connects job requirements to candidate-provided experience and evidence, then helps the candidate evaluate the opportunity, prepare an application, and practice for interviews.
 
 Its central rule is simple: **AI may organize, suggest, and prefill, but it must not invent experience or perform high-impact actions beyond the user's approval.**
+
+If you have five minutes, start with the [project case study: problem, architecture, experiment, failure repair, and application framing](./docs/PROJECT_CASE_STUDY.md).
 
 ### Candidate journey
 
@@ -139,13 +150,15 @@ Without a model API key, the default `MODEL_REQUIRED=false` configuration starts
 
 ```bash
 make test          # Backend tests + frontend tests, lint, and production build
+make evaluate-ranking # Reproduce the fixed offline ranking evaluation
+make evaluate-hypotheses # Reproduce the isolated C5 synthetic hypothesis checks
 make ps            # Service status
 make logs          # Service logs
 make backup        # Database and upload backup
 make down          # Stop services without deleting data volumes
 ```
 
-Read the [bilingual user guide](./docs/USER_GUIDE.md), [security and privacy boundaries](./docs/SECURITY_AND_PRIVACY.md), [manual acceptance guide](./MANUAL_ACCEPTANCE_GUIDE.md), and [product roadmap](./R3_CONSOLIDATED_PRODUCT_AND_SCALE_PLAN.md).
+Read the [bilingual user guide](./docs/USER_GUIDE.md), [five-minute case study](./docs/PROJECT_CASE_STUDY.md), [ranking evaluation and failure cases](./docs/EVALUATION.md), [hypothesis evaluation](./docs/HYPOTHESIS_EVALUATION.md), [C6 consented pilot protocol](./docs/C6_PILOT_PROTOCOL.md), [independent annotation protocol](./docs/RANKING_ANNOTATION_PROTOCOL.md), [security and privacy boundaries](./docs/SECURITY_AND_PRIVACY.md), [manual acceptance guide](./MANUAL_ACCEPTANCE_GUIDE.md), and [product roadmap](./R3_CONSOLIDATED_PRODUCT_AND_SCALE_PLAN.md).
 
 ### Project status
 

@@ -34,6 +34,7 @@ import api from '../../api';
 import { getApiErrorMessage } from '../../utils/apiError';
 import { createIdempotencyTracker } from '../../utils/idempotency';
 import CandidateActionMap from '../../components/CandidateActionMap';
+import { replaceHypothesisStatus } from '../../components/hypothesisReview';
 import PersonalizedGuidancePanel from '../../components/PersonalizedGuidancePanel';
 import { isEnglishDemoMode } from '../../utils/demoMode';
 
@@ -410,6 +411,20 @@ export default function Advisor() {
     navigate(`/candidate/my-resumes?${params.toString()}`);
   };
 
+  const updateHypothesis = async (hypothesis, status) => {
+    try {
+      const response = await api.post(
+        `/optimization/hypotheses/${hypothesis.id}/status`,
+        { status },
+        { headers: { 'Idempotency-Key': `c5-hypothesis-${hypothesis.id}-${status}` } },
+      );
+      setDiagnostic((current) => replaceHypothesisStatus(current, hypothesis.id, response.data));
+      message.success(status === 'rejected' ? '已排除这条可能性' : '已记录本人确认；尚未写入简历事实');
+    } catch (error) {
+      message.error(getApiErrorMessage(error, '更新假设状态失败'));
+    }
+  };
+
   const recordExternalApplication = async () => {
     if (!selectedResumeId || !jobId) return;
     setRecordingApplication(true);
@@ -593,7 +608,11 @@ export default function Advisor() {
         {diagnostic ? (
           <div className="advisor-readiness-grid">
             <div>
-              <CandidateActionMap diagnostic={diagnostic} onResolveIssue={resolveIssueInResume} />
+              <CandidateActionMap
+                diagnostic={diagnostic}
+                onResolveIssue={resolveIssueInResume}
+                onHypothesisStatus={updateHypothesis}
+              />
               <Collapse
                 style={{ marginTop: 12 }}
                 items={[{

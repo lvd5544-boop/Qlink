@@ -39,7 +39,9 @@ def rule_based_filter(resume_json: dict, job_json: dict) -> bool:
     return True
 
 
-def _evaluate_hybrid(resume_json: dict, job_json: dict, job_title: str) -> tuple[float, dict, str]:
+def evaluate_hybrid_match(
+    resume_json: dict, job_json: dict, job_title: str
+) -> tuple[float, dict, str]:
     """Human-first v3: selection policy first, statistical dimensions second."""
     score, breakdown, potential, tier = hybrid_score_v2(resume_json, job_json, job_title)
     base_score = score
@@ -63,6 +65,10 @@ def _evaluate_hybrid(resume_json: dict, job_json: dict, job_title: str) -> tuple
     )
     breakdown["improvement_delta"] = round(breakdown["potential_score"] - score, 1)
     return score, breakdown, reason
+
+
+# Backward-compatible alias for the existing unit tests and any local callers.
+_evaluate_hybrid = evaluate_hybrid_match
 
 
 async def _apply_llm_rerank(
@@ -133,7 +139,7 @@ async def generate_matches(
                     matches_by_resume[rid].append(existing_match)
                     continue
 
-            score, breakdown, reason = _evaluate_hybrid(profile, jd, job.title)
+            score, breakdown, reason = evaluate_hybrid_match(profile, jd, job.title)
 
             if existing_match:
                 existing_match.score = score

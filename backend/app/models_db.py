@@ -987,6 +987,40 @@ class OptimizationIssue(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class InferenceHypothesis(Base):
+    """Candidate-resolvable possibility; never a confirmed resume or hiring fact."""
+
+    __tablename__ = "inference_hypotheses"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('hypothesis', 'user_confirmed', 'evidence_supported', 'rejected')",
+            name="ck_inference_hypothesis_status",
+        ),
+        UniqueConstraint("issue_id", "hypothesis_key", name="uq_inference_hypothesis_issue_key"),
+        Index("ix_inference_hypotheses_issue_status", "issue_id", "status", "created_at"),
+        Index("ix_inference_hypotheses_user_status", "user_id", "status", "created_at"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    issue_id = Column(
+        String(36), ForeignKey("optimization_issues.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    hypothesis_key = Column(String(160), nullable=False)
+    text = Column(Text, nullable=False)
+    validation_question = Column(Text, nullable=False)
+    source_refs = Column(JSON, nullable=False, default=list)
+    status = Column(String(32), nullable=False, default="hypothesis")
+    validation_evidence_id = Column(
+        String(36), ForeignKey("evidence_artifacts.id", ondelete="SET NULL"), nullable=True
+    )
+    rule_version = Column(String(64), nullable=False)
+    prompt_version = Column(String(64), nullable=True)
+    model_version = Column(String(128), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    validated_at = Column(DateTime(timezone=True), nullable=True)
+
+
 class OptimizationIssueClaimLink(Base):
     __tablename__ = "optimization_issue_claim_links"
     __table_args__ = (

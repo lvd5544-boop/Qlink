@@ -104,7 +104,7 @@ export function buildMatchReasonFromBreakdown(scoreBreakdown, score) {
   }
 
   const missing = scoreBreakdown.skills?.missing || [];
-  if (missing.length) parts.push(`缺 ${missing.slice(0, 3).join(', ')}`);
+  if (missing.length) parts.push(`简历中未找到 ${missing.slice(0, 3).join(', ')}，需确认`);
 
   if (!parts.length) return `综合匹配 ${score}/10`;
   return `综合 ${score}/10：` + parts.slice(0, 5).join('；');

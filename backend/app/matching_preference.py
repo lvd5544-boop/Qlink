@@ -251,6 +251,9 @@ INDUSTRY_TERMS = {
     },
     "finance": {
         "bank",
+        "finance",
+        "financial",
+        "accounting",
         "fintech",
         "trading",
         "insurance",
@@ -478,6 +481,8 @@ def apply_preference_policy(
         and target_role != "unknown"
         and frozenset({candidate_role, target_role}) in ADJACENT_ROLES
     )
+    adjacent_evidence = sorted(set((breakdown.get("skills") or {}).get("matched") or []))
+    adjacent_supported = not adjacent_role or len(adjacent_evidence) >= 2
 
     resume_blob = " ".join(
         [
@@ -518,6 +523,9 @@ def apply_preference_policy(
             exclusion_reasons.append(
                 f"目标方向是{candidate['role_label']}，岗位属于{job_role['role_label']}"
             )
+        elif strictness == "balanced" and adjacent_role and not adjacent_supported:
+            eligible = False
+            exclusion_reasons.append("相邻方向未找到至少两项可引用的技能重合")
     if set(job_industries) & excluded_industries:
         eligible = False
         exclusion_reasons.append("命中用户明确排除的行业")
@@ -579,7 +587,7 @@ def apply_preference_policy(
     if exact_role:
         adjustment += 0.3
         positive_reasons.append(f"岗位方向与{candidate['role_label']}目标一致")
-    elif adjacent_role:
+    elif adjacent_role and adjacent_supported:
         adjustment += 0.1
         positive_reasons.append("岗位属于可迁移的相邻方向")
     if industry_overlap:
@@ -597,6 +605,8 @@ def apply_preference_policy(
         "candidate_intent": candidate,
         "job_role": job_role,
         "role_relation": "exact" if exact_role else ("adjacent" if adjacent_role else "different"),
+        "adjacent_evidence": adjacent_evidence,
+        "adjacent_supported": adjacent_supported,
         "candidate_industries": candidate_industries,
         "job_industries": job_industries,
         "industry_overlap": industry_overlap,

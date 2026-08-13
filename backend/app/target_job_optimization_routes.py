@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .api_idempotency import idempotent_write
 from .database import get_db
+from .inference_hypotheses import resolve_hypothesis, serialize_hypothesis
 from .models_db import OptimizationIssue, ReadinessAction, User
 from .security import require_candidate
 from .target_job_optimization import (
@@ -36,6 +37,11 @@ class ActionStatusBody(BaseModel):
     completion_evidence_id: str | None = None
 
 
+class HypothesisStatusBody(BaseModel):
+    status: str
+    evidence_id: str | None = None
+
+
 def _error(exc: Exception) -> HTTPException:
     mapping = {
         "resume_not_owned": (404, "简历不存在或无权访问"),
@@ -54,6 +60,9 @@ def _error(exc: Exception) -> HTTPException:
         "fidelity_blocked": (409, "Fidelity 校验未通过，禁止应用"),
         "invalid_action_status": (422, "行动状态无效"),
         "evidence_not_owned": (404, "完成证据不存在或无权使用"),
+        "hypothesis_not_found": (404, "待验证假设不存在或无权访问"),
+        "invalid_hypothesis_status": (422, "假设验证状态无效"),
+        "hypothesis_evidence_required": (422, "标记为证据支持时必须选择一项本人证据"),
     }
     status, detail = mapping.get(str(exc), (400, str(exc)))
     return HTTPException(status_code=status, detail=detail)
@@ -108,6 +117,46 @@ async def get_diagnostic(
     if payload["resume_id"] != str(resume_id):
         raise HTTPException(status_code=404, detail="诊断不存在或无权访问")
     return payload
+
+
+@router.post("/optimization/hypotheses/{hypothesis_id}/status")
+async def set_hypothesis_status(
+    hypothesis_id: str,
+    body: HypothesisStatusBody,
+    current_user: User = Depends(require_candidate),
+    db: AsyncSession = Depends(get_db),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
+    """Resolve a possibility without promoting it into a Claim or resume fact."""
+    user_id = str(current_user.id)
+    async with idempotent_write(
+        db,
+        user_id=user_id,
+        scope=f"c5.hypothesis.{hypothesis_id}.status",
+        idempotency_key=idempotency_key,
+        request_payload=body.model_dump(),
+    ) as gate:
+        if gate.replay is not None:
+            return gate.replay
+        try:
+            row = await resolve_hypothesis(
+                db,
+                hypothesis_id=hypothesis_id,
+                user_id=user_id,
+                status=body.status,
+                evidence_id=body.evidence_id,
+            )
+        except (ValueError, PermissionError, LookupError) as exc:
+            raise _error(exc) from exc
+        payload = {
+            **serialize_hypothesis(row),
+            "claim_created": False,
+            "resume_changed": False,
+            "hiring_conclusion_changed": False,
+        }
+        gate.set_response(200, payload)
+        await db.commit()
+        return payload
 
 
 @router.post("/optimization/issues/{issue_id}/select-strategy")

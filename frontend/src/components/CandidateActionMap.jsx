@@ -3,6 +3,7 @@ import {
 } from 'antd';
 import { isEnglishDemoMode } from '../utils/demoMode';
 import { groupIssuesByRouteState } from './requirementReadinessState';
+import HypothesisReviewList from './HypothesisReviewList';
 
 const { Text } = Typography;
 
@@ -82,7 +83,7 @@ function englishIssueTitle(issue) {
   return titles[issue.category] || 'Provide more information before deciding';
 }
 
-export default function CandidateActionMap({ diagnostic, onResolveIssue }) {
+export default function CandidateActionMap({ diagnostic, onResolveIssue, onHypothesisStatus }) {
   const englishDemo = isEnglishDemoMode();
   const groupMeta = englishDemo ? GROUP_META_EN : GROUP_META;
   const grouped = groupIssuesByRouteState(diagnostic?.issues || []);
@@ -143,6 +144,10 @@ export default function CandidateActionMap({ diagnostic, onResolveIssue }) {
                           </Text>
                         )}
                         {strategy?.next_action && !englishDemo && <Text type="secondary">{strategy.next_action}</Text>}
+                        <HypothesisReviewList
+                          hypotheses={issue.hypotheses}
+                          onStatusChange={onHypothesisStatus}
+                        />
                         {key === 'clarify' && (
                           <Space direction="vertical" size={2}>
                             <Button size="small" onClick={() => onResolveIssue?.(issue)}>

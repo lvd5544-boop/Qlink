@@ -1,0 +1,32 @@
+{
+  "dataset_id": "qlink-hypothesis-eval-synthetic-v1",
+  "version": "1.0.0",
+  "pool_kind": "synthetic",
+  "description": "Synthetic-only cases for testing bounded clarification hypotheses. No real people, resumes, applications, or user identifiers.",
+  "samples": [
+    {
+      "id": "synthetic-capability-gap",
+      "issue_type": "capability_gap",
+      "target_requirement_id": "Kubernetes operations",
+      "source_refs": ["synthetic-job:requirement-1"],
+      "expected_min_hypotheses": 1,
+      "expected_max_hypotheses": 2
+    },
+    {
+      "id": "synthetic-evidence-gap",
+      "issue_type": "evidence_gap",
+      "target_requirement_id": "measurable delivery outcome",
+      "source_refs": ["synthetic-job:requirement-2"],
+      "expected_min_hypotheses": 1,
+      "expected_max_hypotheses": 2
+    },
+    {
+      "id": "synthetic-hard-constraint",
+      "issue_type": "hard_constraint",
+      "target_requirement_id": "required work authorization",
+      "source_refs": ["synthetic-job:requirement-3"],
+      "expected_min_hypotheses": 0,
+      "expected_max_hypotheses": 0
+    }
+  ]
+}

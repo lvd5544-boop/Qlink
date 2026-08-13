@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from copy import deepcopy
 import logging
 import uuid
@@ -51,6 +51,8 @@ from .application_state import (
     ensure_resume_unchanged,
     get_resume_snapshot,
     allowed_application_actions,
+    build_application_outcome_timeline,
+    build_outcome_recommendation_changes,
     patch_status_by_role,
     set_application_status,
 )
@@ -91,6 +93,8 @@ class ExternalTrackingRequest(BaseModel):
 
 class ExternalTrackingStatusRequest(BaseModel):
     status: str
+    occurred_at: Optional[datetime] = None
+    feedback: Optional[str] = Field(default=None, max_length=2000)
 
 
 class ConflictReviewRequest(BaseModel):
@@ -431,6 +435,8 @@ def _application_payload(app: JobApplication, job: JobDescription | None = None)
         "cover_letter": app.cover_letter,
         "external_tracking": bool(meta.get("external_tracking")),
         "application_source": meta.get("application_source"),
+        "outcome_timeline": build_application_outcome_timeline(app),
+        "recommendation_changes": build_outcome_recommendation_changes(app),
         "created_at": app.created_at.isoformat() if app.created_at else None,
         "updated_at": app.updated_at.isoformat() if app.updated_at else None,
         "employer_reviewed_at": threads.get("employer_reviewed_at"),
@@ -844,6 +850,20 @@ async def update_external_application_status(
     action = transition.get(req.status)
     if not action:
         raise HTTPException(status_code=400, detail="可记录的结果为：进入面试、未通过、录用")
+    occurred_at = req.occurred_at or datetime.now(timezone.utc)
+    if occurred_at.tzinfo is None:
+        occurred_at = occurred_at.replace(tzinfo=timezone.utc)
+    occurred_at = occurred_at.astimezone(timezone.utc)
+    now = datetime.now(timezone.utc)
+    if occurred_at > now + timedelta(minutes=5):
+        raise HTTPException(status_code=422, detail="结果发生时间不能晚于当前时间")
+    created_at = app.created_at
+    if created_at is not None:
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        if occurred_at < created_at.astimezone(timezone.utc) - timedelta(minutes=5):
+            raise HTTPException(status_code=422, detail="结果发生时间不能早于投递记录")
+    feedback = req.feedback.strip() if req.feedback else None
     try:
         set_application_status(
             app,
@@ -852,6 +872,8 @@ async def update_external_application_status(
             actor_role="candidate",
             actor_id=str(current_user.id),
             source="candidate_external_tracking",
+            occurred_at=occurred_at.isoformat(),
+            raw_feedback=feedback,
         )
     except StatusTransitionError as exc:
         raise HTTPException(status_code=exc.code, detail=str(exc)) from exc

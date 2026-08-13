@@ -1,0 +1,9 @@
+{
+  "dataset_id": "qlink-hypothesis-eval-real-confirmed",
+  "version": "1.0.0",
+  "pool_kind": "real_confirmed",
+  "storage": "external-private-consented-store",
+  "checked_in_sample_count": 0,
+  "status": "empty_pending_consented_samples",
+  "samples": []
+}

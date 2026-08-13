@@ -11,7 +11,7 @@ import {
   Input,
   List,
   message,
-  Popconfirm,
+  Modal,
   Row,
   Space,
   Spin,
@@ -31,8 +31,11 @@ import api from '../../api';
 import { getApiErrorMessage } from '../../utils/apiError';
 import MatchEvaluationPanel from '../../components/MatchEvaluationPanel';
 import ApplicationMessageBubble from '../../components/ApplicationMessageBubble';
+import ApplicationOutcomeTimeline from '../../components/ApplicationOutcomeTimeline';
+import OutcomeRecommendationChange from '../../components/OutcomeRecommendationChange';
 import { getStatusConfig } from '../../constants/applicationStatus';
 import { extractClaimText, resumeRewriteLink } from '../../utils/clarification';
+import { toLocalDateTimeInput } from '../../utils/applicationTimeline';
 
 const { Text } = Typography;
 
@@ -75,6 +78,7 @@ export default function AppliedJobs() {
   const [replySuccess, setReplySuccess] = useState({});
   const [evalExpanded, setEvalExpanded] = useState(false);
   const [updatingOutcome, setUpdatingOutcome] = useState(null);
+  const [outcomeDraft, setOutcomeDraft] = useState(null);
   const messagesEndRef = useRef(null);
   const autoOpened = useRef(false);
 
@@ -115,13 +119,32 @@ export default function AppliedJobs() {
     }
   }, []);
 
-  const updateExternalOutcome = async (app, status) => {
+  const openOutcomeDraft = (status) => {
+    setOutcomeDraft({
+      status,
+      occurredAt: toLocalDateTimeInput(),
+      feedback: '',
+    });
+  };
+
+  const updateExternalOutcome = async () => {
+    const app = currentApplication;
+    const status = outcomeDraft?.status;
+    if (!app || !status || !outcomeDraft?.occurredAt) {
+      message.warning('请填写结果发生时间');
+      return;
+    }
     setUpdatingOutcome(`${app.id}:${status}`);
     try {
-      const res = await api.patch(`/applications/external-tracking/${app.id}/status`, { status });
+      const res = await api.patch(`/applications/external-tracking/${app.id}/status`, {
+        status,
+        occurred_at: new Date(outcomeDraft.occurredAt).toISOString(),
+        feedback: outcomeDraft.feedback.trim() || null,
+      });
       const updated = res.data?.application;
       setApplications((current) => current.map((item) => (item.id === app.id ? { ...item, ...updated } : item)));
       setCurrentApplication((current) => (current?.id === app.id ? { ...current, ...updated } : current));
+      setOutcomeDraft(null);
       message.success('站外申请结果已更新');
     } catch (err) {
       message.error(getApiErrorMessage(err, '更新申请结果失败'));
@@ -345,33 +368,29 @@ export default function AppliedJobs() {
             />
             <Space wrap>
               {currentApplication.status === 'submitted' && (
-                <Popconfirm
-                  title="确认已进入面试？"
-                  onConfirm={() => updateExternalOutcome(currentApplication, 'interview_invited')}
+                <Button
+                  loading={updatingOutcome === `${currentApplication.id}:interview_invited`}
+                  onClick={() => openOutcomeDraft('interview_invited')}
                 >
-                  <Button loading={updatingOutcome === `${currentApplication.id}:interview_invited`}>
-                    记录进入面试
-                  </Button>
-                </Popconfirm>
+                  记录进入面试
+                </Button>
               )}
               {['submitted', 'interview_invited'].includes(currentApplication.status) && (
                 <>
-                  <Popconfirm
-                    title="确认本次申请未通过？"
-                    onConfirm={() => updateExternalOutcome(currentApplication, 'rejected')}
+                  <Button
+                    danger
+                    loading={updatingOutcome === `${currentApplication.id}:rejected`}
+                    onClick={() => openOutcomeDraft('rejected')}
                   >
-                    <Button danger loading={updatingOutcome === `${currentApplication.id}:rejected`}>
-                      记录未通过
-                    </Button>
-                  </Popconfirm>
-                  <Popconfirm
-                    title="确认已收到录用结果？"
-                    onConfirm={() => updateExternalOutcome(currentApplication, 'accepted')}
+                    记录未通过
+                  </Button>
+                  <Button
+                    type="primary"
+                    loading={updatingOutcome === `${currentApplication.id}:accepted`}
+                    onClick={() => openOutcomeDraft('accepted')}
                   >
-                    <Button type="primary" loading={updatingOutcome === `${currentApplication.id}:accepted`}>
-                      记录录用
-                    </Button>
-                  </Popconfirm>
+                    记录录用
+                  </Button>
                 </>
               )}
               {['rejected', 'accepted'].includes(currentApplication.status) && (
@@ -380,6 +399,8 @@ export default function AppliedJobs() {
                 </Tag>
               )}
             </Space>
+            <ApplicationOutcomeTimeline events={currentApplication.outcome_timeline} />
+            <OutcomeRecommendationChange changes={currentApplication.recommendation_changes} />
           </Card>
         ) : (
         <Row gutter={16}>
@@ -553,6 +574,8 @@ export default function AppliedJobs() {
           </Col>
 
           <Col xs={24} lg={8}>
+            <ApplicationOutcomeTimeline events={currentApplication.outcome_timeline} />
+            <OutcomeRecommendationChange changes={currentApplication.recommendation_changes} />
             <Card className="content-card" title="岗位匹配评估" size="small">
               <Collapse
                 activeKey={evalExpanded ? ['eval'] : []}
@@ -570,6 +593,50 @@ export default function AppliedJobs() {
         </Row>
         )
       )}
+
+      <Modal
+        title={`确认记录：${externalStatusText[outcomeDraft?.status] || '站外结果'}`}
+        open={Boolean(outcomeDraft)}
+        onCancel={() => setOutcomeDraft(null)}
+        onOk={updateExternalOutcome}
+        confirmLoading={Boolean(updatingOutcome)}
+        okText="确认记录"
+        cancelText="取消"
+        destroyOnHidden
+      >
+        <Alert
+          type="info"
+          showIcon
+          message="这是你提供的站外结果"
+          description="QLink 会保留来源和原始反馈，但不会把一次结果自动解释成新的能力事实。"
+          style={{ marginBottom: 16 }}
+        />
+        <Space direction="vertical" style={{ width: '100%' }} size={12}>
+          <label htmlFor="external-outcome-occurred-at">结果发生时间（当前设备时区）</label>
+          <Input
+            id="external-outcome-occurred-at"
+            type="datetime-local"
+            value={outcomeDraft?.occurredAt || ''}
+            onChange={(event) => setOutcomeDraft((current) => ({
+              ...current,
+              occurredAt: event.target.value,
+            }))}
+          />
+          <label htmlFor="external-outcome-feedback">企业原始反馈（可选）</label>
+          <Input.TextArea
+            id="external-outcome-feedback"
+            rows={4}
+            maxLength={2000}
+            showCount
+            placeholder="只填写企业实际提供的内容；没有反馈可以留空。"
+            value={outcomeDraft?.feedback || ''}
+            onChange={(event) => setOutcomeDraft((current) => ({
+              ...current,
+              feedback: event.target.value,
+            }))}
+          />
+        </Space>
+      </Modal>
     </Space>
   );
 }

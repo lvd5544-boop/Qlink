@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -10,6 +11,8 @@ from app.application_state import (
     BUSINESS_ACTION_ONLY_STATUSES,
     StatusTransitionError,
     allowed_application_actions,
+    build_application_outcome_timeline,
+    build_outcome_recommendation_changes,
     capture_resume_snapshot,
     change_application_resume,
     get_resume_snapshot,
@@ -23,6 +26,7 @@ def _application(status: str = "submitted", resume_id: str = "resume-v1"):
         id="application-1",
         status=status,
         resume_id=resume_id,
+        created_at=datetime(2026, 8, 13, 8, 0, tzinfo=timezone.utc),
         pipeline_meta={},
     )
 
@@ -160,8 +164,99 @@ def test_status_history_contains_required_audit_fields():
         "actor_role",
         "reason",
         "timestamp",
+        "occurred_at",
+        "recorded_at",
+        "raw_feedback",
+        "recommendation_change_snapshot",
         "request_key",
     } <= set(history[0])
+
+
+def test_outcome_timeline_maps_external_candidate_updates_without_exposing_actor_id():
+    application = _application()
+    application.pipeline_meta = {
+        "external_tracking": True,
+        "application_source": "candidate_external_tracking",
+    }
+    set_application_status(
+        application,
+        "interview_invited",
+        action="candidate_records_interview",
+        actor_id="candidate-private-id",
+        actor_role="candidate",
+        source="candidate_external_tracking",
+        occurred_at="2026-08-13T09:00:00+00:00",
+        raw_feedback="Recruiter confirmed the interview.",
+    )
+
+    timeline = build_application_outcome_timeline(application)
+    assert [event["source"] for event in timeline] == [
+        "candidate_reported",
+        "candidate_reported",
+    ]
+    assert timeline[-1]["occurred_at"] == "2026-08-13T09:00:00+00:00"
+    assert timeline[-1]["raw_feedback"] == "Recruiter confirmed the interview."
+    assert "actor_id" not in timeline[-1]
+
+
+def test_outcome_timeline_maps_employer_action_to_employer_confirmed():
+    application = _application()
+    set_application_status(
+        application,
+        "viewed",
+        action="employer_view",
+        actor_id="employer-private-id",
+        actor_role="employer",
+        source="auto_viewed",
+    )
+
+    timeline = build_application_outcome_timeline(application)
+    assert timeline[0]["source"] == "platform_observed"
+    assert timeline[1]["source"] == "employer_confirmed"
+
+
+def test_rejection_without_feedback_changes_priority_but_never_creates_a_capability_gap():
+    application = _application()
+    application.pipeline_meta = {"external_tracking": True}
+    set_application_status(
+        application,
+        "rejected",
+        action="candidate_records_rejected",
+        actor_role="candidate",
+        source="candidate_external_tracking",
+    )
+
+    changes = build_outcome_recommendation_changes(application)
+    assert len(changes) == 1
+    change = changes[0]
+    assert change["current_priority"] == "复盘本次流程和表达，不推断新的能力缺口"
+    assert "不能新增能力缺口" in change["why"]
+    assert change["raw_feedback_present"] is False
+    assert "skill_gap" not in change
+    saved = application.pipeline_meta["status_history"][0]
+    assert saved["recommendation_change_snapshot"] == {
+        "previous_priority": change["previous_priority"],
+        "current_priority": change["current_priority"],
+        "why": change["why"],
+        "raw_feedback_present": False,
+        "unchanged_boundaries": change["unchanged_boundaries"],
+    }
+
+
+def test_interview_outcome_moves_priority_to_grounded_interview_preparation():
+    application = _application()
+    application.pipeline_meta = {"external_tracking": True}
+    set_application_status(
+        application,
+        "interview_invited",
+        action="candidate_records_interview",
+        actor_role="candidate",
+        source="candidate_external_tracking",
+    )
+
+    change = build_outcome_recommendation_changes(application)[0]
+    assert change["current_priority"] == "用已确认经历准备针对性面试故事"
+    assert "真实经历" in change["why"]
 
 
 def test_capture_resume_snapshot_is_deep_copy_and_creates_first_version():

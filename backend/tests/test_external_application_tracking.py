@@ -41,6 +41,7 @@ async def test_candidate_records_external_application_and_outcomes(
     assert application["application_source"] == "candidate_external_tracking"
     assert application["status"] == "submitted"
     assert application["employer_id"] is None
+    assert application["outcome_timeline"][0]["source"] == "candidate_reported"
 
     duplicate = await client.post(
         "/applications/external-tracking",
@@ -54,10 +55,18 @@ async def test_candidate_records_external_application_and_outcomes(
     interview = await client.patch(
         f"/applications/external-tracking/{application['id']}/status",
         headers=auth_header(candidate_a),
-        json={"status": "interview_invited"},
+        json={
+            "status": "interview_invited",
+            "occurred_at": application["created_at"],
+            "feedback": "Recruiter invited me to a first-round interview.",
+        },
     )
     assert interview.status_code == 200, interview.text
     assert interview.json()["application"]["status"] == "interview_invited"
+    interview_event = interview.json()["application"]["outcome_timeline"][-1]
+    assert interview_event["source"] == "candidate_reported"
+    assert interview_event["raw_feedback"] == ("Recruiter invited me to a first-round interview.")
+    assert interview_event["occurred_at"].startswith(application["created_at"][:19])
 
     accepted = await client.patch(
         f"/applications/external-tracking/{application['id']}/status",

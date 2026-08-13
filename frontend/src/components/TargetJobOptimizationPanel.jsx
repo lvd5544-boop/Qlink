@@ -7,6 +7,8 @@ import { getApiErrorMessage } from '../utils/apiError';
 import { decodeHtmlEntities } from '../utils/text';
 import PersonalizedGuidancePanel from './PersonalizedGuidancePanel';
 import OpportunityPreparationCard from './OpportunityPreparationCard';
+import HypothesisReviewList from './HypothesisReviewList';
+import { replaceHypothesisStatus } from './hypothesisReview';
 
 const { Paragraph, Text } = Typography;
 
@@ -129,6 +131,26 @@ export default function TargetJobOptimizationPanel({
       message.success('策略已加入行动路径');
     } catch (error) {
       message.error(getApiErrorMessage(error, '选择策略失败'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateHypothesis = async (hypothesis, status) => {
+    setLoading(true);
+    try {
+      const response = await api.post(
+        `/optimization/hypotheses/${hypothesis.id}/status`,
+        { status },
+        idem(`c5-hypothesis-${hypothesis.id}`),
+      );
+      setDiagnostic((old) => replaceHypothesisStatus(old, hypothesis.id, response.data));
+      setSelectedIssue((old) => (
+        old ? replaceHypothesisStatus({ issues: [old] }, hypothesis.id, response.data).issues[0] : old
+      ));
+      message.success(status === 'rejected' ? '已排除这条可能性' : '已记录为本人确认；尚未写入简历事实');
+    } catch (error) {
+      message.error(getApiErrorMessage(error, '更新假设状态失败'));
     } finally {
       setLoading(false);
     }
@@ -290,6 +312,11 @@ export default function TargetJobOptimizationPanel({
               {!selectedIssue ? <Text type="secondary">请选择一个问题。</Text> : (
                 <>
                   <Paragraph>{selectedIssue.diagnosis}</Paragraph>
+                  <HypothesisReviewList
+                    hypotheses={selectedIssue.hypotheses}
+                    onStatusChange={updateHypothesis}
+                  />
+                  {selectedIssue.hypotheses?.length > 0 && <Divider />}
                   {(selectedIssue.strategies || []).map((strategy) => (
                     <Card key={strategy.id} size="small" style={{ marginBottom: 8 }}>
                       <Text strong>{strategy.title}</Text>

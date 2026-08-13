@@ -6,8 +6,10 @@ import pytest
 from sqlalchemy import select
 
 from app.models_db import (
+    InferenceHypothesis,
     JobDescription,
     OptimizationIssue,
+    ResumeClaim,
     ResumePatchProposal,
     ResumeVersion,
 )
@@ -365,3 +367,105 @@ async def test_diagnostic_idempotency_replays_same_result(
     second = await _diagnose(client, candidate_a, resume_a, job_a, auth_header, "pr13-idempotent")
     assert first.status_code == 200 and second.status_code == 200
     assert first.json()["diagnostic_id"] == second.json()["diagnostic_id"]
+
+
+async def test_unresolved_issue_has_at_most_two_persisted_auditable_hypotheses(
+    client, db_session, candidate_a, resume_a, employer_a, auth_header
+):
+    job = await _job_requiring_absent_skills(db_session, employer_a)
+    response = await client.post(
+        f"/resumes/{resume_a.id}/jobs/{job.id}/diagnostics",
+        headers=_headers(auth_header, candidate_a, "c5-hypothesis-limit"),
+    )
+    assert response.status_code == 200, response.text
+    issue = _capability_issue(response.json())
+    assert 1 <= len(issue["hypotheses"]) <= 2
+    assert all(row["status"] == "hypothesis" for row in issue["hypotheses"])
+    assert all(row["rule_version"] == "c5-hypothesis-rules-v1" for row in issue["hypotheses"])
+    assert all(row["source_refs"] for row in issue["hypotheses"])
+    assert all("不会自动写入" in row["notice"] for row in issue["hypotheses"])
+
+    persisted = (
+        (
+            await db_session.execute(
+                select(InferenceHypothesis).where(InferenceHypothesis.issue_id == issue["id"])
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(persisted) == len(issue["hypotheses"])
+
+
+async def test_confirming_hypothesis_never_creates_claim_or_changes_resume(
+    client, db_session, candidate_a, resume_a, employer_a, auth_header
+):
+    job = await _job_requiring_absent_skills(db_session, employer_a)
+    diagnostic = (
+        await client.post(
+            f"/resumes/{resume_a.id}/jobs/{job.id}/diagnostics",
+            headers=_headers(auth_header, candidate_a, "c5-hypothesis-confirm-diag"),
+        )
+    ).json()
+    hypothesis = _capability_issue(diagnostic)["hypotheses"][0]
+    claim_ids_before = set(
+        (
+            await db_session.execute(
+                select(ResumeClaim.id).where(ResumeClaim.resume_id == str(resume_a.id))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    resume_before = dict(resume_a.parsed_json or {})
+
+    response = await client.post(
+        f"/optimization/hypotheses/{hypothesis['id']}/status",
+        json={"status": "user_confirmed"},
+        headers=_headers(auth_header, candidate_a, "c5-hypothesis-confirm"),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "user_confirmed"
+    assert response.json()["claim_created"] is False
+    assert response.json()["resume_changed"] is False
+    assert response.json()["hiring_conclusion_changed"] is False
+
+    claim_ids_after = set(
+        (
+            await db_session.execute(
+                select(ResumeClaim.id).where(ResumeClaim.resume_id == str(resume_a.id))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    await db_session.refresh(resume_a)
+    assert claim_ids_after == claim_ids_before
+    assert resume_a.parsed_json == resume_before
+
+
+async def test_hypothesis_status_is_owner_scoped_and_evidence_support_requires_evidence(
+    client, db_session, candidate_a, candidate_b, resume_a, employer_a, auth_header
+):
+    job = await _job_requiring_absent_skills(db_session, employer_a)
+    diagnostic = (
+        await client.post(
+            f"/resumes/{resume_a.id}/jobs/{job.id}/diagnostics",
+            headers=_headers(auth_header, candidate_a, "c5-hypothesis-owner-diag"),
+        )
+    ).json()
+    hypothesis_id = _capability_issue(diagnostic)["hypotheses"][0]["id"]
+
+    forbidden = await client.post(
+        f"/optimization/hypotheses/{hypothesis_id}/status",
+        json={"status": "rejected"},
+        headers=_headers(auth_header, candidate_b, "c5-hypothesis-other-user"),
+    )
+    assert forbidden.status_code == 404
+
+    missing_evidence = await client.post(
+        f"/optimization/hypotheses/{hypothesis_id}/status",
+        json={"status": "evidence_supported"},
+        headers=_headers(auth_header, candidate_a, "c5-hypothesis-no-evidence"),
+    )
+    assert missing_evidence.status_code == 422

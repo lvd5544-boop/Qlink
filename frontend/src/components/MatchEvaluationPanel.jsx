@@ -61,11 +61,11 @@ export default function MatchEvaluationPanel({ evaluation }) {
         })}
       </Space>
 
-      <Divider orientation="left" plain>技能差距</Divider>
+      <Divider orientation="left" plain>技能待确认</Divider>
       <Space wrap>
         {(apiBreakdown?.missing_skills || rawBreakdown?.skills?.missing || []).length > 0
           ? (apiBreakdown?.missing_skills || rawBreakdown?.skills?.missing || []).map((sk) => (
-              <Tag key={sk} color="red">缺 {sk}</Tag>
+              <Tag key={sk} color="default">简历未体现：{sk}</Tag>
             ))
           : <Text type="secondary">暂无</Text>}
         {(apiBreakdown?.matched_skills || rawBreakdown?.skills?.matched || []).map((sk) => (
@@ -73,7 +73,7 @@ export default function MatchEvaluationPanel({ evaluation }) {
         ))}
       </Space>
 
-      <Divider orientation="left" plain>软实力差距</Divider>
+      <Divider orientation="left" plain>软实力待确认</Divider>
       <Space wrap>
         {filterSoftSkillsForDisplay(
           apiBreakdown?.soft_skills_missing || rawBreakdown?.soft_skills?.missing || [],

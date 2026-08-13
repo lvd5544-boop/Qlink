@@ -4,6 +4,8 @@
 > 决策：以 R3-Lite 为首发产品，以 Third Round 的状态审计与规模化设计作为按门槛启用的第二层；不一次建设完整双端平台。<br>
 > 首发边界：中国大陆；互联网、软件、数据、AI、产品等相邻数字岗位族；应届到工作三年内。
 
+> 2026-08-13 进度复核：C0–C4 已通过执行报告中的首发门禁。C4-E v1.3 已建立 33 个分级相关性对、TF-IDF/结构化对照、公平性反事实、排名变化案例、四类鲁棒性压力测试，以及双人盲标/加权 kappa/分歧记录工具。C5 首个工程切片也已完成：最多两条持久化假设、候选人确认/排除、来源与版本追踪、简历/Claim/招聘结论隔离，以及 synthetic/real-confirmed 评测池隔离。C4-E 独立真人复核仍为 `pending 0/2`，C5 真实效果仍待 C6 试点，不对外宣称已外部验证。
+
 ## 1. 最终产品承诺
 
 QLink 首发只完成一个反复运行的个人求职决策循环：
@@ -151,6 +153,29 @@ FastAPI 官方支持多 worker 利用多核，但同时指出复制进程只解�
 
 分支和提交规范以 [CONTRIBUTING.md](./CONTRIBUTING.md) 为准。采用 `<type>/<area>-<purpose>`，例如 `feat/matching-domain-lanes`、`sec/target-job-ownership`。GitHub 建议使用短而描述性的分支名；已有共享分支不能在脏工作区或未核对 CI/PR 引用时直接重命名，因为重命名后本地拉取和部分自动化引用不会自动迁移。[GitHub Flow](https://docs.github.com/en/get-started/using-github/github-flow)、[Renaming a branch](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-branches-in-your-repository/renaming-a-branch)
 
+### 2.6 LinkedIn 竞品学习：借产品机制，不复制社交网络
+
+LinkedIn 的优势来自三个相互增强的层：模块化职业身份、网络关系和职位/人才推荐。QLink 当前已经具备经历与能力模块、简历版本、岗位推荐和证据映射，因此不应为了“像 LinkedIn”立即建设关注、动态 Feed、点赞或陌生人连接。
+
+当前应吸收的机制：
+
+- **模块化职业档案**：经历、项目、技能、教育和证据可以独立维护，再按目标岗位组合；
+- **可撤销的 AI 增强**：所有改写都展示原文、建议、依据和差异，用户可以保存、编辑、跳过或恢复；
+- **偏好 + 履历推荐**：岗位排序同时使用用户明确偏好、真实档案和岗位要求，并说明“为什么推荐”；
+- **反馈刷新**：收藏、隐藏、申请和结果可以调整下一轮排序，但反馈不能被解释为新的能力事实；
+- **通知而非 Feed**：首发只做高价值提醒，例如新匹配岗位、待完成申请动作和需要回复的澄清。
+
+暂不建设：
+
+- 通用社交 Feed、点赞、评论和内容创作者体系；
+- 无真实关系证明的联系人推荐；
+- 用人脉数量、学校、前雇主知名度影响岗位或候选人排序；
+- 为了活跃度制造低质量推荐或批量申请。
+
+只有 C6 试点证明用户在多周内反复维护档案、查看推荐，并明确需要导师/同伴协作时，才评估“小范围可信关系层”：用户邀请的导师、同伴评审和可撤回推荐语。它不是公共社交网络。
+
+QLink 相对 LinkedIn 的差异化应保持为：**LinkedIn 帮用户展示和连接；QLink 帮用户把真实经历转化为可追溯的岗位决策、申请准备、面试训练和结果复盘。**
+
 ## 3. 合并后的产品流程
 
 ```text
@@ -210,23 +235,54 @@ FastAPI 官方支持多 worker 利用多核，但同时指出复制进程只解�
 
 ### Phase C4：结果回写和下一轮复盘（5–7 天）
 
-- 统一平台内和站外结果时间线；
-- 保存结果来源、时间和可选原始反馈；
-- 下一轮只用结果调整追问与优先级，不自动修改能力事实；
-- 展示“因为哪条结果，本次建议发生了什么变化”。
+状态：**首发范围已于 2026-08-13 通过。** 完成证据见 [R3 执行与验收报告](./R3_EXECUTION_AND_ACCEPTANCE_REPORT.md)。
 
-门禁：拒绝且没有原因时，系统不能新增能力缺口；所有建议变化可追溯。
+- **已有基础**：站外申请创建、候选人记录进入面试/未通过/录用、受控状态迁移、`status_history` 和站外结果界面；
+- 将平台内和站外状态历史投影为同一种只读时间线，不急于新增完整事件表；
+- 将结果来源规范为 `platform_observed / employer_confirmed / candidate_reported`，兼容现有内部来源字段；
+- 每条结果保存发生时间、记录时间、操作者、来源和可选原始反馈；原始反馈只作为来源材料，不自动拆成能力结论；
+- 在状态事件中保存当时的“之前重点 / 现在重点 / 变化原因 / 不变边界”快照；旧记录使用兼容投影，避免规则升级后悄悄改写历史解释；
+- 页面新增“这次建议为什么变化”：展示结果事件、旧建议、新建议和不变的事实边界；
+- 下一轮只用结果调整追问与优先级，不自动修改能力事实。
+
+门禁：拒绝且没有原因时，系统不能新增能力缺口；所有建议变化可追溯；站内招聘方结果和站外候选人记录在界面上有明确不同来源；他人不能读取或修改该时间线。
+
+#### C4-E：可展示的排序评测（与 C4 并行，不阻塞用户主链路）
+
+状态：**v1.3 工程范围已完成，独立真人复核待执行。** 复现指标与失败案例见 [`docs/EVALUATION.md`](./docs/EVALUATION.md)，盲标与分歧裁决见 [`docs/RANKING_ANNOTATION_PROTOCOL.md`](./docs/RANKING_ANNOTATION_PROTOCOL.md)。下一门禁是两名真实独立复核者完成 33 对标注并裁决分歧，然后才决定是否扩展混合职位分类。
+
+这一轨道把现有规则/混合排序变成可以向工程、数据和金融科技项目解释的实验结果，而不是增加一个更复杂但无法验证的总分。
+
+实施顺序：
+
+1. 建立匿名、版本化的固定评测集：简历、JD、职业族、相关性等级和禁止跨族样例；
+2. 实现可复现基线：`TF-IDF + cosine similarity`；
+3. 将现有结构化特征排序作为第二组实验：技能、任务、职业族、偏好和现实约束；
+4. 只有基线和标注稳定后，才加入 embeddings；没有足够样本前不训练 PyTorch 大模型；
+5. 对每次实验输出 `NDCG@K`、`Recall@K`、跨职业族违规率、无依据负面判断率和解释引用覆盖率；
+6. 增加成对反事实公平性检查：只改变姓名、学校名称等不应参与决策的字段，排序应保持稳定；
+7. 为单个候选岗位对生成“What changed the ranking?”维度差异，显示哪个输入或偏好改变了顺序。
+
+预期公开产物：`docs/EVALUATION.md`、可复现评测命令、固定非敏感数据集、结果表和一个排名变化案例。公开结果必须说明样本量、局限和不能外推的范围。
+
+这条轨道的申请叙事是：
+
+> I designed and evaluated an evidence-grounded candidate–job ranking workflow, compared text and structured baselines, measured relevance and failure modes, and kept consequential decisions interpretable and under human control.
 
 ### Phase C5：推断假设与隔离评测（5–7 天）
+
+状态：**首个工程切片已完成，真实用户有效性待 C6。** 复现说明见 [`docs/HYPOTHESIS_EVALUATION.md`](./docs/HYPOTHESIS_EVALUATION.md)。
 
 - `unknown` 输出最多两个待验证假设；
 - 保存来源、规则/Prompt/模型版本和验证状态；
 - 合成数据只进入带 `synthetic` 标签的隔离评测池；
 - 真实确认样本单独作为验证集。
 
-门禁：任何假设都不能进入简历、Claim 或招聘结论，除非经过确认或证据支持。
+门禁：任何假设都不能自动进入简历、Claim 或招聘结论；本人确认仍只更新假设状态。只有用户后续主动补充事实并走现有 Claim/Evidence 流程，才能成为可用材料。
 
 ### Phase C6：真实用户试点与扩展决策（至少 2 周）
+
+状态：**协议已准备，尚未招募或采集数据。** 执行、同意、指标、对照与预注册决策门槛见 [`docs/C6_PILOT_PROTOCOL.md`](./docs/C6_PILOT_PROTOCOL.md)。在真实完成前不得填写通过率或宣称用户效果。
 
 - 20 名目标用户，每人使用真实 JD 和至少两段经历；
 - 与通用大模型进行交叉对照；
@@ -240,7 +296,52 @@ FastAPI 官方支持多 worker 利用多核，但同时指出复制进程只解�
 - 需要自动计算错误支持率或错误发展率；
 - 事件量或团队协作已经超出 `OptimizationIssue` 的表达能力。
 
-## 5. Third Round 的保留与延后
+### Phase C7：有限协作与生态（C6 达标后才评估）
+
+- 用户邀请一名导师或同伴查看指定材料，而不是开放全档案；
+- 评审者只能提出评论或推荐语，用户接受后才进入档案；
+- 支持撤回权限、来源展示和审计；
+- 先验证协作是否提高申请材料采用率或 7 日回访，再决定是否扩展关系网络；
+- Agent/Skill 先提供只读分析和草稿预览，外部提交仍需用户明确确认。
+
+门禁：没有 C6 留存和用户需求证据，不启动社交 Feed 或通用联系人图谱。
+
+## 5. 面向 Goldman Sachs Emerging Leaders Series 与后续项目的展示轨道
+
+项目申请不应单独驱动产品功能，但可以决定如何记录和展示已经完成的工程工作。展示材料应同时证明：技术能力、严谨决策、人本边界和持续执行。
+
+### 5.1 GitHub 必须能在五分钟内证明
+
+当前公开入口：[`docs/PROJECT_CASE_STUDY.md`](./docs/PROJECT_CASE_STUDY.md)。该页面已经把下面的架构、合成案例、实验结果、失败修复、责任边界和诚实状态组织为一条五分钟审阅路径；真人盲标和 C6 试点仍明确保留为未完成事项。
+
+- 一张清晰的候选人主流程图或短 Demo；
+- 一个真实但匿名/合成的“JD → 证据映射 → 准备卡 → 面试 → 结果复盘”案例；
+- 一张排序评测结果表，包含基线、指标和失败案例；
+- 一个“What changed the ranking?”解释案例；
+- 公平性、隐私和人工确认边界；
+- 测试、迁移、CI 和部署说明；
+- 明确写出本人负责的产品判断、后端、前端、评测和修复工作，不把 AI 辅助开发冒充完全手写。
+
+### 5.2 申请叙事
+
+推荐使用下面的因果链，而不是只列技术名词：
+
+```text
+Problem: early-career candidates cannot tell which real experiences support a role
+Decision: separate evidence, uncertainty, constraints, and development actions
+Build: FastAPI + React workflow with ownership, consent, idempotency, and auditability
+Evaluate: ranking relevance, cross-domain failures, unsupported conclusions, and fairness
+Learn: human decisions and incomplete outcomes cannot be treated as clean ground truth
+Leadership: turn this into a usable pilot, document trade-offs, and invite responsible feedback
+```
+
+### 5.3 项目适配检查
+
+截至 2026-08-13，Goldman Sachs 官方页面显示 Emerging Leaders Series 面向本科二年级、所有专业，要求毕业时间为 2028 年 12 月至 2029 年 6 月；申请将在 2026 年秋季开放，项目时间为 2026 年 12 月。资格年份和开放时间可能变化，申请前必须再次核对[官方项目页面](https://www.goldmansachs.com/careers/students/programs-and-internships/americas/emerging-leaders-series)。
+
+如果申请人不符合毕业时间要求，应立即把同一项目证据复用于符合条件的 Engineering、Summer Analyst、Insight、AI/数据和创业项目，不为了单一项目改变产品方向。
+
+## 6. Third Round 的保留与延后
 
 立即保留：五状态语义、来源链接、最多三问、事实确认、AI 可关闭、结果可追溯、评测和商业门禁。
 
@@ -248,7 +349,7 @@ FastAPI 官方支持多 worker 利用多核，但同时指出复制进程只解�
 
 禁止提前建设：完整市场数据库、全功能 ATS、自动拒绝、录用概率、基于学校或公司品牌的加分、没有真实验证集的自训练流水线。
 
-## 6. 最终完成定义
+## 7. 最终完成定义
 
 本方案完成必须同时满足：
 

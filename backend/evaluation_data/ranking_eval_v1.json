@@ -1,0 +1,348 @@
+{
+  "dataset_id": "qlink-ranking-eval-v1",
+  "version": "1.1.0",
+  "language": "en_zh",
+  "license": "synthetic-project-data",
+  "description": "Fixed synthetic candidate-job ranking set. It contains no real people, resumes, applications, or employer exports.",
+  "annotation_status": {
+    "reference_label_source": "author_product_labels",
+    "independent_review_status": "pending",
+    "required_independent_reviewers": 2,
+    "completed_independent_reviewers": 0,
+    "protocol": "docs/RANKING_ANNOTATION_PROTOCOL.md"
+  },
+  "relevance_scale": {
+    "0": "irrelevant",
+    "1": "weak or exploratory",
+    "2": "relevant",
+    "3": "highly relevant"
+  },
+  "jobs": [
+    {
+      "id": "job-backend-fintech",
+      "role_family": "software",
+      "profile": {
+        "title": "Backend Engineer - Payments",
+        "company_name": "Synthetic Payments Lab",
+        "description": "Build reliable payment APIs and transaction services.",
+        "responsibilities": ["Develop Python FastAPI services", "Operate PostgreSQL and Redis", "Improve API reliability"],
+        "required_skills": ["Python", "FastAPI", "PostgreSQL", "Redis", "Docker"],
+        "location": "Shanghai",
+        "experience_years": 2,
+        "industry": "finance fintech payments"
+      }
+    },
+    {
+      "id": "job-platform-cloud",
+      "role_family": "software",
+      "profile": {
+        "title": "Cloud Platform Engineer",
+        "company_name": "Synthetic Cloud Lab",
+        "description": "Build internal cloud services and developer tooling.",
+        "responsibilities": ["Develop Python services", "Maintain Docker and Kubernetes workflows", "Design observable APIs"],
+        "required_skills": ["Python", "Docker", "Kubernetes", "API"],
+        "location": "Shanghai",
+        "experience_years": 2,
+        "industry": "technology cloud software"
+      }
+    },
+    {
+      "id": "job-backend-health",
+      "role_family": "software",
+      "profile": {
+        "title": "Healthcare Backend Engineer",
+        "company_name": "Synthetic Health Systems",
+        "description": "Build privacy-aware services for clinical operations.",
+        "responsibilities": ["Develop Python APIs", "Model clinical workflows", "Maintain PostgreSQL services"],
+        "required_skills": ["Python", "FastAPI", "PostgreSQL"],
+        "location": "Remote",
+        "experience_years": 2,
+        "industry": "healthcare medical clinical"
+      }
+    },
+    {
+      "id": "job-data-analyst-finance",
+      "role_family": "data_ai",
+      "profile": {
+        "title": "Financial Data Analyst",
+        "company_name": "Synthetic Markets Lab",
+        "description": "Analyze transaction data and communicate decision-ready findings.",
+        "responsibilities": ["Write SQL analyses", "Build Tableau dashboards", "Apply statistics to financial data"],
+        "required_skills": ["SQL", "Python", "Tableau", "Statistics"],
+        "location": "New York",
+        "experience_years": 1,
+        "industry": "finance analytics"
+      }
+    },
+    {
+      "id": "job-ml-climate",
+      "role_family": "data_ai",
+      "profile": {
+        "title": "Machine Learning Analyst - Climate",
+        "company_name": "Synthetic Climate Lab",
+        "description": "Evaluate environmental models and explain model limitations.",
+        "responsibilities": ["Prepare pandas datasets", "Evaluate regression models", "Document reproducible experiments"],
+        "required_skills": ["Python", "Pandas", "Statistics", "Machine Learning"],
+        "location": "Remote",
+        "experience_years": 1,
+        "industry": "climate environment research"
+      }
+    },
+    {
+      "id": "job-product-fintech",
+      "role_family": "product_design",
+      "profile": {
+        "title": "Product Manager - Payments",
+        "company_name": "Synthetic Product Studio",
+        "description": "Own payment product discovery and measurable experiments.",
+        "responsibilities": ["Interview users", "Prioritize a product roadmap", "Run A/B experiments with analytics"],
+        "required_skills": ["Product Discovery", "Roadmap", "SQL", "A/B Testing"],
+        "location": "London",
+        "experience_years": 2,
+        "industry": "finance fintech product"
+      }
+    },
+    {
+      "id": "job-product-saas",
+      "role_family": "product_design",
+      "profile": {
+        "title": "Associate Product Manager - SaaS",
+        "company_name": "Synthetic SaaS Studio",
+        "description": "Turn B2B user research into an evidence-based roadmap.",
+        "responsibilities": ["Conduct user interviews", "Define product metrics", "Coordinate engineering delivery"],
+        "required_skills": ["User Research", "Roadmap", "Analytics", "Communication"],
+        "location": "London",
+        "experience_years": 1,
+        "industry": "technology saas b2b"
+      }
+    },
+    {
+      "id": "job-technical-product-analyst",
+      "role_family": "product_design",
+      "profile": {
+        "title": "Technical Product Analyst",
+        "company_name": "Synthetic Product Analytics Lab",
+        "description": "Connect user research, product metrics, and technical delivery decisions.",
+        "responsibilities": ["Analyze product behavior with SQL", "Translate user research into metrics", "Coordinate experiments with engineering"],
+        "required_skills": ["SQL", "Analytics", "User Research", "A/B Testing"],
+        "location": "Remote",
+        "experience_years": 1,
+        "industry": "technology saas analytics"
+      }
+    },
+    {
+      "id": "job-marketing",
+      "role_family": "people_sales_marketing",
+      "profile": {
+        "title": "Social Media Marketing Coordinator",
+        "company_name": "Synthetic Media Studio",
+        "description": "Plan campaigns and manage social media communities.",
+        "responsibilities": ["Publish campaign content", "Coordinate creators", "Report engagement"],
+        "required_skills": ["Social Media", "Content Marketing", "Communication"],
+        "location": "London",
+        "experience_years": 1,
+        "industry": "consumer media marketing"
+      }
+    },
+    {
+      "id": "job-financial-analyst",
+      "role_family": "finance_legal",
+      "profile": {
+        "title": "Corporate Financial Analyst",
+        "company_name": "Synthetic Finance Office",
+        "description": "Build budgets and financial forecasts.",
+        "responsibilities": ["Prepare financial models", "Review budgets", "Present forecasts"],
+        "required_skills": ["Accounting", "Financial Modeling", "Excel"],
+        "location": "New York",
+        "experience_years": 2,
+        "industry": "finance accounting"
+      }
+    },
+    {
+      "id": "job-clinical-nurse",
+      "role_family": "healthcare",
+      "profile": {
+        "title": "Clinical Nurse",
+        "company_name": "Synthetic Community Clinic",
+        "description": "Provide direct clinical patient care.",
+        "responsibilities": ["Assess patients", "Administer clinical care", "Maintain medical records"],
+        "required_skills": ["Nursing License", "Clinical Care"],
+        "location": "New York",
+        "experience_years": 2,
+        "industry": "healthcare medical clinical"
+      }
+    }
+  ],
+  "queries": [
+    {
+      "id": "query-backend",
+      "role_family": "software",
+      "profile": {
+        "name": "Synthetic Candidate A",
+        "school": "Synthetic School A",
+        "expected_job_title": "Backend Software Engineer",
+        "summary": "Backend developer building reliable payment APIs and transaction services.",
+        "skills": ["Python", "FastAPI", "SQL", "PostgreSQL", "Redis", "Docker"],
+        "work_experience": [{"company": "Synthetic Commerce Lab", "position": "Backend Intern", "duration_years": 2, "description": "Built payment APIs and reduced transaction latency by 25%."}],
+        "projects": [{"name": "Reliable Checkout", "role": "Developer", "description": "Designed idempotent API retries with Redis."}],
+        "location_preference": "Shanghai or Remote",
+        "match_preferences": {"strictness": "balanced", "preferred_industries": ["finance", "technology"]}
+      },
+      "relevance": {
+        "job-backend-fintech": 3,
+        "job-platform-cloud": 3,
+        "job-backend-health": 2,
+        "job-data-analyst-finance": 1,
+        "job-ml-climate": 1,
+        "job-product-fintech": 0,
+        "job-product-saas": 0,
+        "job-technical-product-analyst": 1,
+        "job-marketing": 0,
+        "job-financial-analyst": 0,
+        "job-clinical-nurse": 0
+      },
+      "forbidden_job_ids": ["job-marketing", "job-financial-analyst", "job-clinical-nurse"],
+      "counterfactual_overrides": {"name": "Synthetic Candidate Z", "school": "Synthetic School Z"}
+    },
+    {
+      "id": "query-data",
+      "role_family": "data_ai",
+      "profile": {
+        "name": "Synthetic Candidate B",
+        "school": "Synthetic School B",
+        "expected_job_title": "Data Analyst",
+        "summary": "Data analyst using statistics and reproducible experiments for environmental and financial questions.",
+        "skills": ["Python", "Pandas", "SQL", "Statistics", "Tableau", "Regression"],
+        "work_experience": [{"company": "Synthetic Research Lab", "position": "Data Analyst Intern", "duration_years": 1, "description": "Evaluated climate datasets and documented model error."}],
+        "projects": [{"name": "Air Quality Study", "role": "Analyst", "description": "Built pandas pipelines and regression evaluation."}],
+        "location_preference": "Remote or New York",
+        "match_preferences": {"strictness": "balanced", "preferred_industries": ["climate_energy", "finance"]}
+      },
+      "relevance": {
+        "job-backend-fintech": 1,
+        "job-platform-cloud": 1,
+        "job-backend-health": 1,
+        "job-data-analyst-finance": 3,
+        "job-ml-climate": 3,
+        "job-product-fintech": 1,
+        "job-product-saas": 0,
+        "job-technical-product-analyst": 2,
+        "job-marketing": 0,
+        "job-financial-analyst": 1,
+        "job-clinical-nurse": 0
+      },
+      "forbidden_job_ids": ["job-product-saas", "job-marketing", "job-clinical-nurse"],
+      "counterfactual_overrides": {"name": "Synthetic Candidate Y", "school": "Synthetic School Y"}
+    },
+    {
+      "id": "query-product",
+      "role_family": "product_design",
+      "profile": {
+        "name": "Synthetic Candidate C",
+        "school": "Synthetic School C",
+        "expected_job_title": "Product Manager",
+        "summary": "Early-career product builder translating user research into measurable roadmaps.",
+        "skills": ["Product Discovery", "User Research", "Roadmap", "SQL", "A/B Testing", "Analytics"],
+        "work_experience": [{"company": "Synthetic App Studio", "position": "Product Intern", "duration_years": 1, "description": "Interviewed users and shipped an experiment that improved activation by 12%."}],
+        "projects": [{"name": "Onboarding Experiment", "role": "Product Lead", "description": "Defined metrics and coordinated engineering delivery."}],
+        "location_preference": "London or Remote",
+        "match_preferences": {"strictness": "balanced", "preferred_industries": ["finance", "technology"]}
+      },
+      "relevance": {
+        "job-backend-fintech": 0,
+        "job-platform-cloud": 0,
+        "job-backend-health": 0,
+        "job-data-analyst-finance": 1,
+        "job-ml-climate": 0,
+        "job-product-fintech": 3,
+        "job-product-saas": 3,
+        "job-technical-product-analyst": 2,
+        "job-marketing": 1,
+        "job-financial-analyst": 0,
+        "job-clinical-nurse": 0
+      },
+      "forbidden_job_ids": ["job-backend-fintech", "job-backend-health", "job-clinical-nurse"],
+      "counterfactual_overrides": {"name": "Synthetic Candidate X", "school": "Synthetic School X"}
+    }
+  ],
+  "robustness_cases": [
+    {
+      "id": "multilingual-paraphrase",
+      "type": "multilingual_paraphrase",
+      "base_query_id": "query-backend",
+      "profile_overrides": {
+        "expected_job_title": "后端软件工程师",
+        "summary": "使用 Python 和 FastAPI 构建可靠的支付接口、交易服务和幂等重试。",
+        "work_experience": [{"position": "后端开发实习生", "duration_years": 2, "description": "开发支付 API，将交易延迟降低 25%。"}],
+        "projects": [{"role": "开发者", "description": "使用 Redis 设计可重试的幂等接口。"}]
+      },
+      "expected_top_job_ids": ["job-backend-fintech", "job-platform-cloud", "job-backend-health"],
+      "minimum_expected_hits_at_k": 2,
+      "forbidden_job_ids": ["job-marketing", "job-financial-analyst", "job-clinical-nurse"],
+      "k": 3
+    },
+    {
+      "id": "missing-optional-fields",
+      "type": "missing_fields",
+      "base_query_id": "query-backend",
+      "profile_overrides": {
+        "summary": "",
+        "work_experience": [],
+        "projects": [],
+        "location_preference": ""
+      },
+      "expected_top_job_ids": ["job-backend-fintech", "job-platform-cloud", "job-backend-health"],
+      "minimum_expected_hits_at_k": 2,
+      "forbidden_job_ids": ["job-marketing", "job-financial-analyst", "job-clinical-nurse"],
+      "k": 3
+    },
+    {
+      "id": "preference-overrides-text-similarity",
+      "type": "preference_conflict",
+      "base_query_id": "query-backend",
+      "profile_overrides": {
+        "match_preferences": {
+          "strictness": "balanced",
+          "preferred_industries": ["healthcare"],
+          "excluded_industries": ["finance"]
+        }
+      },
+      "expected_top_job_ids": ["job-backend-health", "job-platform-cloud"],
+      "minimum_expected_hits_at_k": 2,
+      "forbidden_job_ids": ["job-backend-fintech", "job-data-analyst-finance", "job-product-fintech", "job-financial-analyst"],
+      "k": 3
+    },
+    {
+      "id": "near-title-decoy",
+      "type": "near_title_decoy",
+      "base_query_id": "query-backend",
+      "additional_jobs": [
+        {
+          "id": "job-backend-operations-decoy",
+          "role_family": "operations_admin",
+          "profile": {
+            "title": "Backend Operations Coordinator",
+            "company_name": "Synthetic Facilities Office",
+            "description": "Coordinate office vendors, calendars, inventory, and facilities requests.",
+            "responsibilities": ["Schedule vendor visits", "Maintain office inventory", "Coordinate facilities tickets"],
+            "required_skills": ["Calendar Management", "Vendor Coordination", "Excel"],
+            "location": "Shanghai",
+            "experience_years": 1,
+            "industry": "operations administration"
+          }
+        }
+      ],
+      "expected_top_job_ids": ["job-backend-fintech", "job-platform-cloud", "job-backend-health"],
+      "minimum_expected_hits_at_k": 2,
+      "forbidden_job_ids": ["job-backend-operations-decoy"],
+      "k": 3
+    }
+  ],
+  "ranking_change_case": {
+    "query_id": "query-backend",
+    "description": "The candidate changes the preferred industry from finance/technology to healthcare; facts stay unchanged.",
+    "profile_overrides": {
+      "match_preferences": {"strictness": "balanced", "preferred_industries": ["healthcare"], "excluded_industries": ["finance"]}
+    }
+  }
+}

@@ -84,6 +84,29 @@ def test_data_job_passes_and_explicit_industry_exclusion_wins():
     assert gated <= 2.5
 
 
+def test_adjacent_role_requires_two_cited_skill_overlaps():
+    product_resume = {
+        "expected_job_title": "Product Manager",
+        "skills": ["SQL", "Product Discovery", "Roadmap"],
+        "match_preferences": {"strictness": "balanced"},
+    }
+    backend_job = {
+        "title": "Backend Engineer",
+        "required_skills": ["Python", "FastAPI", "PostgreSQL", "Redis"],
+        "responsibilities": ["Build backend APIs"],
+    }
+
+    score, breakdown, reason = _evaluate_hybrid(product_resume, backend_job, "Backend Engineer")
+
+    policy = breakdown["preference_policy"]
+    assert policy["role_relation"] == "adjacent"
+    assert policy["adjacent_evidence"] == ["postgresql"]
+    assert policy["adjacent_supported"] is False
+    assert policy["eligible"] is False
+    assert score <= 2.5
+    assert "至少两项" in reason
+
+
 def test_broken_page_title_is_filtered_even_if_body_has_skill_words():
     score, breakdown, _ = _evaluate_hybrid(
         DATA_RESUME,
@@ -103,6 +126,16 @@ def test_incidental_jd_words_do_not_become_job_industries():
     }
 
     assert infer_job_industries(job, job["title"]) == ["technology"]
+
+
+def test_explicit_finance_industry_is_detected_for_preference_exclusion():
+    job = {
+        "title": "Financial Data Analyst",
+        "industry": "finance analytics",
+        "company_name": "Synthetic Markets Lab",
+    }
+
+    assert infer_job_industries(job, job["title"]) == ["finance"]
 
 
 def test_company_brand_does_not_offset_a_cross_industry_mismatch():

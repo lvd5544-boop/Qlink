@@ -879,7 +879,7 @@ def _build_reason_v2(breakdown: dict, total: float, signals: dict) -> str:
 
     missing = breakdown.get("skills", {}).get("missing") or []
     if missing:
-        parts.append(f"缺 {', '.join(missing[:3])}")
+        parts.append(f"简历中未找到 {', '.join(missing[:3])}，需确认")
 
     role_dim = breakdown.get("role_match") or breakdown.get("title") or {}
     if role_dim.get("family_mismatch"):
@@ -891,7 +891,7 @@ def _build_reason_v2(breakdown: dict, total: float, signals: dict) -> str:
         parts.append("方向不符已降分")
 
     if not signals.get("impact", {}).get("has_quantified_impact", True):
-        parts.append("项目描述缺量化指标")
+        parts.append("项目描述中未找到量化指标")
 
     if not parts:
         return f"综合匹配 {total}/10"
