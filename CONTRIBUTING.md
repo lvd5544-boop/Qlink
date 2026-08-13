@@ -1,5 +1,17 @@
 # QLink contribution conventions
 
+## Contribution licensing
+
+QLink's core platform is licensed under `AGPL-3.0-only`, and the copyright holder may also offer separate commercial licenses. Focused bug reports, product feedback, and reproducible issues are welcome.
+
+Until the project publishes a contributor agreement that explicitly supports this dual-licensing model, maintainers should not merge third-party code contributions. A `Signed-off-by` line or Developer Certificate of Origin alone must not be treated as permission to relicense a contributor's copyright.
+
+Before preparing a pull request, open an issue to confirm whether the contributor agreement is available and whether the proposed scope can be accepted.
+
+QLink 核心平台采用 `AGPL-3.0-only`，版权所有人也可能提供独立商业授权。欢迎提交范围清晰、可以复现的 Issue 和产品反馈。
+
+在项目发布明确支持双重授权的贡献者协议之前，维护者不应合并第三方代码贡献。仅有 `Signed-off-by` 或 Developer Certificate of Origin 不应被视为允许重新授权贡献者版权。
+
 ## Branch names
 
 Use a short, descriptive branch with one product or technical area:

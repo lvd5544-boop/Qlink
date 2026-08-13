@@ -1,88 +1,93 @@
 # QLink · Evidence-Grounded AI Job Workflow
 
-> 基于真实经历的 AI 求职决策与面试训练工作流<br>
-> An evidence-grounded AI workflow for job decisions, application preparation, and interview practice.
+> 基于真实经历、由用户控制的 AI 求职准备与招聘协作平台。<br>
+> An evidence-grounded, user-controlled workflow for job preparation and hiring collaboration.
 
-[English](#english) · [中文](#中文) · [Product plan / 产品计划](./R3_CONSOLIDATED_PRODUCT_AND_SCALE_PLAN.md) · [Contributing / 贡献](./CONTRIBUTING.md)
+[中文](#中文) · [English](#english) · [用户手册](./docs/USER_GUIDE.md) · [Agent 接入](./docs/AGENT_INTEGRATION.md) · [产品路线图](./R3_CONSOLIDATED_PRODUCT_AND_SCALE_PLAN.md)
+
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
+
+![QLink candidate workflow](./PR6_E2E_EVIDENCE/01_candidate_applied_jobs.png)
 
 ---
 
 ## 中文
 
-### 项目简介
+### QLink 是什么？
 
-QLink 面向应届生和工作 0–3 年的年轻求职者。用户可以导入真实简历和目标岗位 JD，系统将岗位要求与用户已提供的经历和证据建立联系，帮助用户回答三个问题：
+QLink 面向学生、应届生和工作 0–3 年的年轻求职者。用户导入真实简历和目标岗位 JD 后，系统把岗位要求与用户提供的经历、作品和证据关联起来，帮助用户判断机会、准备申请并练习面试。
 
-- 这个岗位现在是否值得投？
-- 哪些真实经历可以在申请和面试中说清楚？
-- 今天最值得补充的信息、证据或行动是什么？
+QLink 的核心原则是：**AI 可以整理、建议和预填，但不能编造经历，也不能越过用户完成高影响操作。**
 
-QLink 不预测录用概率，不把简历没写的内容直接判定为“不具备”，也不会把模型生成的经历写回用户简历。
-
-### 核心体验
+### 求职者主流程
 
 ```text
-真实背景 → 目标 JD / 同领域方向 → 岗位要求与证据映射
-        → 机会准备卡 → 结构化 AI 面试 → 用户确认观察结果
+注册 → 上传真实简历 → 选择或导入目标 JD → 查看岗位准备度
+    → 生成并确认简历版本 → 准备申请 → 结构化面试
+    → 确认观察结果 → 跟踪申请状态
 ```
 
-已实现的主要能力：
+主要能力：
 
 - 私有 JD 导入与所有权隔离；
-- 同职业族的“当前 / 相邻 / 挑战”方向探索；
-- 五状态岗位准备度：现在可用、需要说清、发展行动、现实约束、待验证假设；
-- 与同一份目标岗位和履历素材连通的结构化面试；
-- 用户确认后才能写回的 Interview Observation / Claim 机制；
-- Docker Compose 生产式本地交付，包含 PostgreSQL、Redis、Worker、Scheduler、Nginx 和健康检查。
+- 当前、相邻、挑战三类职业方向探索；
+- 岗位要求到候选人证据的映射；
+- 五状态准备度：现在可用、需要说清、发展行动、现实约束、待验证假设；
+- 面向目标岗位的简历建议和版本管理；
+- 结构化 AI 面试与用户确认后的观察结果写回；
+- 求职申请、澄清、邀请和状态记录；
+- PostgreSQL、Redis、Worker、Scheduler、Nginx 组成的 Docker Compose 运行栈。
 
-### 三分钟启动
+### 招聘方主流程
 
-前置条件：Docker Desktop（含 Docker Compose）。
+```text
+受邀开通企业账号 → 发布或导入 JD → 确认岗位要求
+               → 查看获授权的候选人 → 人工复核筛选结果
+               → 请求澄清或邀请面试 → 更新申请状态
+```
+
+系统不做自动拒绝，不声称预测录用概率，也不使用学校或公司品牌作为隐性加分项。
+
+### 三分钟本地启动
+
+前置条件：Docker Desktop（包含 Docker Compose）。
 
 ```bash
 cp .env.example .env
-# 将 .env 中的 CHANGE_ME 替换为本地安全值
+# 将 .env 中的 CHANGE_ME 替换为仅用于本地开发的安全值
 make config
 make up
 ```
 
-打开 `http://localhost:8080`。英文展示模式可使用 `http://localhost:8080/?demo=en`；关闭持久英文展示可使用 `?demo=off`。
+打开 `http://localhost:8080`。使用 `http://localhost:8080/?demo=en` 可开启英文展示模式，使用 `?demo=off` 关闭。
 
 - 存活检查：`/api/health`
 - 就绪检查：`/api/ready`
 - 管理员依赖诊断：`/api/admin/readiness`
 
-没有配置模型 Key 时，默认 `MODEL_REQUIRED=false`，系统会以明确的 `rules_only` 状态运行，不会伪装 AI 供应商已就绪。
+未配置模型 Key 时，默认 `MODEL_REQUIRED=false`，应用会明确以 `rules_only` 模式运行，不会伪装模型服务已经就绪。
 
-### 验收与常用命令
+### 验收
 
 ```bash
-make test          # 后端测试 + 前端测试、Lint、构建
+make test          # 后端测试 + 前端测试、Lint 与生产构建
 make ps            # 查看服务状态
 make logs          # 查看服务日志
-make backup        # 备份数据库与上传文件
-make down          # 停止服务，保留数据卷
+make backup        # 备份数据库和上传文件
+make down          # 停止服务并保留数据卷
 ```
 
-详细人工验收见 [MANUAL_ACCEPTANCE_GUIDE.md](./MANUAL_ACCEPTANCE_GUIDE.md)，公平性基线见 [FAIRNESS_BASELINE_PROTOCOL.md](./FAIRNESS_BASELINE_PROTOCOL.md)。
+进一步阅读：
 
-### 代码结构
+- [用户手册（中英文）](./docs/USER_GUIDE.md)
+- [安全、隐私与 AI 边界](./docs/SECURITY_AND_PRIVACY.md)
+- [人工验收指南](./MANUAL_ACCEPTANCE_GUIDE.md)
+- [公平性基线](./FAIRNESS_BASELINE_PROTOCOL.md)
+- [执行与验收报告](./R3_EXECUTION_AND_ACCEPTANCE_REPORT.md)
 
-```text
-backend/
-  app/                 FastAPI 模块化单体：路由、领域服务、AI 网关、数据模型
-  tests/               所有权、幂等、匹配、面试和业务回归测试
-frontend/
-  src/pages/           候选人、招聘方和管理员页面
-  src/components/      可复用业务组件
-  src/utils/           无 UI 状态、格式化与传输工具
-  e2e/                 Playwright 主用户链路
-scripts/               备份、恢复和验收脚本
-```
+### 项目状态
 
-### 当前边界
-
-这是可运行的试点版 Demo，不是已上线的全功能 ATS。真实支付、发票、自动续费、外部邮件/ATS 结果集成仍在路线图中。产品不做自动拒绝、录用概率或基于学校/公司品牌的加分。
+QLink 当前是可运行的试点 Demo，不是已经上线的全功能 ATS。支付、发票、自动续费，以及经过授权的外部邮件和 ATS 结果集成仍在路线图中。自动填表与申请材料生成只能作为用户确认前的辅助；未经确认的自动投递不属于当前产品范围。
 
 ---
 
@@ -90,23 +95,30 @@ scripts/               备份、恢复和验收脚本
 
 ### What is QLink?
 
-QLink is an AI-assisted job workflow for students, new graduates, and early-career candidates. A candidate brings a real resume and a real target job description. QLink maps job requirements to candidate-provided experience, then helps answer:
+QLink is an AI-assisted workflow for students, new graduates, and early-career candidates. A candidate brings a real resume and a target job description. QLink connects job requirements to candidate-provided experience and evidence, then helps the candidate evaluate the opportunity, prepare an application, and practice for interviews.
 
-- Is this opportunity worth pursuing now?
-- Which real experiences can I explain clearly in an application or interview?
-- What is the highest-value clarification, evidence item, or action to complete next?
+Its central rule is simple: **AI may organize, suggest, and prefill, but it must not invent experience or perform high-impact actions beyond the user's approval.**
 
-QLink does not predict hiring probability, treat an omitted keyword as proof of missing ability, or write model-invented experience into a resume.
-
-### Core workflow
+### Candidate journey
 
 ```text
-Real background → Target JD / in-domain direction → Requirement-to-evidence map
-                → Opportunity preparation card → Structured AI interview
-                → Candidate-confirmed observations
+Register → Upload a factual resume → Select or import a target JD
+         → Review readiness → Confirm a tailored resume version
+         → Prepare the application → Practice a structured interview
+         → Confirm observations → Track application outcomes
 ```
 
-Key capabilities include private-JD ownership controls, current/adjacent/stretch career directions, a five-state readiness model, evidence-grounded preparation, structured interview sessions, consent-gated observation writeback, and a Docker Compose deployment with PostgreSQL, Redis, workers, scheduling, Nginx, and health checks.
+The current platform includes private-JD ownership controls, career-direction exploration, requirement-to-evidence mapping, five-state readiness, resume suggestions and versioning, structured interviews, consent-gated observation writeback, application tracking, and a Docker Compose stack with PostgreSQL, Redis, workers, scheduling, and Nginx.
+
+### Employer journey
+
+```text
+Join by invitation → Publish or import a JD → Confirm job requirements
+                   → Review authorized candidates → Human-review screening
+                   → Request clarification or invite → Update application state
+```
+
+QLink does not automate rejection, claim to predict hiring probability, or add hidden prestige scores for schools or former employers.
 
 ### Quick start
 
@@ -114,12 +126,12 @@ Prerequisite: Docker Desktop with Docker Compose.
 
 ```bash
 cp .env.example .env
-# Replace every CHANGE_ME value in .env with a safe local value.
+# Replace every CHANGE_ME value with a safe local-development value.
 make config
 make up
 ```
 
-Open `http://localhost:8080`. Use `http://localhost:8080/?demo=en` for the persistent English showcase mode and `?demo=off` to turn it off.
+Open `http://localhost:8080`. Add `?demo=en` for the persistent English showcase mode and `?demo=off` to disable it.
 
 Without a model API key, the default `MODEL_REQUIRED=false` configuration starts in an explicit `rules_only` mode. The application does not pretend that an AI provider is available.
 
@@ -129,16 +141,31 @@ Without a model API key, the default `MODEL_REQUIRED=false` configuration starts
 make test          # Backend tests + frontend tests, lint, and production build
 make ps            # Service status
 make logs          # Service logs
-make backup        # Consistent database and upload backup
+make backup        # Database and upload backup
 make down          # Stop services without deleting data volumes
 ```
 
-See the [manual acceptance guide](./MANUAL_ACCEPTANCE_GUIDE.md), [fairness baseline](./FAIRNESS_BASELINE_PROTOCOL.md), and [consolidated product and scale plan](./R3_CONSOLIDATED_PRODUCT_AND_SCALE_PLAN.md).
+Read the [bilingual user guide](./docs/USER_GUIDE.md), [security and privacy boundaries](./docs/SECURITY_AND_PRIVACY.md), [manual acceptance guide](./MANUAL_ACCEPTANCE_GUIDE.md), and [product roadmap](./R3_CONSOLIDATED_PRODUCT_AND_SCALE_PLAN.md).
 
 ### Project status
 
-QLink is a runnable pilot Demo, not a production-wide ATS. Payment collection, invoicing, renewals, and authorized external email/ATS outcome integrations remain roadmap work. Automated rejection, hiring-probability claims, and school/company prestige scoring are deliberately out of scope.
+QLink is a runnable pilot Demo, not a production-wide ATS. Payment, invoicing, renewals, and authorized external email or ATS outcome integrations remain roadmap work. Form prefilling and application generation are user-reviewed assistance; unconfirmed automatic submission is outside the current product scope.
 
----
+## Repository structure
 
-Built as an iterative, test-gated AI product engineering project. Issues and focused contributions are welcome; please read [CONTRIBUTING.md](./CONTRIBUTING.md) first.
+```text
+backend/app/       FastAPI routes, domain services, AI gateway, and data models
+backend/tests/     Authorization, idempotency, matching, interview, and regression tests
+frontend/src/      React pages, reusable components, API clients, and UI utilities
+frontend/e2e/      Playwright full-chain browser tests
+docs/              User, agent-integration, security, and privacy documentation
+scripts/           Backup, restore, smoke-test, and acceptance scripts
+```
+
+## License / 许可证
+
+The core platform is licensed under [GNU AGPL v3.0 only](./LICENSE). Organizations that require proprietary deployment, modification, or redistribution may request a separate commercial license; see [commercial licensing](./COMMERCIAL_LICENSE.md).
+
+核心平台采用 [GNU AGPL v3.0-only](./LICENSE)。如企业需要闭源部署、修改或再分发，可以申请独立商业授权，详见[商业授权说明](./COMMERCIAL_LICENSE.md)。
+
+Focused issues are welcome. Because QLink is preparing a dual-licensing path, external code contributions will be merged only after a compatible contributor agreement is published. Please read [CONTRIBUTING.md](./CONTRIBUTING.md) first.

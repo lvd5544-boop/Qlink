@@ -2,6 +2,7 @@
 *.zip
 *~
 .codex_work/
+.cursor/
 .playwright-cli/
 .ruff_cache/
 .split-backup/
@@ -27,6 +28,8 @@ backups/
 # small set of reviewer-facing docs below; historical files already tracked by
 # Git must be removed from the index once with `git rm --cached <file>`.
 CURSOR_*.md
+cursor_*.md
+cursor-*.md
 PR[0-9]*_*.md
 AI_EVIDENCE_INTERVIEW_DATA_DESIGN.md
 MARKET_RESEARCH_AND_CUSTOMER_FIT_REVIEW_*.md
