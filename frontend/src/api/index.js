@@ -5,9 +5,17 @@ const httpBase = import.meta.env?.VITE_API_BASE_URL || '/api';
 
 const api = axios.create({
   baseURL: httpBase,
+  withCredentials: true,
 });
 
-const AUTH_STORAGE_KEYS = ['token', 'role', 'user_id'];
+const AUTH_STORAGE_KEYS = ['token', 'auth_session', 'role', 'user_id'];
+
+export function readCookie(name, cookieString = globalThis.document?.cookie || '') {
+  const prefix = `${encodeURIComponent(name)}=`;
+  const item = cookieString.split(';').map((part) => part.trim())
+    .find((part) => part.startsWith(prefix));
+  return item ? decodeURIComponent(item.slice(prefix.length)) : '';
+}
 
 export function handleUnauthorizedSession(
   error,
@@ -19,7 +27,7 @@ export function handleUnauthorizedSession(
   if (
     status !== 401
     || requestUrl.includes('/auth/login')
-    || !storage.getItem('token')
+    || (!storage.getItem('token') && !storage.getItem('auth_session'))
   ) {
     return false;
   }
@@ -55,6 +63,11 @@ api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  const method = String(config.method || 'get').toUpperCase();
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+    const csrfToken = readCookie('qlink_csrf');
+    if (csrfToken) config.headers['X-CSRF-Token'] = csrfToken;
   }
   return config;
 });

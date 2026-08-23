@@ -109,10 +109,11 @@ export default function Dashboard() {
   const topMatchScore = indicators.top_match_score ?? summary?.top_match_score;
 
   return (
-    <div>
+    <div className="dashboard-page">
       <PageHeader
         title="工作台"
         description="从一个目标岗位开始，完成分析、优化和投递准备"
+        extra={<span className="page-eyebrow">Evidence-led career workspace</span>}
       />
 
       <section className="workflow-hero" aria-labelledby="workflow-hero-title">
@@ -124,7 +125,7 @@ export default function Dashboard() {
             把目标岗位，变成一份更能打的申请方案
           </Typography.Title>
           <Typography.Paragraph>
-            选定岗位和简历，AI 先告诉你“最该做什么”，再带你生成当前可投版本和提升行动。
+            选定岗位和简历，先看清证据、缺口与优先级，再生成由你确认的申请材料和提升行动。
           </Typography.Paragraph>
           <Space wrap size={12} className="workflow-hero-actions">
             <Button
@@ -165,7 +166,7 @@ export default function Dashboard() {
       </section>
 
       <Spin spinning={loading}>
-        <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Row className="dashboard-stat-grid" gutter={[16, 16]} style={{ marginBottom: 24 }}>
           <Col xs={24} sm={8}>
             <Card
               className="stat-card stat-card-accent"
@@ -201,8 +202,12 @@ export default function Dashboard() {
           </Col>
         </Row>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <Text type="secondary">三指标联动（基于最新简历）</Text>
+        <div className="section-heading-row">
+          <div>
+            <span className="section-kicker">Preparation signals</span>
+            <Text strong className="section-title">申请准备状态</Text>
+            <Text type="secondary" className="section-description">基于最新简历，帮助你决定下一步，不代表录取概率</Text>
+          </div>
           <Button size="small" icon={<ReloadOutlined />} onClick={fetchSummary}>刷新</Button>
         </div>
 
@@ -342,9 +347,12 @@ export default function Dashboard() {
 
       <BillingSummaryCard audience="candidate" />
 
-      <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-        快捷入口
-      </Text>
+      <div className="section-heading-row section-heading-row-compact">
+        <div>
+          <span className="section-kicker">Shortcuts</span>
+          <Text strong className="section-title">快捷入口</Text>
+        </div>
+      </div>
       <Row gutter={[16, 16]}>
         {QUICK_ACTIONS.map((action) => (
           <Col xs={24} sm={8} key={action.path}>

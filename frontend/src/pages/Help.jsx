@@ -17,7 +17,7 @@ export default function Help() {
           <Paragraph>进入「上传简历」页面，点击“选择文件并上传”，支持 PDF / Word / TXT 格式。上传后 AI 自动解析并生成结构化画像。</Paragraph>
         </Panel>
         <Panel header="AI 虚拟面试官怎么使用？" key="2">
-          <Paragraph>在「虚拟面试」页面，点击“开始面试”按钮，AI 面试官将引导您多轮对话，了解您的期望职位、薪资、技能等，并自动更新您的简历画像。</Paragraph>
+          <Paragraph>在「虚拟面试」页面，点击“开始面试”按钮，AI 面试官会引导多轮对话并给出建议。面试观察或系统推测不会自动写入简历；只有你明确确认的内容才能成为个人事实。</Paragraph>
         </Panel>
         <Panel header="岗位推荐是如何生成的？" key="3">
           <Paragraph>系统基于您的简历画像（技能、地点、薪资期望等）与平台所有岗位进行智能匹配，按匹配度排序展示。点击“刷新匹配”可获取最新结果。</Paragraph>
@@ -30,6 +30,9 @@ export default function Help() {
         </Panel>
         <Panel header="数据分析与简历诊断" key="6">
           <Paragraph>「数据分析」中公开招聘偏好来自国企/外企岗位 JD；录用画像主要来自 Reddit、V2EX、Hacker News 等公开社区经验帖，经清洗与统计模型（加权频率、Wilson 置信区间）生成结论，不以用户自愿提交为主。请先点击「同步网络经验数据」，再查看统计结论与简历诊断。</Paragraph>
+        </Panel>
+        <Panel header="如何参加试用、提交反馈或删除数据？" key="7">
+          <Paragraph>进入「更多 → 试用与反馈」。你可以分别管理产品研究、汇总指标和模型改进授权，随时退出 pilot，也可以通过明确的二次确认永久删除账号及其关联私有数据。</Paragraph>
         </Panel>
       </Collapse>
     </>

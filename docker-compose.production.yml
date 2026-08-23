@@ -1,0 +1,60 @@
+x-production-logging: &production-logging
+  driver: json-file
+  options:
+    max-size: "${LOG_MAX_SIZE:-10m}"
+    max-file: "${LOG_MAX_FILES:-5}"
+
+services:
+  caddy:
+    image: caddy:2.11.4-alpine
+    restart: unless-stopped
+    environment:
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+    depends_on:
+      frontend:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    security_opt:
+      - no-new-privileges:true
+    logging: *production-logging
+    healthcheck:
+      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  db:
+    logging: *production-logging
+
+  redis:
+    logging: *production-logging
+
+  clamav:
+    logging: *production-logging
+
+  migration:
+    logging: *production-logging
+
+  backend:
+    logging: *production-logging
+
+  scheduler:
+    logging: *production-logging
+
+  worker:
+    logging: *production-logging
+
+  frontend:
+    logging: *production-logging
+
+volumes:
+  caddy_data:
+  caddy_config:

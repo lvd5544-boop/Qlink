@@ -255,13 +255,16 @@ async def test_websocket_query_token_is_disabled_by_default(monkeypatch):
 
     monkeypatch.setenv("WS_ALLOW_QUERY_TOKEN", "true")
     monkeypatch.setenv("ENV", "production")
+    monkeypatch.setenv("AUTH_STATE_BACKEND", "local")
     assert query_token_compatibility_enabled() is False
 
 
 class _FakeWebSocket:
-    def __init__(self, first_message: str, query_params=None):
+    def __init__(self, first_message: str, query_params=None, cookies=None, headers=None):
         self.first_message = first_message
         self.query_params = query_params or {}
+        self.cookies = cookies or {}
+        self.headers = headers or {}
         self.sent: list[str] = []
         self.closed = None
 
@@ -313,6 +316,55 @@ async def test_websocket_rejects_resume_owned_by_another_candidate(
     assert user is None
     assert websocket.closed[0] == 1008
     assert websocket.sent == []
+
+
+async def test_websocket_accepts_httponly_cookie_with_allowed_origin(
+    db_session, candidate_a, resume_a, monkeypatch
+):
+    from app.auth import AUTH_COOKIE_NAME, create_access_token
+    from app.websocket_auth import authenticate_websocket
+
+    monkeypatch.setenv("ENV", "production")
+    monkeypatch.setenv("AUTH_STATE_BACKEND", "local")
+    monkeypatch.setenv("PUBLIC_ORIGIN", "https://jobs.example.test")
+    token = create_access_token({"sub": str(candidate_a.id)})
+    websocket = _FakeWebSocket(
+        json.dumps({"type": "auth", "requested_uses": {"resume_write": True}}),
+        cookies={AUTH_COOKIE_NAME: token},
+        headers={"origin": "https://jobs.example.test"},
+    )
+    user = await authenticate_websocket(
+        websocket,
+        db_session,
+        user_id=str(candidate_a.id),
+        resume_id=str(resume_a.id),
+        application_id=None,
+    )
+    assert user is candidate_a
+    assert websocket.closed is None
+    assert json.loads(websocket.sent[0]) == {"type": "auth_ok"}
+
+
+async def test_websocket_cookie_rejects_cross_origin(db_session, candidate_a, monkeypatch):
+    from app.auth import AUTH_COOKIE_NAME, create_access_token
+    from app.websocket_auth import authenticate_websocket
+
+    monkeypatch.setenv("ENV", "production")
+    monkeypatch.setenv("PUBLIC_ORIGIN", "https://jobs.example.test")
+    websocket = _FakeWebSocket(
+        json.dumps({"type": "auth"}),
+        cookies={AUTH_COOKIE_NAME: create_access_token({"sub": str(candidate_a.id)})},
+        headers={"origin": "https://evil.example"},
+    )
+    user = await authenticate_websocket(
+        websocket,
+        db_session,
+        user_id=str(candidate_a.id),
+        resume_id=None,
+        application_id=None,
+    )
+    assert user is None
+    assert websocket.closed == (1008, "WebSocket 来源无效")
 
 
 async def test_evidence_writeback_requires_untampered_server_fidelity_proof(

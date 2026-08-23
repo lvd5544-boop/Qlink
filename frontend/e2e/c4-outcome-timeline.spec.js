@@ -34,7 +34,7 @@ test('C4 candidate records a sourced external outcome and sees the unified timel
   const email = `cand.c4.timeline.${stamp}@example.com`;
 
   await api('POST', '/auth/register', {
-    body: { email, password: PASSWORD, role: 'candidate' },
+    body: { email, password: PASSWORD, role: 'candidate', terms_accepted: true, privacy_notice_acknowledged: true },
   });
   const login = await api('POST', '/auth/login', {
     body: { email, password: PASSWORD },

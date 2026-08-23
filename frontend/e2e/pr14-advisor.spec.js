@@ -42,7 +42,7 @@ test('PR14 advisor profile, readiness and cited answer', async ({ page }) => {
   const email = `cand.pr14.${stamp}@example.com`;
 
   await api('POST', '/auth/register', {
-    body: { email, password: PASSWORD, role: 'candidate' },
+    body: { email, password: PASSWORD, role: 'candidate', terms_accepted: true, privacy_notice_acknowledged: true },
   });
   const login = await api('POST', '/auth/login', {
     body: { email, password: PASSWORD },

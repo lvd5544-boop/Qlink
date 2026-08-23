@@ -3,6 +3,9 @@
 This guide describes the current pilot Demo. Labels may evolve as the product moves toward production.<br>
 本手册对应当前试点 Demo，产品进入生产阶段时，页面名称和权限可能继续调整。
 
+Before registration, open **Privacy / 隐私说明** and **Terms / 服务条款** from the account page. The deployment operator and monitored contact addresses must be visible. Account creation requires acknowledging each document separately; joining the pilot and allowing model improvement remain later, independent choices.<br>
+注册前，请从账号页面打开 **Privacy / 隐私说明** 和 **Terms / 服务条款**，确认可见真实运营方与联系邮箱。创建账号需要分别确认两份说明；参加试用和允许模型改进仍是后续独立选择。
+
 ## 中文
 
 ### 1. 启动并注册
@@ -71,6 +74,10 @@ This guide describes the current pilot Demo. Labels may evolve as the product mo
 
 系统输出是辅助材料，不应作为自动拒绝或歧视性筛选的唯一依据。
 
+### 9. 账号安全与找回
+
+登录页的“忘记密码”会向已注册邮箱发送短时、一次性重置链接；无论邮箱是否存在，页面都显示相同结果。登录后可在“账号安全”修改密码，成功后当前设备与其他设备都会退出。若部署方尚未配置 SMTP，重置邮件不会发送，请联系试用负责人。
+
 ## English
 
 ### 1. Start and register
@@ -104,3 +111,7 @@ Use Application History to follow status changes, clarification requests, and in
 ### 8. Employer workflow
 
 Join by invitation, publish or import a JD, confirm requirements and hard constraints, review only authorized candidates, human-review system output, then request clarification, invite, or update application state. AI output is assistance and must not become the sole basis for automatic rejection or discriminatory screening.
+
+### 9. Account security and recovery
+
+Use “Forgot password” on the login page to request a short-lived, single-use reset link. The page shows the same result whether or not an account exists. Signed-in users can change their password under Account Security; a successful change signs out every device. Recovery email is unavailable until the operator configures SMTP.

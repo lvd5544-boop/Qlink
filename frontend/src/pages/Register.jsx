@@ -1,4 +1,4 @@
-import { Form, Input, Button, message, Alert } from 'antd';
+import { Form, Input, Button, message, Alert, Checkbox } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { Link, useNavigate } from 'react-router-dom';
 import AuthLayout from '../components/AuthLayout';
@@ -42,6 +42,32 @@ export default function Register() {
           title="公开注册将创建求职者账号；招聘方账号需使用企业邀请码开通。"
           style={{ marginBottom: 16 }}
         />
+        <Form.Item
+          name="privacy_notice_acknowledged"
+          valuePropName="checked"
+          rules={[{
+            validator: (_, checked) => checked
+              ? Promise.resolve()
+              : Promise.reject(new Error('请先阅读并确认隐私说明')),
+          }]}
+        >
+          <Checkbox>
+            我已阅读 <Link to="/privacy" target="_blank">隐私说明 / Privacy Notice</Link>
+          </Checkbox>
+        </Form.Item>
+        <Form.Item
+          name="terms_accepted"
+          valuePropName="checked"
+          rules={[{
+            validator: (_, checked) => checked
+              ? Promise.resolve()
+              : Promise.reject(new Error('请先阅读并同意服务条款')),
+          }]}
+        >
+          <Checkbox>
+            我同意 <Link to="/terms" target="_blank">服务条款 / Terms of Service</Link>
+          </Checkbox>
+        </Form.Item>
         <Form.Item style={{ marginBottom: 12 }}>
           <Button type="primary" htmlType="submit" block>
             注册

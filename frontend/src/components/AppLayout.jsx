@@ -52,10 +52,11 @@ export default function AppLayout({ brandTitle, brandSubtitle, menuItems, role, 
   return (
     <Layout className="app-layout">
       <Sider
+        className="app-sider"
         collapsible
         breakpoint="lg"
         width={240}
-        style={{ background: '#0f172a' }}
+        theme="light"
       >
         <div className="app-sider-logo">
           <div className="app-sider-logo-mark">Q</div>
@@ -65,7 +66,8 @@ export default function AppLayout({ brandTitle, brandSubtitle, menuItems, role, 
           </div>
         </div>
         <Menu
-          theme="dark"
+          className="app-menu"
+          theme="light"
           mode="inline"
           selectedKeys={[location.pathname]}
           defaultOpenKeys={defaultOpenKeys}
@@ -81,7 +83,7 @@ export default function AppLayout({ brandTitle, brandSubtitle, menuItems, role, 
           <Text className="app-header-title">
             {currentPage?.label || brandTitle}
           </Text>
-          <Space>
+          <Space className="app-header-actions">
             {englishDemo && <Tag color="blue">ENGLISH DEMO</Tag>}
             <Text type="secondary" style={{ fontSize: 13 }}>
               <UserOutlined /> {englishDemo

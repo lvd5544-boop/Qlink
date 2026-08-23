@@ -106,7 +106,7 @@ export default function Interview() {
       message.warning('请先选择要追问的简历');
       return;
     }
-    if (!localStorage.getItem('token')) {
+    if (!localStorage.getItem('token') && !localStorage.getItem('auth_session')) {
       message.error('请先登录后再开始面试');
       return;
     }

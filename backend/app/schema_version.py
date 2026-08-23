@@ -26,6 +26,10 @@ EXPECTED_MIGRATIONS = (
     "20260729_pr13_target_job_optimization",
     "20260729_pr14_advisor_profiles",
     "20260731_pr15_screening",
+    "20260813_c5_inference_hypotheses",
+    "20260814_pilot_readiness",
+    "20260815_account_recovery",
+    "20260815_legal_acceptance",
 )
 
 # Alembic version_num is VARCHAR(32); keep short revision ids mapped 1:1.
@@ -46,6 +50,10 @@ LEDGER_TO_ALEMBIC = {
     "20260729_pr13_target_job_optimization": "pr13_target_job",
     "20260729_pr14_advisor_profiles": "pr14_advisor_profiles",
     "20260731_pr15_screening": "pr15_screening",
+    "20260813_c5_inference_hypotheses": "c5_inference_hypotheses",
+    "20260814_pilot_readiness": "pilot_readiness",
+    "20260815_account_recovery": "account_recovery",
+    "20260815_legal_acceptance": "legal_acceptance",
 }
 ALEMBIC_HEAD = LEDGER_TO_ALEMBIC[EXPECTED_MIGRATIONS[-1]]
 

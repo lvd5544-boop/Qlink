@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { getWsBaseUrl, handleUnauthorizedSession } from './index.js';
+import { getWsBaseUrl, handleUnauthorizedSession, readCookie } from './index.js';
 
 
 test('production default WebSocket URL stays on the current origin', () => {
@@ -20,7 +20,7 @@ test('production default WebSocket URL stays on the current origin', () => {
 
 test('expired authenticated session is cleared and redirected to login', () => {
   const values = new Map([
-    ['token', 'expired-token'],
+    ['auth_session', '1'],
     ['role', 'candidate'],
     ['user_id', 'candidate-1'],
   ]);
@@ -43,10 +43,16 @@ test('expired authenticated session is cleared and redirected to login', () => {
 
   assert.equal(handled, true);
   assert.equal(values.has('token'), false);
+  assert.equal(values.has('auth_session'), false);
   assert.equal(
     assigned,
     '/login?reason=session_expired&returnTo=%2Fcandidate%2Fupload-resume',
   );
+});
+
+test('CSRF cookie parsing is exact and URL decoded', () => {
+  assert.equal(readCookie('qlink_csrf', 'other=x; qlink_csrf=a%2Bb; qlink_csrf_old=no'), 'a+b');
+  assert.equal(readCookie('missing', 'qlink_csrf=value'), '');
 });
 
 test('login failure does not trigger the expired-session redirect', () => {

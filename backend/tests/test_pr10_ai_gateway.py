@@ -47,6 +47,10 @@ def test_pr10_migration_registered_and_reversible():
         "pr13_target_job",
         "pr14_advisor_profiles",
         "pr15_screening",
+        "c5_inference_hypotheses",
+        "pilot_readiness",
+        "account_recovery",
+        "legal_acceptance",
     }
     assert len(ALEMBIC_HEAD) <= 32
     assert set(LEDGER_TO_ALEMBIC) == set(EXPECTED_MIGRATIONS)
@@ -368,6 +372,7 @@ async def test_public_ready_exposes_safe_model_mode_for_banner(client, monkeypat
                     "mode": "rules_only",
                     "required": False,
                     "ai_enabled": True,
+                    "reason": "api_key_missing",
                 }
             },
         }
@@ -378,4 +383,5 @@ async def test_public_ready_exposes_safe_model_mode_for_banner(client, monkeypat
     payload = response.json()
     assert payload["model_mode"] == "rules_only"
     assert payload["checks"]["model"]["mode"] == "rules_only"
+    assert payload["checks"]["model"]["reason"] == "configuration_missing"
     assert "api_key" not in json.dumps(payload).lower()

@@ -8,6 +8,10 @@ import { demoText, syncDemoModeFromLocation } from './utils/demoMode';
 
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const LegalNotice = lazy(() => import('./pages/LegalNotice'));
+const AccountSecurity = lazy(() => import('./pages/AccountSecurity'));
 const Help = lazy(() => import('./pages/Help'));
 const CandidateDashboard = lazy(() => import('./pages/Candidate/Dashboard'));
 const UploadResume = lazy(() => import('./pages/Candidate/UploadResume'));
@@ -31,6 +35,7 @@ const AdminDataSources = lazy(() => import('./pages/Admin/DataSources'));
 const CareerPassport = lazy(() => import('./pages/Candidate/CareerPassport'));
 const EvidenceVault = lazy(() => import('./pages/Candidate/EvidenceVault'));
 const Advisor = lazy(() => import('./pages/Candidate/Advisor'));
+const PilotHub = lazy(() => import('./pages/Candidate/PilotHub'));
 
 function RouteFallback() {
   return (
@@ -54,6 +59,10 @@ function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/privacy" element={<LegalNotice kind="privacy" />} />
+          <Route path="/terms" element={<LegalNotice kind="terms" />} />
 
           <Route
             path="/candidate"
@@ -75,7 +84,9 @@ function App() {
             <Route path="career-passport" element={<CareerPassport />} />
             <Route path="evidence-vault" element={<EvidenceVault />} />
             <Route path="advisor" element={<Advisor />} />
+            <Route path="pilot" element={<PilotHub />} />
             <Route path="help" element={<Help />} />
+            <Route path="security" element={<AccountSecurity />} />
           </Route>
 
           <Route
@@ -96,6 +107,7 @@ function App() {
             <Route path="applications" element={<ApplicationCenter />} />
             <Route path="screening" element={<Screening />} />
             <Route path="help" element={<Help />} />
+            <Route path="security" element={<AccountSecurity />} />
           </Route>
 
           <Route

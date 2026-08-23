@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi import WebSocket
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .auth import get_user_from_token
+from .auth import AUTH_COOKIE_NAME, get_user_from_token
 from .models_db import JobApplication, Resume, User
 
 
@@ -40,37 +40,53 @@ async def authenticate_websocket(
     """Authenticate before any interview payload and validate bound resources."""
     token = ""
     requested_uses = {}
-    if query_token_compatibility_enabled():
-        token = websocket.query_params.get("token") or ""
-
-    if not token:
-        try:
-            raw = await asyncio.wait_for(
-                websocket.receive_text(),
-                timeout=max(
-                    1.0,
-                    float(os.getenv("WS_AUTH_TIMEOUT_SECONDS", "10")),
-                ),
+    try:
+        raw = await asyncio.wait_for(
+            websocket.receive_text(),
+            timeout=max(
+                1.0,
+                float(os.getenv("WS_AUTH_TIMEOUT_SECONDS", "10")),
+            ),
+        )
+        payload = json.loads(raw)
+    except Exception:
+        await _close_unauthorized(websocket, "鉴权超时或消息无效")
+        return None
+    if not isinstance(payload, dict) or payload.get("type") != "auth":
+        await _close_unauthorized(websocket, "首条消息必须为鉴权消息")
+        return None
+    token = str(payload.get("token") or "")
+    raw_uses = payload.get("requested_uses")
+    if isinstance(raw_uses, dict):
+        requested_uses = {
+            key: raw_uses.get(key) is True
+            for key in (
+                "resume_write",
+                "job_recommendation",
+                "employer_share",
+                "model_improvement",
             )
-            payload = json.loads(raw)
-        except Exception:
-            await _close_unauthorized(websocket, "鉴权超时或消息无效")
+        }
+
+    if not token and query_token_compatibility_enabled():
+        token = websocket.query_params.get("token") or ""
+    cookie_token = getattr(websocket, "cookies", {}).get(AUTH_COOKIE_NAME, "")
+    if not token and cookie_token:
+        origin = getattr(websocket, "headers", {}).get("origin", "")
+        configured = {
+            value.strip().rstrip("/")
+            for value in os.getenv("CORS_ORIGINS", "").split(",")
+            if value.strip()
+        }
+        public_origin = os.getenv("PUBLIC_ORIGIN", "").strip().rstrip("/")
+        if public_origin:
+            configured.add(public_origin)
+        if os.getenv("ENV", "development").strip().lower() == "production" and (
+            not origin or origin.rstrip("/") not in configured
+        ):
+            await _close_unauthorized(websocket, "WebSocket 来源无效")
             return None
-        if not isinstance(payload, dict) or payload.get("type") != "auth":
-            await _close_unauthorized(websocket, "首条消息必须为鉴权消息")
-            return None
-        token = str(payload.get("token") or "")
-        raw_uses = payload.get("requested_uses")
-        if isinstance(raw_uses, dict):
-            requested_uses = {
-                key: raw_uses.get(key) is True
-                for key in (
-                    "resume_write",
-                    "job_recommendation",
-                    "employer_share",
-                    "model_improvement",
-                )
-            }
+        token = cookie_token
 
     user = await get_user_from_token(token, db)
     if user is None or str(user.id) != str(user_id) or user.role != "candidate":
@@ -84,6 +100,7 @@ async def authenticate_websocket(
             await _close_unauthorized(websocket, "简历不存在或无权访问")
             return None
 
+    application = None
     if application_id:
         application = await db.get(JobApplication, str(application_id))
         if not application or str(application.candidate_id) != str(user.id):
@@ -94,7 +111,7 @@ async def authenticate_websocket(
         requested_uses["employer_share"] = False
     if hasattr(websocket, "state"):
         websocket.state.interview_requested_uses = requested_uses
-        if resume_id and str(application.resume_id) != str(resume_id):
+        if resume_id and application and str(application.resume_id) != str(resume_id):
             await _close_unauthorized(websocket, "简历与申请不一致")
             return None
 

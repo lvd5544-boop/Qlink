@@ -47,7 +47,7 @@ test('career passport and evidence vault candidate UI', async ({ page }) => {
   const email = `cand.pr11.${stamp}@example.com`;
 
   await api('POST', '/auth/register', {
-    body: { email, password: PASSWORD, role: 'candidate' },
+    body: { email, password: PASSWORD, role: 'candidate', terms_accepted: true, privacy_notice_acknowledged: true },
   });
   const login = await api('POST', '/auth/login', {
     body: { email, password: PASSWORD },

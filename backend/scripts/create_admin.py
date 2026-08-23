@@ -24,6 +24,7 @@ async def create_admin(email: str, password: str) -> str:
         else:
             row.password_hash = get_password_hash(password)
             row.role = "admin"
+            row.session_version = int(row.session_version or 1) + 1
             action = "updated"
         await session.commit()
         return action

@@ -5,6 +5,7 @@ import {
   FileDoneOutlined,
   RocketOutlined,
 } from '@ant-design/icons';
+import { Link } from 'react-router-dom';
 
 const { Title, Paragraph } = Typography;
 
@@ -18,6 +19,12 @@ export default function AuthLayout({ title, subtitle, children }) {
   return (
     <div className="auth-page">
       <div className="auth-brand">
+        <div className="auth-art-grid" aria-hidden="true">
+          <span className="auth-art-block auth-art-block-cobalt" />
+          <span className="auth-art-block auth-art-block-mint" />
+          <span className="auth-art-block auth-art-block-coral" />
+          <span className="auth-art-line" />
+        </div>
         <div className="auth-brand-kicker"><RocketOutlined /> QLink AI 求职工作流</div>
         <Title level={1}>从岗位要求到可投版本，<br />一条主线完成</Title>
         <Paragraph className="auth-brand-description">
@@ -55,6 +62,11 @@ export default function AuthLayout({ title, subtitle, children }) {
             )}
           </div>
           {children}
+          <div style={{ textAlign: 'center', marginTop: 20, fontSize: 12 }}>
+            <Link to="/privacy">隐私说明 / Privacy</Link>
+            <span aria-hidden="true"> · </span>
+            <Link to="/terms">服务条款 / Terms</Link>
+          </div>
         </Card>
       </div>
     </div>

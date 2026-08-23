@@ -57,12 +57,20 @@ def test_expected_migrations_include_pr10_and_match_alembic_head():
     assert "20260729_pr13_target_job_optimization" in EXPECTED_MIGRATIONS
     assert "20260729_pr14_advisor_profiles" in EXPECTED_MIGRATIONS
     assert "20260731_pr15_screening" in EXPECTED_MIGRATIONS
+    assert "20260813_c5_inference_hypotheses" in EXPECTED_MIGRATIONS
+    assert "20260814_pilot_readiness" in EXPECTED_MIGRATIONS
+    assert "20260815_account_recovery" in EXPECTED_MIGRATIONS
+    assert "20260815_legal_acceptance" in EXPECTED_MIGRATIONS
     assert LEDGER_TO_ALEMBIC["20260728_pr10_ai_gateway_data_sources"] == "pr10_ai_gateway"
     assert LEDGER_TO_ALEMBIC["20260729_pr11_idempotency_storage"] == "pr11_idempotency"
     assert LEDGER_TO_ALEMBIC["20260729_pr13_target_job_optimization"] == "pr13_target_job"
     assert LEDGER_TO_ALEMBIC["20260729_pr14_advisor_profiles"] == "pr14_advisor_profiles"
     assert LEDGER_TO_ALEMBIC["20260731_pr15_screening"] == "pr15_screening"
-    assert ALEMBIC_HEAD == "pr15_screening"
+    assert LEDGER_TO_ALEMBIC["20260813_c5_inference_hypotheses"] == "c5_inference_hypotheses"
+    assert LEDGER_TO_ALEMBIC["20260814_pilot_readiness"] == "pilot_readiness"
+    assert LEDGER_TO_ALEMBIC["20260815_account_recovery"] == "account_recovery"
+    assert LEDGER_TO_ALEMBIC["20260815_legal_acceptance"] == "legal_acceptance"
+    assert ALEMBIC_HEAD == "legal_acceptance"
     assert len(ALEMBIC_HEAD) <= 32
     assert set(LEDGER_TO_ALEMBIC) == set(EXPECTED_MIGRATIONS)
     assert all(len(v) <= 32 for v in LEDGER_TO_ALEMBIC.values())

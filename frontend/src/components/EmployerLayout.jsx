@@ -7,6 +7,7 @@ import {
   SolutionOutlined,
   FilterOutlined,
   QuestionCircleOutlined,
+  LockOutlined,
 } from '@ant-design/icons';
 import api from '../api';
 import AppLayout from './AppLayout';
@@ -18,6 +19,7 @@ const BASE_MENU = [
   { key: '/employer/applications', icon: <SolutionOutlined />, label: '申请与审阅', badgeKey: 'inbox' },
   { key: '/employer/screening', icon: <FilterOutlined />, label: '批筛复核' },
   { key: '/employer/help', icon: <QuestionCircleOutlined />, label: '帮助' },
+  { key: '/employer/security', icon: <LockOutlined />, label: '账号安全' },
 ];
 
 export default function EmployerLayout() {

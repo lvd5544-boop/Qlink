@@ -16,6 +16,19 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SOURCE="$(cd "$1" && pwd)"
 cd "$ROOT"
 
+if [[ -f "$SOURCE/STATUS" ]] && [[ "$(tr -d '[:space:]' <"$SOURCE/STATUS")" != "complete" ]]; then
+  echo "Refusing an incomplete backup: $SOURCE" >&2
+  exit 1
+fi
+
+if [[ ! -f "$SOURCE/evidence-vault.tar.gz" ]] && \
+   [[ "${ALLOW_LEGACY_BACKUP_WITHOUT_EVIDENCE_VAULT:-}" != "I_ACCEPT_MISSING_EVIDENCE" ]]; then
+  echo "This legacy backup has no evidence-vault archive." >&2
+  echo "Restore is blocked to prevent silent evidence loss." >&2
+  echo "If that loss is understood, set ALLOW_LEGACY_BACKUP_WITHOUT_EVIDENCE_VAULT=I_ACCEPT_MISSING_EVIDENCE." >&2
+  exit 2
+fi
+
 compose() {
   local args=(docker compose)
   if [[ -n "${COMPOSE_ENV_FILE:-}" ]]; then
@@ -43,6 +56,13 @@ compose run --rm --no-deps backend \
   sh -c "find /data/uploads -mindepth 1 -delete"
 compose run --rm --no-deps -T backend \
   tar -C /data/uploads -xzf - <"$SOURCE/uploads.tar.gz"
+
+compose run --rm --no-deps backend \
+  sh -c "find /data/evidence-vault -mindepth 1 -delete"
+if [[ -f "$SOURCE/evidence-vault.tar.gz" ]]; then
+  compose run --rm --no-deps -T backend \
+    tar -C /data/evidence-vault -xzf - <"$SOURCE/evidence-vault.tar.gz"
+fi
 
 compose up -d migration backend worker scheduler
 

@@ -24,8 +24,8 @@ jobs:
       E2E_BASE_URL: http://localhost:8080
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: npm
@@ -65,7 +65,7 @@ jobs:
 
       - name: Upload Playwright and Docker evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: core-user-flow-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           if-no-files-found: warn

@@ -46,13 +46,13 @@ test('PR15 employer screening layered results without risk score', async ({ page
   const candidateEmail = `cand.pr15.${stamp}@example.com`;
 
   await api('POST', '/auth/register-employer', {
-    body: { email: employerEmail, password: PASSWORD, invite_code: INVITE },
+    body: { email: employerEmail, password: PASSWORD, invite_code: INVITE, terms_accepted: true, privacy_notice_acknowledged: true },
   });
   const employerLogin = await api('POST', '/auth/login', {
     body: { email: employerEmail, password: PASSWORD },
   });
   await api('POST', '/auth/register', {
-    body: { email: candidateEmail, password: PASSWORD, role: 'candidate' },
+    body: { email: candidateEmail, password: PASSWORD, role: 'candidate', terms_accepted: true, privacy_notice_acknowledged: true },
   });
   const candidateLogin = await api('POST', '/auth/login', {
     body: { email: candidateEmail, password: PASSWORD },

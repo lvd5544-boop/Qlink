@@ -10,15 +10,23 @@ export default function Login() {
   const [searchParams] = useSearchParams();
 
   useEffect(() => {
-    if (searchParams.get('reason') === 'session_expired') {
+    const reason = searchParams.get('reason');
+    if (reason === 'session_expired') {
       message.warning('登录已过期，请重新登录后继续');
+    } else if (reason === 'account_deleted') {
+      message.success('账号及关联私有数据已删除');
+    } else if (reason === 'password_reset') {
+      message.success('密码已重置，请使用新密码登录');
+    } else if (reason === 'password_changed') {
+      message.success('密码已修改，所有设备已退出，请重新登录');
     }
   }, [searchParams]);
 
   const onFinish = async (values) => {
     try {
       const res = await api.post('/auth/login', values);
-      localStorage.setItem('token', res.data.access_token);
+      localStorage.removeItem('token');
+      localStorage.setItem('auth_session', '1');
       localStorage.setItem('role', res.data.role);
       localStorage.setItem('user_id', res.data.user_id);
       message.success('登录成功');
@@ -53,6 +61,9 @@ export default function Login() {
             登录
           </Button>
         </Form.Item>
+        <div style={{ textAlign: 'right', marginBottom: 16 }}>
+          <Link to="/forgot-password">忘记密码？</Link>
+        </div>
       </Form>
       <div style={{ textAlign: 'center', color: '#64748b' }}>
         还没有账号？ <Link to="/register">立即注册</Link>

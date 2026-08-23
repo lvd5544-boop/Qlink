@@ -50,6 +50,18 @@ test('the first websocket payload is an explicit auth envelope', () => {
   );
 });
 
+test('cookie-authenticated websocket never exposes a token in its first message', () => {
+  assert.deepEqual(JSON.parse(buildWebSocketAuthMessage('', {})), {
+    type: 'auth',
+    requested_uses: {
+      resume_write: false,
+      job_recommendation: false,
+      employer_share: false,
+      model_improvement: false,
+    },
+  });
+});
+
 test('fair-use websocket errors are structured and user-readable', () => {
   const control = parseInterviewControlMessage(JSON.stringify({
     type: 'error',

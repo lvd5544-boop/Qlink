@@ -38,6 +38,7 @@ QLink 的核心原则是：**AI 可以整理、建议和预填，但不能编造
 - 面向目标岗位的简历建议和版本管理；
 - 结构化 AI 面试与用户确认后的观察结果写回；
 - 求职申请、澄清、邀请和状态记录；
+- HttpOnly 浏览器会话、CSRF 防护、一次性密码找回与全设备会话失效；
 - PostgreSQL、Redis、Worker、Scheduler、Nginx 组成的 Docker Compose 运行栈。
 
 ### 招聘方主流程
@@ -77,14 +78,27 @@ make evaluate-ranking # 离线复现固定排序评测集
 make evaluate-hypotheses # 离线复现 C5 合成假设边界评测
 make ps            # 查看服务状态
 make logs          # 查看服务日志
-make backup        # 备份数据库和上传文件
+make backup        # 备份数据库、上传文件和 Evidence Vault
 make down          # 停止服务并保留数据卷
 ```
+
+使用真实域名部署前，复制 `.env.production.example`，设置仅服务器可读的生产密钥，然后运行：
+
+```bash
+chmod 600 .env.production
+make production-preflight PRODUCTION_ENV_FILE=.env.production
+make production-up PRODUCTION_ENV_FILE=.env.production
+make production-go-live-preflight PRODUCTION_ENV_FILE=.env.production
+```
+
+生产覆盖使用 Caddy 自动申请 HTTPS，并只把内部应用端口绑定到本机。普通预检验证服务可安全部署；独立的 go-live 预检会在 SMTP、异地备份、恢复演练、监控告警送达和法律复核未确认时阻止邀请真实用户。完整 DNS、防火墙、备份和回滚步骤见[生产部署指南](./docs/PRODUCTION_DEPLOYMENT.md)。
 
 进一步阅读：
 
 - [用户手册（中英文）](./docs/USER_GUIDE.md)
 - [安全、隐私与 AI 边界](./docs/SECURITY_AND_PRIVACY.md)
+- [生产部署指南](./docs/PRODUCTION_DEPLOYMENT.md)
+- [备份与恢复演练](./docs/BACKUP_AND_RESTORE.md)
 - [人工验收指南](./MANUAL_ACCEPTANCE_GUIDE.md)
 - [公平性基线](./FAIRNESS_BASELINE_PROTOCOL.md)
 - [排序评测、指标与失败案例](./docs/EVALUATION.md)
@@ -97,6 +111,8 @@ make down          # 停止服务并保留数据卷
 ### 项目状态
 
 QLink 当前是可运行的试点 Demo，不是已经上线的全功能 ATS。支付、发票、自动续费，以及经过授权的外部邮件和 ATS 结果集成仍在路线图中。自动填表与申请材料生成只能作为用户确认前的辅助；未经确认的自动投递不属于当前产品范围。
+
+真实用户注册入口包含公开双语隐私说明与服务条款、独立确认及版本化接受记录。部署前仍必须填写真实运营主体与联系邮箱，并按适用地区完成法律审查、外部处理方披露和数据保留决策。
 
 ---
 
@@ -119,7 +135,7 @@ Register → Upload a factual resume → Select or import a target JD
          → Confirm observations → Track application outcomes
 ```
 
-The current platform includes private-JD ownership controls, career-direction exploration, requirement-to-evidence mapping, five-state readiness, resume suggestions and versioning, structured interviews, consent-gated observation writeback, application tracking, and a Docker Compose stack with PostgreSQL, Redis, workers, scheduling, and Nginx.
+The current platform includes private-JD ownership controls, career-direction exploration, requirement-to-evidence mapping, five-state readiness, resume suggestions and versioning, structured interviews, consent-gated observation writeback, application tracking, HttpOnly browser sessions with CSRF protection, one-time password recovery, global session invalidation, and a Docker Compose stack with PostgreSQL, Redis, workers, scheduling, and Nginx.
 
 ### Employer journey
 
@@ -154,15 +170,28 @@ make evaluate-ranking # Reproduce the fixed offline ranking evaluation
 make evaluate-hypotheses # Reproduce the isolated C5 synthetic hypothesis checks
 make ps            # Service status
 make logs          # Service logs
-make backup        # Database and upload backup
+make backup        # Database, uploads, and Evidence Vault backup
 make down          # Stop services without deleting data volumes
 ```
 
-Read the [bilingual user guide](./docs/USER_GUIDE.md), [five-minute case study](./docs/PROJECT_CASE_STUDY.md), [ranking evaluation and failure cases](./docs/EVALUATION.md), [hypothesis evaluation](./docs/HYPOTHESIS_EVALUATION.md), [C6 consented pilot protocol](./docs/C6_PILOT_PROTOCOL.md), [independent annotation protocol](./docs/RANKING_ANNOTATION_PROTOCOL.md), [security and privacy boundaries](./docs/SECURITY_AND_PRIVACY.md), [manual acceptance guide](./MANUAL_ACCEPTANCE_GUIDE.md), and [product roadmap](./R3_CONSOLIDATED_PRODUCT_AND_SCALE_PLAN.md).
+Before deploying a real domain, copy `.env.production.example`, install server-only production secrets, and run:
+
+```bash
+chmod 600 .env.production
+make production-preflight PRODUCTION_ENV_FILE=.env.production
+make production-up PRODUCTION_ENV_FILE=.env.production
+make production-go-live-preflight PRODUCTION_ENV_FILE=.env.production
+```
+
+The production override uses Caddy for automatic HTTPS and keeps the internal application port on loopback. The normal preflight validates deployability; the separate go-live preflight blocks real-user invitations until SMTP, off-host backup, restore rehearsal, delivered monitoring alerts, and legal review are explicitly confirmed. Follow the [production deployment guide](./docs/PRODUCTION_DEPLOYMENT.md) for DNS, firewall, backup, verification, and rollback.
+
+Read the [bilingual user guide](./docs/USER_GUIDE.md), [production deployment guide](./docs/PRODUCTION_DEPLOYMENT.md), [backup and restore guide](./docs/BACKUP_AND_RESTORE.md), [five-minute case study](./docs/PROJECT_CASE_STUDY.md), [ranking evaluation and failure cases](./docs/EVALUATION.md), [hypothesis evaluation](./docs/HYPOTHESIS_EVALUATION.md), [C6 consented pilot protocol](./docs/C6_PILOT_PROTOCOL.md), [independent annotation protocol](./docs/RANKING_ANNOTATION_PROTOCOL.md), [security and privacy boundaries](./docs/SECURITY_AND_PRIVACY.md), [manual acceptance guide](./MANUAL_ACCEPTANCE_GUIDE.md), and [product roadmap](./R3_CONSOLIDATED_PRODUCT_AND_SCALE_PLAN.md).
 
 ### Project status
 
 QLink is a runnable pilot Demo, not a production-wide ATS. Payment, invoicing, renewals, and authorized external email or ATS outcome integrations remain roadmap work. Form prefilling and application generation are user-reviewed assistance; unconfirmed automatic submission is outside the current product scope.
+
+The real-user registration gate includes public bilingual privacy and terms notices, separate acknowledgements, and versioned acceptance evidence. Before deployment, the operator must still supply real identity/contact details and complete jurisdiction-specific legal, processor-disclosure, and retention review.
 
 ## Repository structure
 

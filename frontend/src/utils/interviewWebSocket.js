@@ -90,7 +90,7 @@ export function interviewControlMessageText(control) {
 export function buildWebSocketAuthMessage(token, requestedUses = {}) {
   return JSON.stringify({
     type: 'auth',
-    token: token || '',
+    ...(token ? { token } : {}),
     requested_uses: {
       resume_write: requestedUses.resume_write === true,
       job_recommendation: requestedUses.job_recommendation === true,

@@ -14,6 +14,8 @@ import {
   SafetyCertificateOutlined,
   QuestionCircleOutlined,
   RocketOutlined,
+  ExperimentOutlined,
+  LockOutlined,
 } from '@ant-design/icons';
 import api from '../api';
 import AppLayout from './AppLayout';
@@ -30,6 +32,11 @@ const buildBaseMenu = (englishDemo) => [
         <span className="featured-menu-badge">{englishDemo ? 'CORE' : '主推'}</span>
       </span>
     ),
+  },
+  {
+    key: '/candidate/pilot',
+    icon: <ExperimentOutlined />,
+    label: englishDemo ? 'Pilot & Feedback' : '试用引导与反馈',
   },
   {
     key: 'target-job',
@@ -68,6 +75,7 @@ const buildBaseMenu = (englishDemo) => [
       { key: '/candidate/evidence-vault', icon: <SafetyCertificateOutlined />, label: englishDemo ? 'Evidence Vault' : '补充材料（可选）' },
       { key: '/candidate/analytics', icon: <BarChartOutlined />, label: englishDemo ? 'Market Signals' : '市场参考' },
       { key: '/candidate/help', icon: <QuestionCircleOutlined />, label: englishDemo ? 'Help' : '帮助' },
+      { key: '/candidate/security', icon: <LockOutlined />, label: englishDemo ? 'Account Security' : '账号安全' },
     ],
   },
 ];

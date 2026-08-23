@@ -39,9 +39,116 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=True)
     password_hash = Column(String(128), nullable=True)  # 新增
     role = Column(String(20), default="candidate")  # 新增，默认求职者
+    session_version = Column(Integer, nullable=False, default=1, server_default="1")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     resumes = relationship("Resume", back_populates="user")
+
+
+class PasswordResetToken(Base):
+    """Hashed, single-use password recovery token."""
+
+    __tablename__ = "password_reset_tokens"
+    __table_args__ = (
+        Index("ix_password_reset_user_created", "user_id", "created_at"),
+        Index("ix_password_reset_expires", "expires_at"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    token_hash = Column(String(64), unique=True, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class LegalAcceptance(Base):
+    """Append-only proof of the notices accepted when an account is created."""
+
+    __tablename__ = "legal_acceptances"
+    __table_args__ = (Index("ix_legal_acceptance_user_created", "user_id", "accepted_at"),)
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    terms_version = Column(String(32), nullable=False)
+    privacy_notice_version = Column(String(32), nullable=False)
+    notice_snapshot = Column(JSON, nullable=False, default=dict)
+    accepted_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class PilotParticipant(Base):
+    """De-identified pilot identity kept separate from the user's email."""
+
+    __tablename__ = "pilot_participants"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('active', 'withdrawn')",
+            name="ck_pilot_participant_status",
+        ),
+        Index("ix_pilot_participant_status", "status", "created_at"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    participant_code = Column(
+        String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4())
+    )
+    status = Column(String(20), nullable=False, default="active")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    withdrawn_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class PilotConsent(Base):
+    """Append-only history of versioned pilot consent decisions."""
+
+    __tablename__ = "pilot_consents"
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('accepted', 'updated', 'withdrawn')",
+            name="ck_pilot_consent_action",
+        ),
+        Index("ix_pilot_consent_participant_created", "participant_id", "created_at"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    participant_id = Column(
+        String(36), ForeignKey("pilot_participants.id", ondelete="CASCADE"), nullable=False
+    )
+    consent_version = Column(String(32), nullable=False)
+    action = Column(String(20), nullable=False)
+    product_research = Column(Boolean, nullable=False, default=True)
+    aggregate_metrics = Column(Boolean, nullable=False, default=False)
+    model_improvement = Column(Boolean, nullable=False, default=False)
+    notice_snapshot = Column(JSON, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class PilotFeedback(Base):
+    """Pilot feedback linked only to a de-identified participant record."""
+
+    __tablename__ = "pilot_feedback"
+    __table_args__ = (
+        CheckConstraint(
+            "category IN ('usability', 'trust', 'recommendation', 'bug', 'other')",
+            name="ck_pilot_feedback_category",
+        ),
+        CheckConstraint("rating >= 1 AND rating <= 5", name="ck_pilot_feedback_rating"),
+        Index("ix_pilot_feedback_participant_created", "participant_id", "created_at"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    participant_id = Column(
+        String(36), ForeignKey("pilot_participants.id", ondelete="CASCADE"), nullable=False
+    )
+    category = Column(String(32), nullable=False)
+    rating = Column(Integer, nullable=False)
+    context = Column(String(160), nullable=False, default="pilot_hub")
+    message = Column(Text, nullable=False)
+    allow_follow_up = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class Organization(Base):

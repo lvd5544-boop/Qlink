@@ -12,12 +12,19 @@ export REDIS_URL="${REDIS_URL:-redis://127.0.0.1:6379/0}"
 export REQUIRE_SCHEMA_VERSION="${REQUIRE_SCHEMA_VERSION:-1}"
 export ENV="${ENV:-production}"
 export SECRET_KEY="${SECRET_KEY:-ci-only-access-secret-at-least-32-bytes}"
+export AUTH_COOKIE_SECURE="${AUTH_COOKIE_SECURE:-false}"
 export FIDELITY_PROOF_SECRET_KEY="${FIDELITY_PROOF_SECRET_KEY:-ci-only-proof-secret-at-least-32-bytes}"
 export CORS_ORIGINS="${CORS_ORIGINS:-http://127.0.0.1:4173}"
 export MODEL_REQUIRED=false
 # E2E must be deterministic and must not consume a developer's provider key
 # from backend/.env. The parser has a rules-only fallback for this exact mode.
 export DEEPSEEK_API_KEY=""
+# Browser tests must never inherit local SMTP credentials from backend/.env or
+# send messages to synthetic addresses.
+export SMTP_HOST=""
+export SMTP_USERNAME=""
+export SMTP_PASSWORD=""
+export SMTP_FROM=""
 export REQUIRE_BACKGROUND_HEARTBEATS=false
 export EMPLOYER_INVITE_CODE="${EMPLOYER_INVITE_CODE:-e2e-employer-invite}"
 export E2E_API_ORIGIN="${E2E_API_ORIGIN:-http://127.0.0.1:8000}"

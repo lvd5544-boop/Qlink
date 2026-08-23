@@ -132,6 +132,31 @@ def test_backup_restore_use_database_identity_from_container():
         assert "${POSTGRES_DB:-jobplatform}" not in script
 
 
+def test_backup_is_private_complete_and_includes_evidence_vault():
+    root = Path(__file__).resolve().parents[2]
+    backup = (root / "scripts" / "backup.sh").read_text(encoding="utf-8")
+
+    assert "umask 077" in backup
+    assert "printf 'incomplete\\n' >\"$TARGET/STATUS\"" in backup
+    assert "printf 'complete\\n' >\"$TARGET/STATUS\"" in backup
+    assert "tar -C /data/evidence-vault -czf - ." in backup
+    assert "evidence-vault.tar.gz" in backup
+    assert "FORMAT_VERSION" in backup
+
+
+def test_restore_fails_closed_for_incomplete_or_legacy_evidence_backup():
+    root = Path(__file__).resolve().parents[2]
+    restore = (root / "scripts" / "restore.sh").read_text(encoding="utf-8")
+
+    checksum_check = restore.index("shasum -a 256 -c SHA256SUMS")
+    service_stop = restore.index("compose stop backend worker scheduler")
+    assert checksum_check < service_stop
+    assert "Refusing an incomplete backup" in restore
+    assert "ALLOW_LEGACY_BACKUP_WITHOUT_EVIDENCE_VAULT" in restore
+    assert "find /data/evidence-vault -mindepth 1 -delete" in restore
+    assert "tar -C /data/evidence-vault -xzf -" in restore
+
+
 def test_restore_recreates_proxy_and_checks_public_readiness():
     root = Path(__file__).resolve().parents[2]
     restore = (root / "scripts" / "restore.sh").read_text(encoding="utf-8")
@@ -139,6 +164,40 @@ def test_restore_recreates_proxy_and_checks_public_readiness():
     assert "compose up -d --force-recreate frontend" in restore
     assert "http://127.0.0.1/api/ready" in restore
     assert 'if [[ "$ready" != "true" ]]' in restore
+
+
+def test_frontend_proxy_sets_browser_security_and_private_api_headers():
+    root = Path(__file__).resolve().parents[2]
+    nginx = (root / "frontend" / "nginx.conf").read_text(encoding="utf-8")
+
+    for header in (
+        "Content-Security-Policy",
+        "X-Content-Type-Options",
+        "X-Frame-Options",
+        "Referrer-Policy",
+        "Permissions-Policy",
+    ):
+        assert f"add_header {header}" in nginx
+    assert "frame-ancestors 'none'" in nginx
+    assert "connect-src 'self' ws: wss:" in nginx
+    assert 'add_header Cache-Control "no-store" always;' in nginx
+
+
+def test_production_edge_uses_automatic_https_and_keeps_app_port_private():
+    root = Path(__file__).resolve().parents[2]
+    base_compose = (root / "docker-compose.yml").read_text(encoding="utf-8")
+    production = (root / "docker-compose.production.yml").read_text(encoding="utf-8")
+    caddy = (root / "deploy" / "Caddyfile").read_text(encoding="utf-8")
+
+    assert "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8080}:80" in base_compose
+    assert "caddy:2.11.4-alpine" in production
+    assert '"80:80"' in production
+    assert '"443:443"' in production
+    assert "no-new-privileges:true" in production
+    assert "{$PUBLIC_DOMAIN}" in caddy
+    assert "reverse_proxy frontend:80" in caddy
+    assert "Strict-Transport-Security" in caddy
+    assert "format json" in caddy
 
 
 def test_example_env_does_not_fake_model_configuration():

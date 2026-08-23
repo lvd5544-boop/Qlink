@@ -19,6 +19,7 @@ from .models_db import (
     InterviewInvitation,
     JobApplication,
     JobDescription,
+    LegalAcceptance,
     MatchResult,
     PotentialSimulationEvent,
     Resume,
@@ -186,4 +187,5 @@ async def delete_user_graph(db: AsyncSession, user_id: str) -> None:
     )
     await db.execute(delete(UsageEvent).where(UsageEvent.user_id == str(user_id)))
     await db.execute(delete(UsageReservation).where(UsageReservation.user_id == str(user_id)))
+    await db.execute(delete(LegalAcceptance).where(LegalAcceptance.user_id == str(user_id)))
     await db.execute(delete(User).where(User.id == str(user_id)))

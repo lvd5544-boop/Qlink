@@ -4,6 +4,7 @@ import { SearchOutlined, EnvironmentOutlined, ClockCircleOutlined, DollarOutline
 import { useNavigate } from 'react-router-dom';
 import api from '../../api';
 import { getApiErrorMessage } from '../../utils/apiError';
+import PageHeader from '../../components/PageHeader';
 
 const { Text } = Typography;
 
@@ -23,6 +24,7 @@ function sourceTagColor(source) {
 export default function BrowseJobs() {
   const navigate = useNavigate();
   const [jobs, setJobs] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [keyword, setKeyword] = useState('');
   const [location, setLocation] = useState('');
@@ -56,6 +58,7 @@ export default function BrowseJobs() {
       if (sourceType) params.source_type = sourceType;
       const res = await api.get('/browse-jobs', { params });
       setJobs(res.data);
+      setCurrentPage(1);
     } catch {
       message.error('加载岗位列表失败');
     } finally {
@@ -67,7 +70,10 @@ export default function BrowseJobs() {
     let cancelled = false;
     api.get('/browse-jobs', { params: { sort_by: 'created_at' } })
       .then((res) => {
-        if (!cancelled) setJobs(res.data);
+        if (!cancelled) {
+          setJobs(res.data);
+          setCurrentPage(1);
+        }
       })
       .catch(() => {
         if (!cancelled) message.error('加载岗位列表失败');
@@ -185,19 +191,27 @@ export default function BrowseJobs() {
   };
 
   return (
-    <Card
-      className="content-card"
+    <div className="jobs-page">
+      <PageHeader
+        title="发现岗位"
+        description="用统一字段比较机会，先核对来源，再决定是否进入申请准备"
+        extra={<span className="page-eyebrow">Curated opportunity desk</span>}
+      />
+      <Card
+      className="content-card job-explorer-card"
       title="岗位发现与选择"
       extra={<Button icon={<ReloadOutlined />} loading={loading} onClick={fetchJobs}>刷新岗位池</Button>}
     >
       <Alert
+        className="job-source-note"
         showIcon
         type="info"
         style={{ marginBottom: 16 }}
         message={`当前可选择 ${jobs.length} 个岗位`}
         description="岗位池合并企业直招、国企公开岗位与 Remotive、Arbeitnow、Remote OK；单个来源暂时失败不会再清空已有岗位。"
       />
-      <Space wrap style={{ marginBottom: 16 }}>
+      <div className="job-filter-panel" aria-label="岗位筛选">
+      <Space wrap>
         <Input
           placeholder="关键字搜索"
           value={keyword}
@@ -242,24 +256,34 @@ export default function BrowseJobs() {
         />
         <Button type="primary" icon={<SearchOutlined />} onClick={fetchJobs}>搜索</Button>
       </Space>
+      </div>
 
       <Spin spinning={loading}>
         <List
           header={(
-            <Space wrap>
+            <Space wrap className="job-source-summary">
               <Tag color="red">国企 {jobs.filter((job) => job.source_type === 'soe').length}</Tag>
               <Tag color="blue">国际岗位 {jobs.filter((job) => job.source_type === 'foreign').length}</Tag>
               <Tag>企业直招 {jobs.filter((job) => job.source_type === 'employer').length}</Tag>
             </Space>
           )}
           dataSource={jobs}
+          pagination={{
+            current: currentPage,
+            pageSize: 12,
+            showSizeChanger: false,
+            showTotal: (total) => `共 ${total} 个岗位`,
+            onChange: (page) => {
+              setCurrentPage(page);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            },
+          }}
           renderItem={(item) => (
             <List.Item
               className="job-list-item"
-              style={{ cursor: 'pointer' }}
               onClick={() => showJobDetail(item.id)}
               extra={
-                <Space direction="vertical" size={0} style={{ textAlign: 'right' }}>
+                <Space className="job-list-actions" direction="vertical" size={6}>
                   <Text type="secondary">
                     <EnvironmentOutlined /> {item.parsed?.location || '不限'}
                   </Text>
@@ -292,13 +316,13 @@ export default function BrowseJobs() {
             >
               <List.Item.Meta
                   title={
-		    <Space>
-			<span style={{ fontSize: 16 }}>{item.title}</span>
+		    <Space wrap>
+			<span className="job-list-title">{item.title}</span>
 			<Tag color={sourceTagColor(item.source)}>{item.parsed?.source_name || item.source}</Tag>
 		    </Space>	
 		  }
                 description={
-                  <Text type="secondary">
+                  <Text type="secondary" className="job-list-meta">
 		    {item.company_name && `${item.company_name} · `}
 		    {item.parsed?.salary_range ? `薪资：${item.parsed.salary_range}` : '薪资面议'}
                   </Text>
@@ -479,6 +503,7 @@ export default function BrowseJobs() {
           </Button>
         </Space.Compact>
       </Modal>
-    </Card>
+      </Card>
+    </div>
   );
 }

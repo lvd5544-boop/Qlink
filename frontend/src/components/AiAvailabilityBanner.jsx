@@ -28,8 +28,8 @@ export default function AiAvailabilityBanner({ style }) {
   if (modelState?.mode !== 'rules_only') return null;
   const reason = modelState.reason === 'ai_disabled'
     ? '你已关闭 AI。'
-    : modelState.reason === 'api_key_missing'
-      ? '尚未配置模型 API Key。'
+    : ['configuration_missing', 'api_key_missing'].includes(modelState.reason)
+      ? '尚未完成模型配置。'
       : '模型供应商当前不可用。';
 
   return (

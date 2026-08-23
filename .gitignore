@@ -13,9 +13,13 @@ frontend/dist/
 frontend/e2e-report/
 frontend/test-results/
 frontend/playwright-report/
+output/playwright/
 frontend/e2e/resume-*.txt
 backend/uploads/e2e/
 .env
+.env.production
+.env.production.*
+!.env.production.example
 .env.pr6-gate
 .env.*.local
 __pycache__/

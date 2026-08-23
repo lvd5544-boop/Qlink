@@ -1,4 +1,5 @@
 import os
+import hmac
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 import uuid
@@ -6,7 +7,7 @@ import bcrypt
 import jwt
 from dotenv import load_dotenv
 from jwt import InvalidTokenError as JWTError
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 import redis.asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +20,11 @@ SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+AUTH_COOKIE_NAME = "qlink_session"
+CSRF_COOKIE_NAME = "qlink_csrf"
+CSRF_HEADER_NAME = "X-CSRF-Token"
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 _revoked_tokens: dict[str, datetime] = {}
 _auth_redis = None
 
@@ -79,6 +84,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     now = datetime.now(timezone.utc)
     expire = now + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.setdefault("jti", str(uuid.uuid4()))
+    to_encode.setdefault("sv", 1)
     to_encode.update({"exp": expire, "iat": now})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -132,29 +138,57 @@ async def get_user_from_token(token: str, db: AsyncSession) -> Optional[User]:
         if await _is_revoked(payload):
             return None
         user_id: str = payload.get("sub")
+        session_version = payload.get("sv")
         if user_id is None:
             return None
     except JWTError:
         return None
-    return await db.get(User, user_id)
+    user = await db.get(User, user_id)
+    if user is None or session_version != int(user.session_version or 1):
+        return None
+    return user
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
+async def get_current_user(
+    request: Request,
+    token: Optional[str] = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="无法验证凭证",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    cookie_token = request.cookies.get(AUTH_COOKIE_NAME)
+    resolved_token = token or cookie_token
+    if not resolved_token:
+        raise credentials_exception
+    if (
+        cookie_token
+        and not token
+        and request.method.upper()
+        in {
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE",
+        }
+    ):
+        csrf_cookie = request.cookies.get(CSRF_COOKIE_NAME, "")
+        csrf_header = request.headers.get(CSRF_HEADER_NAME, "")
+        if not csrf_cookie or not csrf_header or not hmac.compare_digest(csrf_cookie, csrf_header):
+            raise HTTPException(status_code=403, detail="CSRF 校验失败，请刷新页面后重试")
     try:
-        payload = decode_access_token(token)
+        payload = decode_access_token(resolved_token)
         if await _is_revoked(payload):
             raise credentials_exception
         user_id: str = payload.get("sub")
+        session_version = payload.get("sv")
         if user_id is None:
             raise credentials_exception
     except JWTError:
         raise credentials_exception
     user = await db.get(User, user_id)
-    if user is None:
+    if user is None or session_version != int(user.session_version or 1):
         raise credentials_exception
     return user

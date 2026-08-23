@@ -262,6 +262,8 @@ async def test_candidate_registration_provisions_free_subscription(
             "email": "new-candidate@test.local",
             "password": "StrongPass-123",
             "role": "candidate",
+            "terms_accepted": True,
+            "privacy_notice_acknowledged": True,
         },
     )
     assert response.status_code == 200, response.text
@@ -317,6 +319,8 @@ async def test_employer_registration_requires_server_invite(
             "email": "new-employer@test.local",
             "password": "StrongPass-123",
             "invite_code": "invite-only-secret",
+            "terms_accepted": True,
+            "privacy_notice_acknowledged": True,
         },
     )
     assert denied.status_code == 403

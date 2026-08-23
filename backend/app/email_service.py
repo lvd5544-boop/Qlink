@@ -1,18 +1,29 @@
-import os
 import logging
+import os
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+
 import aiosmtplib
 
 logger = logging.getLogger(__name__)
 
-SMTP_CONFIG = {
-    "hostname": os.getenv("SMTP_HOST", "smtp.qq.com"),
-    "port": int(os.getenv("SMTP_PORT", 587)),
-    "username": os.getenv("SMTP_USERNAME"),
-    "password": os.getenv("SMTP_PASSWORD"),
-    "use_tls": True,
-}
+
+def _smtp_config() -> dict:
+    return {
+        "hostname": os.getenv("SMTP_HOST", "").strip(),
+        "port": int(os.getenv("SMTP_PORT", "587")),
+        "username": os.getenv("SMTP_USERNAME", "").strip(),
+        "password": os.getenv("SMTP_PASSWORD", ""),
+        "from_address": os.getenv("SMTP_FROM", "").strip()
+        or os.getenv("SMTP_USERNAME", "").strip(),
+        "use_tls": os.getenv("SMTP_START_TLS", "true").strip().lower()
+        in {"1", "true", "yes", "on"},
+    }
+
+
+def smtp_configured() -> bool:
+    config = _smtp_config()
+    return all(config[key] for key in ("hostname", "username", "password", "from_address"))
 
 
 def _mask_email(value: str) -> str:
@@ -24,8 +35,11 @@ def _mask_email(value: str) -> str:
 
 async def send_email(to: str, subject: str, html_content: str, bcc: list = None):
     """异步发送HTML邮件"""
+    config = _smtp_config()
+    if not smtp_configured():
+        raise RuntimeError("SMTP is not fully configured")
     msg = MIMEMultipart("alternative")
-    msg["From"] = SMTP_CONFIG["username"]
+    msg["From"] = config["from_address"]
     msg["To"] = to
     msg["Subject"] = subject
     msg.attach(MIMEText(html_content, "html", "utf-8"))
@@ -36,11 +50,11 @@ async def send_email(to: str, subject: str, html_content: str, bcc: list = None)
     try:
         await aiosmtplib.send(
             msg,
-            hostname=SMTP_CONFIG["hostname"],
-            port=SMTP_CONFIG["port"],
-            username=SMTP_CONFIG["username"],
-            password=SMTP_CONFIG["password"],
-            start_tls=SMTP_CONFIG["use_tls"],
+            hostname=config["hostname"],
+            port=config["port"],
+            username=config["username"],
+            password=config["password"],
+            start_tls=config["use_tls"],
         )
         logger.info("邮件发送成功 recipient=%s", _mask_email(to))
     except Exception as e:

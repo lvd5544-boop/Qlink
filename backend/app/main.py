@@ -12,7 +12,16 @@ logger = logging.getLogger(__name__)
 
 from contextlib import asynccontextmanager
 from typing import Optional, Dict, Any
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, WebSocket, Header
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Header,
+    HTTPException,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -83,6 +92,7 @@ from .interview_session_routes import router as interview_session_router
 from .target_job_optimization_routes import router as target_job_optimization_router
 from .advisor_routes import router as advisor_router
 from .screening_routes import router as screening_router
+from .pilot_routes import router as pilot_router
 from .claim_passport import (
     add_evidence as passport_add_evidence,
     claims_for_field_path,
@@ -212,6 +222,7 @@ app.include_router(interview_session_router)
 app.include_router(target_job_optimization_router)
 app.include_router(advisor_router)
 app.include_router(screening_router)
+app.include_router(pilot_router)
 
 UPLOAD_DIR = os.getenv("UPLOAD_DIR") or (
     "/data/uploads"
@@ -2209,6 +2220,10 @@ async def websocket_interview(websocket: WebSocket, user_id: str):
                     application_id=application_id,
                     fair_use=fair_use,
                 )
+        except WebSocketDisconnect:
+            # Closing a tab immediately after authentication is a normal client
+            # lifecycle event, not an application error.
+            pass
         finally:
             await close_interview_session(db, fair_use)
 
@@ -2236,11 +2251,17 @@ async def ready():
             status_code=503,
             detail={"code": "service_not_ready", "message": "服务尚未就绪"},
         )
+    # This endpoint is public and used by browser clients and external
+    # monitors. Keep internal setting names on the authenticated admin
+    # readiness endpoint.
+    model_check = dict(result["checks"]["model"])
+    if model_check.get("reason") == "api_key_missing":
+        model_check["reason"] = "configuration_missing"
     return {
         "status": "ready",
         "model_mode": model_runtime_mode(),
         "checks": {
-            "model": result["checks"]["model"],
+            "model": model_check,
         },
     }
 

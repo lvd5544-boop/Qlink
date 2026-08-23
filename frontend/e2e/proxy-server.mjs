@@ -43,9 +43,11 @@ const server = http.createServer(async (req, res) => {
       const buf = Buffer.from(await upstream.arrayBuffer());
       const outHeaders = {};
       upstream.headers.forEach((value, key) => {
-        if (key.toLowerCase() === 'transfer-encoding') return;
+        if (['transfer-encoding', 'set-cookie'].includes(key.toLowerCase())) return;
         outHeaders[key] = value;
       });
+      const setCookies = upstream.headers.getSetCookie?.() || [];
+      if (setCookies.length > 0) outHeaders['set-cookie'] = setCookies;
       res.writeHead(upstream.status, outHeaders);
       res.end(buf);
     } catch (err) {

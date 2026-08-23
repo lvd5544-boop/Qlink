@@ -43,6 +43,8 @@ async function registerAndLoginCandidate(page, suffix) {
     await expect(page.getByRole('heading', { name: '创建账号' }), 'A 阻塞：用户看不到 QLink 注册入口').toBeVisible();
     await page.getByPlaceholder('邮箱').fill(email);
     await page.getByPlaceholder('密码').fill(PASSWORD);
+    await page.getByRole('checkbox', { name: /隐私说明/ }).check();
+    await page.getByRole('checkbox', { name: /服务条款/ }).check();
     await page.locator('form button[type="submit"]').click();
     await expect(page, 'A 阻塞：注册完成后用户没有回到登录页').toHaveURL(/\/login/);
     await page.getByPlaceholder('邮箱').fill(email);
@@ -146,7 +148,9 @@ async function generateVisibleOpportunityPreparation(page) {
   await expect(page, 'Q 阻塞：用户没有进入申请材料工作台').toHaveURL(/\/candidate\/my-resumes/);
   const generate = page.getByTestId('pr13-generate-diagnostic');
   await visibleCheckpoint(page, 'Q', generate, '用户看不到生成当前申请包所需的岗位诊断操作');
-  await generate.scrollIntoViewIfNeeded();
+  // click() auto-scrolls and re-resolves the locator if React replaces the
+  // button while opportunity data is still loading. A separate scroll action
+  // retained a detached DOM node and made both browser workflows flaky.
   await generate.click();
   await visibleCheckpoint(page, 'Q', page.getByText('本次机会准备卡'), '用户看不到基于当前证据生成的机会准备卡');
   await page.getByRole('button', { name: '生成机会准备卡' }).click();
@@ -168,7 +172,7 @@ async function generateVisibleOpportunityPreparation(page) {
 test.beforeAll(async ({ browser, request }) => {
   const employerEmail = `qlink.flow.employer.${Date.now()}@example.com`;
   await api(request, 'POST', '/auth/register-employer', {
-    data: { email: employerEmail, password: PASSWORD, invite_code: INVITE },
+    data: { email: employerEmail, password: PASSWORD, invite_code: INVITE, terms_accepted: true, privacy_notice_acknowledged: true },
   });
   const login = await api(request, 'POST', '/auth/login', {
     data: { email: employerEmail, password: PASSWORD },

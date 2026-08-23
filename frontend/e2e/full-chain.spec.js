@@ -66,6 +66,8 @@ test('full hiring chain in browser', async ({ page }) => {
   await page.goto('/register');
   await page.getByPlaceholder('邮箱').fill(candidateEmail);
   await page.locator('input[type="password"]').fill(PASSWORD);
+  await page.getByRole('checkbox', { name: /隐私说明/ }).check();
+  await page.getByRole('checkbox', { name: /服务条款/ }).check();
   await page.locator('form button[type="submit"]').click();
   await expect(page).toHaveURL(/\/login/, { timeout: 30000 });
 
@@ -77,6 +79,8 @@ test('full hiring chain in browser', async ({ page }) => {
       email: employerEmail,
       password: PASSWORD,
       invite_code: INVITE,
+      terms_accepted: true,
+      privacy_notice_acknowledged: true,
     },
   });
   const employerLogin = await api('POST', '/auth/login', {
