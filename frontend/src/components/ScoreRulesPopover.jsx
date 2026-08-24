@@ -7,14 +7,13 @@ const { Text, Paragraph } = Typography;
 function CurrentRulesContent({ version }) {
   const rules = getCurrentScoreRules(version);
   return (
-    <div style={{ maxWidth: 360 }}>
+    <div className="score-explanation">
       <Text strong style={{ fontSize: 14 }}>{rules.title}</Text>
       <Paragraph style={{ margin: '8px 0', fontSize: 13 }}>{rules.intro}</Paragraph>
       <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, lineHeight: 1.7 }}>
         {rules.criteria.map((c) => (
           <li key={c.label}>
             <Text strong>{c.label}</Text>
-            <Text type="secondary">（约 {c.pct}%）</Text>
             <div style={{ color: '#666', marginBottom: 4 }}>{c.desc}</div>
           </li>
         ))}
@@ -29,7 +28,7 @@ function CurrentRulesContent({ version }) {
 function PotentialRulesContent() {
   const rules = getPotentialScoreRules();
   return (
-    <div style={{ maxWidth: 340 }}>
+    <div className="score-explanation">
       <Text strong style={{ fontSize: 14 }}>{rules.title}</Text>
       <Paragraph style={{ margin: '8px 0', fontSize: 13 }}>{rules.intro}</Paragraph>
       <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, lineHeight: 1.7 }}>

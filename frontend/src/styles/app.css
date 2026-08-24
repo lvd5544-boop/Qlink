@@ -14,6 +14,8 @@ body,
 }
 
 :root {
+  --qlink-sans: 'Helvetica Neue', Helvetica, Arial, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --qlink-serif: 'Iowan Old Style', Baskerville, 'Songti SC', STSong, Georgia, 'Times New Roman', serif;
   --qlink-ink: #172033;
   --qlink-muted: #626b7a;
   --qlink-paper: #f5f4ef;
@@ -24,12 +26,13 @@ body,
   --qlink-mint: #dceee7;
   --qlink-coral: #f2d7cd;
   --qlink-gold: #e2bd64;
+  --qlink-sand: #e7decf;
+  --qlink-sand-soft: #f0ebe2;
   --qlink-shadow: 0 18px 45px rgba(23, 32, 51, .07);
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
-    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  font-family: var(--qlink-sans);
   -webkit-font-smoothing: antialiased;
   color: var(--qlink-ink);
   background: var(--qlink-paper);
@@ -116,6 +119,7 @@ body {
 }
 
 .auth-brand h1 {
+  font-family: var(--qlink-sans);
   max-width: 440px;
   margin: 0 0 12px;
   font-size: clamp(34px, 4vw, 54px);
@@ -126,6 +130,7 @@ body {
 }
 
 .auth-brand-description.ant-typography {
+  font-family: var(--qlink-serif);
   margin: 0;
   font-size: 16px;
   line-height: 1.7;
@@ -161,10 +166,10 @@ body {
   align-items: center;
   gap: 12px;
   max-width: 570px;
-  padding: 12px 14px;
+  padding: 16px 18px;
   border: 1px solid rgba(23, 32, 51, .1);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, .78);
+  border-radius: 20px;
+  background: rgba(231, 222, 207, .9);
   font-size: 14px;
   color: var(--qlink-ink);
   backdrop-filter: blur(10px);
@@ -189,6 +194,7 @@ body {
 
 .auth-brand-feature strong,
 .auth-brand-feature small {
+  font-family: var(--qlink-serif);
   display: block;
 }
 
@@ -217,7 +223,7 @@ body {
   width: 100%;
   max-width: 420px;
   border: 1px solid var(--qlink-line) !important;
-  border-radius: 10px !important;
+  border-radius: 24px !important;
   box-shadow: 0 22px 60px rgba(23, 32, 51, .08) !important;
 }
 
@@ -384,6 +390,7 @@ body {
 }
 
 .page-header-title {
+  font-family: var(--qlink-sans);
   margin: 0 !important;
   font-size: clamp(24px, 2.6vw, 34px) !important;
   font-weight: 680 !important;
@@ -392,6 +399,8 @@ body {
 }
 
 .page-header-desc {
+  font-family: var(--qlink-serif);
+  font-size: 16px;
   margin: 4px 0 0 !important;
   color: var(--qlink-muted);
   line-height: 1.7;
@@ -415,7 +424,7 @@ body {
   margin-bottom: 24px;
   padding: 0;
   border: 1px solid rgba(23, 32, 51, .14);
-  border-radius: 12px;
+  border-radius: 24px;
   background: #fff;
   box-shadow: var(--qlink-shadow);
   color: var(--qlink-ink);
@@ -455,6 +464,7 @@ body {
 }
 
 .workflow-hero h2.ant-typography {
+  font-family: var(--qlink-sans);
   max-width: 680px;
   margin: 0 0 12px;
   color: var(--qlink-ink);
@@ -464,6 +474,7 @@ body {
 }
 
 .workflow-hero p.ant-typography {
+  font-family: var(--qlink-serif);
   max-width: 650px;
   margin-bottom: 22px;
   color: var(--qlink-muted);
@@ -572,7 +583,7 @@ body {
 /* —— 统计卡片 —— */
 .stat-card {
   overflow: hidden;
-  border-radius: 10px !important;
+  border-radius: 20px !important;
   border: 1px solid var(--qlink-line) !important;
   border-top: 3px solid #cfd3da !important;
   box-shadow: none;
@@ -632,6 +643,7 @@ body {
 }
 
 .section-description.ant-typography {
+  font-family: var(--qlink-serif);
   font-size: 12px;
 }
 
@@ -641,7 +653,7 @@ body {
 
 /* —— 快捷入口 —— */
 .quick-action-card {
-  border-radius: 10px !important;
+  border-radius: 20px !important;
   cursor: pointer;
   transition: all 0.2s;
   border: 1px solid var(--qlink-line) !important;
@@ -666,7 +678,7 @@ body {
 
 /* —— 内容卡片 —— */
 .content-card {
-  border-radius: 10px !important;
+  border-radius: 22px !important;
   border: 1px solid var(--qlink-line) !important;
   box-shadow: 0 12px 35px rgba(23, 32, 51, .045) !important;
 }
@@ -674,6 +686,93 @@ body {
 .content-card .ant-card-head {
   border-bottom: 1px solid #eceef1;
   font-weight: 600;
+}
+
+/* —— 编辑式提示卡：标题无衬线，说明使用温和衬线体 —— */
+.editorial-guidance-card.ant-alert,
+.job-source-note.ant-alert {
+  padding: 24px 28px;
+  border: 0 !important;
+  border-radius: 24px !important;
+  background: var(--qlink-sand) !important;
+}
+
+.editorial-guidance-card .ant-alert-icon,
+.job-source-note .ant-alert-icon {
+  color: var(--qlink-ink) !important;
+}
+
+.editorial-guidance-card .ant-alert-message,
+.job-source-note .ant-alert-message {
+  color: #171717 !important;
+  font-family: var(--qlink-sans);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -.02em;
+}
+
+.editorial-guidance-card .ant-alert-description,
+.job-source-note .ant-alert-description,
+.content-card .ant-card-meta-description {
+  color: #2c2925 !important;
+  font-family: var(--qlink-serif);
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.editorial-guidance-card-compact.ant-alert {
+  padding: 18px 20px;
+  border-radius: 18px !important;
+}
+
+.editorial-guidance-card-compact .ant-alert-message {
+  font-size: 15px;
+}
+
+.editorial-guidance-card-compact .ant-alert-description {
+  font-size: 14px;
+}
+
+.score-explanation {
+  max-width: 360px;
+  color: #2c2925;
+  font-family: var(--qlink-serif);
+}
+
+.score-explanation > .ant-typography:first-child {
+  font-family: var(--qlink-sans);
+  font-size: 16px !important;
+}
+
+.score-explanation li {
+  margin-bottom: 8px;
+}
+
+.score-explanation li .ant-typography {
+  font-family: var(--qlink-sans);
+}
+
+.editorial-action-card {
+  border-radius: 24px !important;
+  background: #fff !important;
+}
+
+.editorial-action-card .ant-card-small:not(.editorial-action-card) {
+  border: 0 !important;
+  border-radius: 20px !important;
+  background: var(--qlink-sand-soft) !important;
+}
+
+.editorial-list-card {
+  overflow: hidden;
+  border: 0 !important;
+  border-radius: 24px !important;
+  background: var(--qlink-sand-soft) !important;
+}
+
+.editorial-list-card .ant-card-head {
+  border-bottom-color: rgba(23, 32, 51, .1);
+  background: transparent;
 }
 
 /* —— 岗位列表项 —— */
@@ -700,17 +799,14 @@ body {
 }
 
 .job-source-note {
-  border: 0 !important;
-  border-left: 4px solid var(--qlink-blue) !important;
-  border-radius: 4px !important;
-  background: var(--qlink-blue-soft) !important;
+  margin-bottom: 22px !important;
 }
 
 .job-filter-panel {
   margin: 20px 0;
   padding: 16px;
   border: 1px solid var(--qlink-line);
-  border-radius: 8px;
+  border-radius: 18px;
   background: #f7f6f2;
 }
 

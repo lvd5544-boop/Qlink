@@ -203,13 +203,14 @@ export default function JobList() {
       }
     >
       <Alert
+        className="editorial-guidance-card"
         type="info"
         showIcon
         style={{ marginBottom: 12 }}
         message={englishDemo ? 'Start with a direction—not a keyword search' : '这里只展示符合你目标方向的岗位'}
         description={englishDemo
           ? 'AI compares your background with possible directions, then exposes the evidence you need next.'
-          : '先看推荐理由和需要确认的事项；评分方法放在详情里，需要时再查看。'}
+          : '先看为什么适合、还要确认什么，再决定是否继续准备。'}
       />
       <CareerPathExplorer
         matchedJobs={jobs}
@@ -312,6 +313,7 @@ export default function JobList() {
           return (
             <Space direction="vertical" size="middle" style={{ width: '100%' }}>
               <Alert
+                className="editorial-guidance-card editorial-guidance-card-compact"
                 type={level.color === 'green' ? 'success' : 'info'}
                 showIcon
                 message={level.text}
@@ -340,7 +342,7 @@ export default function JobList() {
               <Collapse
                 items={[{
                   key: 'calculation',
-                  label: englishDemo ? 'How the system reasoned (optional)' : '查看系统判断依据（可选）',
+                  label: englishDemo ? 'Recommendation references (optional)' : '查看推荐参考（可选）',
                   children: <MatchEvaluationPanel evaluation={toEvaluation(matchDetail)} />,
                 }]}
               />
@@ -358,11 +360,12 @@ export default function JobList() {
       >
         {inferredIntent && (
           <Alert
+            className="editorial-guidance-card editorial-guidance-card-compact"
             type="info"
             showIcon
             style={{ marginBottom: 16 }}
             message={`当前识别的主方向：${inferredIntent.role_label || '未识别'}`}
-            description="这是根据你明确选择的目标岗位、简历意向、经历、项目和技能综合判断；填写目标岗位后以你的选择为先。"
+            description="优先使用你亲自填写的目标；未填写时，才从现有经历中提供一个可修改的方向。"
           />
         )}
         <Form

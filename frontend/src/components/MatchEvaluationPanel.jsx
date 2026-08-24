@@ -53,7 +53,7 @@ export default function MatchEvaluationPanel({ evaluation }) {
 
   return (
     <div>
-      <Divider orientation="left" plain>系统参考了什么</Divider>
+      <Divider orientation="left" plain>推荐参考</Divider>
       <Space wrap>
         {dimensions.map(({ key, label, ratio }) => {
           const status = factorTag(ratio);
@@ -61,7 +61,7 @@ export default function MatchEvaluationPanel({ evaluation }) {
         })}
       </Space>
 
-      <Divider orientation="left" plain>技能待确认</Divider>
+      <Divider orientation="left" plain>申请前可以确认</Divider>
       <Space wrap>
         {(apiBreakdown?.missing_skills || rawBreakdown?.skills?.missing || []).length > 0
           ? (apiBreakdown?.missing_skills || rawBreakdown?.skills?.missing || []).map((sk) => (
@@ -73,7 +73,7 @@ export default function MatchEvaluationPanel({ evaluation }) {
         ))}
       </Space>
 
-      <Divider orientation="left" plain>软实力待确认</Divider>
+      <Divider orientation="left" plain>岗位描述还提到了</Divider>
       <Space wrap>
         {filterSoftSkillsForDisplay(
           apiBreakdown?.soft_skills_missing || rawBreakdown?.soft_skills?.missing || [],
@@ -106,9 +106,6 @@ export default function MatchEvaluationPanel({ evaluation }) {
                       title={
                         <Space>
                           {item.title}
-                          {item.estimated_score_gain && (
-                            <Tag color="green">+{item.estimated_score_gain} 分</Tag>
-                          )}
                         </Space>
                       }
                       description={
@@ -142,9 +139,6 @@ export default function MatchEvaluationPanel({ evaluation }) {
                       title={
                         <Space>
                           {item.title}
-                          {item.estimated_score_gain && (
-                            <Tag color="green">+{item.estimated_score_gain} 分</Tag>
-                          )}
                         </Space>
                       }
                       description={

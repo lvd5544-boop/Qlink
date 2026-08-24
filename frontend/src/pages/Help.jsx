@@ -29,7 +29,7 @@ export default function Help() {
           <Paragraph>「浏览岗位」页面展示平台所有公开岗位（含权威平台抓取岗位）。您可通过关键字、地点、薪资范围进行筛选，点击岗位卡片查看详细信息。</Paragraph>
         </Panel>
         <Panel header="数据分析与简历诊断" key="6">
-          <Paragraph>「数据分析」中公开招聘偏好来自国企/外企岗位 JD；录用画像主要来自 Reddit、V2EX、Hacker News 等公开社区经验帖，经清洗与统计模型（加权频率、Wilson 置信区间）生成结论，不以用户自愿提交为主。请先点击「同步网络经验数据」，再查看统计结论与简历诊断。</Paragraph>
+          <Paragraph>「数据分析」会整理公开岗位和公开职业经验，帮助你了解同类岗位通常看重什么。它只提供准备方向，不代表任何公司的录用标准。</Paragraph>
         </Panel>
         <Panel header="如何参加试用、提交反馈或删除数据？" key="7">
           <Paragraph>进入「更多 → 试用与反馈」。你可以分别管理产品研究、汇总指标和模型改进授权，随时退出 pilot，也可以通过明确的二次确认永久删除账号及其关联私有数据。</Paragraph>
@@ -53,8 +53,8 @@ export default function Help() {
         <Panel header="如何查看匹配的候选人？" key="3">
           <Paragraph>在「我的岗位」列表中，点击某个岗位的“候选人”按钮，即可看到系统根据技能、地点等维度为您推荐的最匹配求职者，并支持在线查看简历详情。</Paragraph>
         </Panel>
-        <Panel header="匹配评分依据是什么？" key="4">
-          <Paragraph>系统综合评估候选人的技能吻合度、薪资期望、工作地点、经验年限等因素，给出 0-10 分的匹配评分，助您快速筛选合适人选。</Paragraph>
+        <Panel header="候选人推荐依据是什么？" key="4">
+          <Paragraph>系统会整理岗位要求与候选人已提供的经历，帮助招聘方找到值得进一步查看的人选。推荐仅用于辅助阅读，不能代替人工判断或直接淘汰候选人。</Paragraph>
         </Panel>
         <Panel header="如何联系候选人？" key="5">
           <Paragraph>当前版本支持查看候选人的联系方式（若简历中包含）。未来将推出在线邀请、面试安排等一站式功能，敬请期待。</Paragraph>

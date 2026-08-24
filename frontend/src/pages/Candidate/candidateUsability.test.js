@@ -21,10 +21,11 @@ test('candidate navigation uses task language and promotes the primary workflow'
   assert.doesNotMatch(layout, /journey=\{/);
 });
 
-test('job recommendations show decisions first and keep calculations optional', () => {
+test('job recommendations show decisions first and keep technical references optional', () => {
   assert.match(jobs, /jobs\.slice\(0, visibleCount\)/);
   assert.match(jobs, /查看更多岗位/);
-  assert.match(jobs, /查看系统判断依据（可选）/);
+  assert.match(jobs, /查看推荐参考（可选）/);
+  assert.doesNotMatch(jobs, /评分方法放在详情里/);
   assert.doesNotMatch(jobs, /MatchBreakdownPreview|ClickableScoreTag/);
 });
 

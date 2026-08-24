@@ -213,22 +213,23 @@ export default function Dashboard() {
 
         {recentDeltas && (
           <Alert
+            className="editorial-guidance-card editorial-guidance-card-compact"
             type="success"
             showIcon
             closable
             onClose={clearDashboardDeltas}
             style={{ marginBottom: 16 }}
-            message="最近优化已生效"
+            message="最近修改已更新准备建议"
             description={(
               <Space wrap>
                 {recentDeltas.health_score_delta != null && recentDeltas.health_score_delta !== 0 && (
-                  <span>体检 {recentDeltas.health_score_delta > 0 ? '+' : ''}{recentDeltas.health_score_delta}</span>
+                  <span>简历体检已更新</span>
                 )}
                 {recentDeltas.completeness_delta != null && recentDeltas.completeness_delta !== 0 && (
-                  <span>完整度 {recentDeltas.completeness_delta > 0 ? '+' : ''}{recentDeltas.completeness_delta}</span>
+                  <span>完整度已更新</span>
                 )}
                 {recentDeltas.score_delta != null && recentDeltas.score_delta !== 0 && (
-                  <span>匹配分 {recentDeltas.score_delta > 0 ? '+' : ''}{recentDeltas.score_delta}</span>
+                  <span>岗位建议已更新</span>
                 )}
               </Space>
             )}
@@ -311,7 +312,8 @@ export default function Dashboard() {
         {summary?.top_matches?.length > 0 && (
           <Card
             size="small"
-            title="Top 2 匹配岗位"
+            title="优先查看的岗位"
+            className="editorial-list-card"
             style={{ marginBottom: 24 }}
             extra={(
               <Button type="link" size="small" onClick={() => navigate('/candidate/jobs')}>
@@ -327,7 +329,7 @@ export default function Dashboard() {
                   <Space>
                     <Tag color={idx === 0 ? 'gold' : 'blue'}>#{idx + 1}</Tag>
                     <Text strong>{m.job_title}</Text>
-                    <Tag color="volcano">{Number(m.score).toFixed(1)} 分</Tag>
+                    <Tag color={idx === 0 ? 'green' : 'blue'}>{idx === 0 ? '建议先看' : '可以了解'}</Tag>
                   </Space>
                 </List.Item>
               )}
@@ -337,6 +339,7 @@ export default function Dashboard() {
 
         {!summary?.latest_resume_id && !loading && (
           <Alert
+            className="editorial-guidance-card editorial-guidance-card-compact"
             type="info"
             showIcon
             message="上传简历后，体检分、完整度与匹配分将在此联动展示"

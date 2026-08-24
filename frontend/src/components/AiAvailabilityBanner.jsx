@@ -34,11 +34,12 @@ export default function AiAvailabilityBanner({ style }) {
 
   return (
     <Alert
+      className="editorial-guidance-card editorial-guidance-card-compact"
       type="info"
       showIcon
       style={style}
-      message="当前处于规则模式"
-      description={`${reason} 精准定位、人工编辑、规则诊断、Evidence Vault、岗位检索和投递仍可使用；需要生成式改写或 AI 追问时，请先完成模型配置。`}
+      message="AI 生成暂时不可用"
+      description={`${reason} 你仍然可以查找岗位、编辑简历和管理申请；需要生成改写或智能追问时再完成模型配置。`}
     />
   );
 }

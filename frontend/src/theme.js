@@ -12,10 +12,10 @@ export const appTheme = {
     colorBorder: '#dfe2e7',
     colorBgLayout: '#f5f4ef',
     colorBgContainer: '#ffffff',
-    borderRadius: 10,
+    borderRadius: 14,
     controlHeight: 40,
     fontFamily:
-      "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif",
+      "'Helvetica Neue', Helvetica, Arial, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif",
   },
   components: {
     Layout: {
@@ -36,6 +36,7 @@ export const appTheme = {
     Card: {
       paddingLG: 22,
       headerFontSize: 15,
+      borderRadiusLG: 22,
     },
     Button: {
       primaryShadow: '0 8px 20px rgba(41, 55, 200, 0.18)',

@@ -7,7 +7,7 @@ import api from '../api';
 const { Text } = Typography;
 
 const columnFor = (issue, option) => {
-  if (issue.issue_type === 'hard_constraint') return '硬门槛';
+  if (issue.issue_type === 'hard_constraint') return '需要先确认的要求';
   if (option.can_apply_now) return '现在可以优化';
   if (option.requires_evidence || issue.issue_type === 'evidence_gap') return '需要补充证据';
   return '需要真实提升';
@@ -20,8 +20,8 @@ const buttonText = {
 };
 
 const statusText = {
-  default: '推荐策略（尚未重新模拟）',
-  strategies_selected: '已重新模拟，尚未标记',
+  default: '推荐行动（尚未更新）',
+  strategies_selected: '方案已更新，尚未标记',
   rejected: '暂不采用',
   adopted: '已采纳',
   completed: '已完成',
@@ -60,9 +60,9 @@ const buildGrowthPlan = (option, issue) => {
       `确定一个与“${subject}”直接相关的小型练习或真实任务，并写清要解决的问题。`,
       '完成一项可以展示的产出，例如代码、方案、分析报告、作品链接或复盘文档。',
       '记录你做了什么、为什么这样做、遇到什么约束，以及最后得到什么结果。',
-      '把产出加入履历证据库，重新运行岗位诊断；只有新增事实通过核对后才会计入当前分数。',
+      '把产出加入履历证据库，重新查看岗位准备建议；只有你确认的新增事实才会被使用。',
     ],
-    done: `至少形成 1 项可查看的真实产出，并能说明你的个人贡献。系统不会仅凭“学完了”提高当前分数。`,
+    done: `至少形成 1 项可查看的真实产出，并能说明你的个人贡献。只完成课程但没有实践产出，还不能说明你已经掌握。`,
   };
 };
 
@@ -79,17 +79,16 @@ const selectedTitlesFor = (simulation, selectedIds) => {
 
 const strategyEffectTag = (strategyId, selectedIds, selectionDirty, effectMap) => {
   if (!selectedIds.includes(strategyId)) return null;
-  if (selectionDirty) return <Tag color="orange">等待重新模拟</Tag>;
+  if (selectionDirty) return <Tag color="orange">等待更新</Tag>;
   const effect = effectMap[strategyId];
   if (!effect) return null;
   if (effect.status === 'changes_score_if_removed') {
-    const delta = Number(effect.marginal_delta || 0);
-    return <Tag color="green">本次计分 {delta >= 0 ? '+' : ''}{delta.toFixed(2)}</Tag>;
+    return <Tag color="green">会改变准备建议</Tag>;
   }
   if (effect.status === 'needs_supported_evidence') {
-    return <Tag color="gold">补证后才计分</Tag>;
+    return <Tag color="gold">先补充真实材料</Tag>;
   }
-  return <Tag>与其他策略重叠或当前不影响计分</Tag>;
+  return <Tag>与其他行动作用相近</Tag>;
 };
 
 export default function ImprovementSimulationPanel({ resumeId, jobId, onAction }) {
@@ -129,25 +128,22 @@ export default function ImprovementSimulationPanel({ resumeId, jobId, onAction }
   const recalculate = async () => {
     setLoading(true);
     try {
-      const previousScore = Number(data?.potential_score || 0);
       const res = await api.post(`/resumes/${resumeId}/jobs/${jobId}/improvement-simulation`, { strategy_ids: selected });
       const ids = res.data.selected_strategy_ids || [];
-      const nextScore = Number(res.data.potential_score || 0);
-      const scoreChanged = Math.abs(nextScore - previousScore) >= 0.005;
       setData(res.data);
       setSelected(ids);
       setAppliedSelected(ids);
       setStrategyStatus(res.data.strategy_status || { state: 'strategies_selected' });
       setSimulationNotice({
-        type: scoreChanged ? 'success' : 'info',
-        message: `已按 ${ids.length} 项策略完成重新模拟`,
-        description: scoreChanged
-          ? `模拟后分数由 ${previousScore.toFixed(2)} 更新为 ${nextScore.toFixed(2)}。`
-          : `模拟后分数仍为 ${nextScore.toFixed(2)}。策略组合已经更新；本次调整与其他已选策略效果重叠，或尚无可用于计分的补充证据。`,
+        type: 'success',
+        message: `已更新 ${ids.length} 项行动`,
+        description: ids.length
+          ? '新的准备顺序已经保存。需要真实材料的事项仍会保持待确认。'
+          : '暂未选择行动，你可以先从现在能完成的一项开始。',
       });
-      message.success('重新模拟完成，策略选择已保存');
+      message.success('行动方案已更新');
     } catch {
-      message.error('重新模拟失败，请稍后重试');
+      message.error('更新行动方案失败，请稍后重试');
     } finally { setLoading(false); }
   };
 
@@ -184,7 +180,7 @@ export default function ImprovementSimulationPanel({ resumeId, jobId, onAction }
   };
 
   if (!jobId) return null;
-  const columns = ['现在可以优化', '需要补充证据', '需要真实提升', '硬门槛'];
+  const columns = ['现在可以优化', '需要补充证据', '需要真实提升', '需要先确认的要求'];
   const grouped = Object.fromEntries(columns.map((name) => [name, []]));
   (data?.issues || []).forEach((issue) => issue.strategy_options.forEach((option) => {
     grouped[columnFor(issue, option)].push({ issue, option });
@@ -195,21 +191,24 @@ export default function ImprovementSimulationPanel({ resumeId, jobId, onAction }
   );
   const selectedTitles = selectedTitlesFor(data, selected);
   return (
-    <Card size="small" title="可提升空间模拟" style={{ marginTop: 12 }}>
-      <Alert type="info" showIcon message="模型内模拟，不代表面试或录用承诺。" style={{ marginBottom: 8 }} />
+    <Card size="small" title="下一步行动" className="editorial-action-card" style={{ marginTop: 12 }}>
+      <Alert
+        className="editorial-guidance-card editorial-guidance-card-compact"
+        type="info"
+        showIcon
+        message="比较不同准备方式"
+        description="选择你愿意采取的行动，系统会帮你整理顺序；这不是面试或录用预测。"
+        style={{ marginBottom: 12 }}
+      />
       <Spin spinning={loading}>
         {!data ? <Text type="secondary">暂无可模拟的岗位匹配结果。</Text> : <>
           <div>
-            <Text>
-              当前 {Number(data.current_score).toFixed(2)} 分；模拟后 {Number(data.potential_score).toFixed(2)} 分
-              （{Number(data.potential_delta) >= 0 ? '+' : ''}{Number(data.potential_delta).toFixed(2)}）
-            </Text>
-            <Tag color="blue" style={{ marginLeft: 8 }}>已纳入 {selected.length} 项</Tag>
+            <Text>已选择 {selected.length} 项行动</Text>
             <Tag color={selectionDirty ? 'orange' : 'green'}>
-              {selectionDirty ? '选择已更改，等待重新模拟' : (statusText[strategyStatus.state] || '状态已记录')}
+              {selectionDirty ? '选择已更改，等待更新' : (statusText[strategyStatus.state] || '状态已记录')}
             </Tag>
             {!selectionDirty && strategyStatus.state !== 'default' && selectedTitles.length > 0 && (
-              <div><Text type="secondary">当前策略组合：{selectedTitles.join('、')}</Text></div>
+              <div><Text type="secondary">当前行动：{selectedTitles.join('、')}</Text></div>
             )}
           </div>
           {simulationNotice && (
@@ -236,7 +235,7 @@ export default function ImprovementSimulationPanel({ resumeId, jobId, onAction }
           </div>
           <Divider style={{ margin: '10px 0' }} />
           <Button size="small" type={selectionDirty ? 'primary' : 'default'} onClick={recalculate}>
-            按所选策略重新模拟（{selected.length} 项）
+            更新行动方案（{selected.length} 项）
           </Button>
           <Button size="small" style={{ marginLeft: 8 }} onClick={() => record('rejected')}>暂不采用</Button>
           <Button size="small" style={{ marginLeft: 8 }} onClick={() => record('adopted')}>标记已采纳</Button>
