@@ -166,9 +166,9 @@ test('full hiring chain in browser', async ({ page }) => {
   await page.goto('/candidate/my-resumes');
   await page.getByRole('button', { name: '进入工作台' }).first().click();
   await expect(page.getByText('④ 经历澄清卡')).toBeVisible({ timeout: 30000 });
-  await expect(page.getByText('可提升空间模拟')).toBeVisible({ timeout: 30000 });
-  await page.getByRole('button', { name: '按所选策略重新模拟' }).click();
-  await expect(page.getByText('模型内模拟，不代表面试或录用承诺。')).toBeVisible();
+  await expect(page.getByText('下一步行动')).toBeVisible({ timeout: 30000 });
+  await page.getByRole('button', { name: /更新行动方案/ }).click();
+  await expect(page.getByText('这不是面试或录用预测。', { exact: false })).toBeVisible();
 
   // 5) Employer clarification then candidate reply in UI (API fallback)
   await api('POST', `/applications/${applicationId}/clarification-requests`, {
