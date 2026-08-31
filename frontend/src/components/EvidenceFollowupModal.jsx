@@ -133,6 +133,7 @@ export default function EvidenceFollowupModal({
       index: entryIndex,
       answers: payload,
       rewrite_mode: rewriteMode,
+      style_template: 'evidence_forward',
     };
     const idempotencyKey = regenerateIdempotency.current.keyFor(requestPayload);
     setSubmitting(true);
@@ -181,8 +182,8 @@ export default function EvidenceFollowupModal({
         type="info"
         showIcon
         style={{ marginBottom: 16, fontSize: 13 }}
-        message="语义忠实扩写"
-        description="三档模式仅改变表达强度，均不会编造未提及的事实。采纳前会展示语义理解与来源追溯。"
+        message="证据优先·招聘方易读"
+        description="默认使用“动作 + 任务 + 方法/范围 + 已证实结果”句式。三档模式仅改变表达强度，均不会编造未提及的事实；采纳前会展示语义理解与来源追溯。"
       />
 
       {step === 1 && (
@@ -431,6 +432,7 @@ export default function EvidenceFollowupModal({
 
             <Space wrap style={{ marginBottom: 12 }}>
               <Tag>当前模式：{result.rewrite_mode_label || '标准版'}</Tag>
+              <Tag color="blue">写作风格：{result.style_label || '证据优先·招聘方易读'}</Tag>
               {result.mode_risk_level && (
                 <Tag color={result.mode_risk_level === 'high' ? 'red' : result.mode_risk_level === 'medium' ? 'orange' : 'green'}>
                   风险等级：{result.mode_risk_level}

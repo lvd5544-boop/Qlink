@@ -118,7 +118,6 @@ export default function JobProfileEditor({
                       <Form.Item name="communication_signals" label="沟通能力要求（逗号分隔）"><Input /></Form.Item>
                     </Col>
                   </Row>
-                  <Form.Item name="school_tier_keywords" label="学校层级关键词（逗号分隔）"><Input /></Form.Item>
                   <Form.Item name="other_notes" label="其他说明"><Input.TextArea rows={3} /></Form.Item>
                 </>
               ),

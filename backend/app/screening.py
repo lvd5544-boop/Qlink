@@ -84,6 +84,13 @@ _SENSITIVE_RULE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+_PROHIBITED_PROXY_RULE_PATTERN = re.compile(
+    r"(?:985|211|双一流|名校|院校层级|学校层级|院校排名|学校排名|绩点)"
+    r"|\b(?:gpa|grade\s+point\s+average|school\s+(?:tier|prestige|ranking)|"
+    r"university\s+(?:tier|prestige|ranking)|elite\s+(?:school|university))\b",
+    re.IGNORECASE,
+)
+
 
 ScreeningText = Annotated[
     str,
@@ -123,7 +130,38 @@ def _stable_hash(value: Any) -> str:
 
 
 def _text_blob(parsed: dict | None) -> str:
-    return json.dumps(parsed or {}, ensure_ascii=False).casefold()
+    """Build searchable text from values, excluding schema field names.
+
+    JSON keys such as ``skills`` or ``education`` are implementation details and
+    must not count as evidence that a candidate supplied those terms.
+    """
+    values: list[str] = []
+
+    def collect(value: Any) -> None:
+        if isinstance(value, dict):
+            for nested in value.values():
+                collect(nested)
+        elif isinstance(value, (list, tuple, set)):
+            for nested in value:
+                collect(nested)
+        elif value is not None:
+            text = str(value).strip()
+            if text:
+                values.append(text)
+
+    collect(parsed or {})
+    return "\n".join(values).casefold()
+
+
+def _term_in_blob(blob: str, term: str) -> bool:
+    """Match Latin technical terms on boundaries, not arbitrary substrings."""
+    normalized = str(term or "").strip().casefold()
+    if not normalized:
+        return False
+    if re.search(r"[a-z0-9]", normalized):
+        pattern = rf"(?<![a-z0-9+#.]){re.escape(normalized)}(?![a-z0-9+#.])"
+        return re.search(pattern, blob, re.IGNORECASE) is not None
+    return normalized in blob
 
 
 def _extract_years(parsed: dict | None) -> float | None:
@@ -201,6 +239,8 @@ def assert_rule_payload_allowed(
         for part in sensitive_parts
     ):
         raise ValueError("sensitive_rule_rejected")
+    if any(_PROHIBITED_PROXY_RULE_PATTERN.search(part) for part in sensitive_parts):
+        raise ValueError("prohibited_education_proxy_rule")
 
     if rule_type == "hard_constraint":
         if field not in HARD_FIELDS:
@@ -376,7 +416,7 @@ def _compare(operator: str, left: Any, right_tokens: list[str], blob: str) -> bo
         if not right_tokens:
             return None
         if left is None:
-            return True if any(token in blob for token in right_tokens) else None
+            return True if any(_term_in_blob(blob, token) for token in right_tokens) else None
         if isinstance(left, (dict, list, tuple, set)):
             structured = json.dumps(left, ensure_ascii=False).casefold()
             return any(token in structured for token in right_tokens)
@@ -390,12 +430,12 @@ def _compare(operator: str, left: Any, right_tokens: list[str], blob: str) -> bo
     if operator == "contains":
         if not right_tokens:
             return None
-        return any(token in blob for token in right_tokens)
+        return any(_term_in_blob(blob, token) for token in right_tokens)
     if operator == "in":
         if not right_tokens:
             return None
         if left is None:
-            return any(token in blob for token in right_tokens) or None
+            return any(_term_in_blob(blob, token) for token in right_tokens) or None
         if isinstance(left, (dict, list, tuple, set)):
             structured = json.dumps(left, ensure_ascii=False).casefold()
             return any(token in structured for token in right_tokens)
@@ -512,7 +552,7 @@ def evaluate_keyword_and_taxonomy(
                 expanded |= expand_taxonomy_terms(token)
             else:
                 expanded.add(token)
-        matched_terms = sorted(term for term in expanded if term and term in blob)
+        matched_terms = sorted(term for term in expanded if _term_in_blob(blob, term))
         hits.append(
             {
                 "rule_id": str(rule.id),

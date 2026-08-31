@@ -80,7 +80,6 @@ export const jobToForm = (job = {}) => ({
   soft_skills: joinNames(job.soft_skills),
   leadership_signals: joinNames(job.leadership_signals),
   communication_signals: joinNames(job.communication_signals),
-  school_tier_keywords: joinNames(job.school_tier_keywords),
   other_notes: /^parsed_by=/i.test(job.other_notes || '') ? '' : (job.other_notes || ''),
 });
 
@@ -88,6 +87,7 @@ export const formToJob = (values, existing = {}) => {
   const existingJob = { ...existing };
   delete existingJob.job_id;
   delete existingJob.publication_status;
+  delete existingJob.school_tier_keywords;
   return {
     ...existingJob,
     ...values,
@@ -100,6 +100,5 @@ export const formToJob = (values, existing = {}) => {
     soft_skills: splitComma(values.soft_skills),
     leadership_signals: splitComma(values.leadership_signals),
     communication_signals: splitComma(values.communication_signals),
-    school_tier_keywords: splitComma(values.school_tier_keywords),
   };
 };

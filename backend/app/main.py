@@ -506,6 +506,7 @@ class EvidenceFollowupRegenerateRequest(BaseModel):
     index: int
     answers: list[EvidenceFollowupAnswer]
     rewrite_mode: str = "standard"
+    style_template: str = "evidence_forward"
 
 
 class EvidenceFollowupAnalyzeRequest(BaseModel):
@@ -1072,7 +1073,7 @@ async def evidence_followup_regenerate(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """用户回答追问后，生成带数字的 example_after 证据句。"""
+    """用户回答追问后，生成仅由已确认信息支持的 example_after 证据句。"""
     resume = await db.get(Resume, resume_id)
     if not resume:
         raise HTTPException(status_code=404, detail="简历不存在")
@@ -1116,6 +1117,7 @@ async def evidence_followup_regenerate(
             context,
             [a.model_dump() for a in body.answers],
             rewrite_mode=body.rewrite_mode,
+            style_template=body.style_template,
         )
     except Exception:
         await db.rollback()
@@ -1134,7 +1136,7 @@ async def evidence_followup_regenerate(
             user_id=str(current_user.id),
             organization_id=None,
             feature="evidence_regenerate",
-            prompt_version="evidence-regenerate-v1",
+            prompt_version="evidence-regenerate-v2",
             provider_status=metering.get("provider_status") or "unknown",
             usage=metering.get("provider_usage"),
         )

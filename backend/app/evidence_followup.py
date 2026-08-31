@@ -1,5 +1,5 @@
 """
-AI 证据追问：缺量化时生成 2~3 个追问，再根据用户回答生成带数字的 example_after。
+AI 证据追问：信息不足时生成 2~3 个追问，再仅根据用户确认的信息生成 example_after。
 """
 
 from __future__ import annotations
@@ -21,6 +21,12 @@ from .faithful_expansion import (
 )
 from .provider_costs import extract_provider_usage
 from .llm_client import default_model_name, model_api_key, sync_chat_completion
+from .resume_writing_style import (
+    compose_evidence_forward,
+    normalize_style,
+    serialize_style,
+    style_prompt_contract,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -343,17 +349,21 @@ def analyze_followup_answers(context: dict, answers: List[dict]) -> dict:
     return analyze_answers(context, answers)
 
 
-def _strict_compose_evidence(context: dict, answers: List[dict]) -> str:
+def _strict_compose_evidence(
+    context: dict,
+    answers: List[dict],
+    style_template: str = "evidence_forward",
+) -> str:
     """
     严格忠实模式：仅整合「原文 + 用户回答」，不添加任何新职责/技术/成果。
     不做润色扩写，不注入模板数字。
     """
-    original = (context.get("description") or "").strip()
-    parts: List[str] = []
-    if original and original != "（暂无描述）":
-        parts.append(original)
-    parts.extend(_meaningful_answers(answers))
-    return "；".join(parts).strip() or original or "（暂无描述）"
+    _ = normalize_style(style_template)
+    return compose_evidence_forward(
+        context,
+        answers,
+        is_empty_answer=is_empty_answer,
+    )
 
 
 def _source_corpus(context: dict, answers: List[dict]) -> str:
@@ -513,9 +523,13 @@ def _fidelity_violated(source: str, generated: str) -> bool:
     return bool(assess_fidelity(source, generated)["violated"])
 
 
-def _fallback_regenerate(context: dict, answers: List[dict]) -> str:
+def _fallback_regenerate(
+    context: dict,
+    answers: List[dict],
+    style_template: str = "evidence_forward",
+) -> str:
     """规则兜底：严格拼接，不注入虚构指标。"""
-    return _strict_compose_evidence(context, answers)
+    return _strict_compose_evidence(context, answers, style_template)
 
 
 REWRITE_MODES = ("conservative", "standard", "assertive")
@@ -571,6 +585,7 @@ def _compose_by_mode(
     example_before: str,
     answer_block: str,
     source_corpus: str,
+    style_template: str,
 ) -> tuple[str, dict]:
     metering = {
         "model_called": False,
@@ -579,31 +594,33 @@ def _compose_by_mode(
         "model_output_used": False,
     }
     if mode == "conservative":
-        return _strict_compose_evidence(context, answers), metering
+        return _strict_compose_evidence(context, answers, style_template), metering
 
     if not os.getenv("DEEPSEEK_API_KEY") or not answer_block.strip():
-        return _strict_compose_evidence(context, answers), metering
+        return _strict_compose_evidence(context, answers, style_template), metering
 
     if mode == "standard":
-        system = "你只整合用户已有信息，可职业化表达、重组语序、去口语化，绝不新增事实。输出中文。"
+        system = "你只编辑用户已有信息，使其具体、主动、事实化、便于招聘方快速扫描；绝不新增事实。输出中文。"
         constraints = """【标准版约束】
 1. 禁止添加用户未提及的职责、技术、项目、成果
 2. 禁止编造数字；数字只能来自原文或用户补充
-3. 允许：调整语序、合并重复、去掉口语词、突出动作和结果
+3. 允许：调整语序、合并重复、去掉口语词、突出已有动作和已有结果
 4. 不允许：扩写、推断、补全新事实"""
         temperature = 0.2
     else:
-        system = "你只整合用户已有信息，可更突出影响力和岗位匹配，但绝不编造。输出中文。"
+        system = "你只编辑用户已有信息，可更清晰地呈现已证实影响，但绝不编造或升级角色。输出中文。"
         constraints = """【进取版约束 — 仅在用户已明确角色/动作/结果时生效】
 1. 禁止添加用户未提及的职责、技术、项目、成果
 2. 禁止编造数字
-3. 允许：使用「推动」「支撑」等更强表达，突出个人影响
+3. 只有来源原文明确支持时，才可使用更强动作动词
 4. 若用户未明确说明角色/动作/结果，不得强化影响力"""
         temperature = 0.25
 
     prompt = f"""你是简历整理助手。将「原文」与「用户补充」整合为一条中文经历描述。
 
 {constraints}
+
+{style_prompt_contract(style_template)}
 
 公司/项目：{context.get("name")}
 角色：{context.get("role")}
@@ -616,7 +633,7 @@ def _compose_by_mode(
 """
     try:
         if not model_api_key():
-            return _strict_compose_evidence(context, answers), metering
+            return _strict_compose_evidence(context, answers, style_template), metering
         metering["model_called"] = True
         response = sync_chat_completion(
             model=_get_model(),
@@ -642,13 +659,14 @@ def _compose_by_mode(
         metering["provider_status"] = "failed"
         logger.warning("LLM evidence regenerate failed: %s", type(e).__name__)
 
-    return _strict_compose_evidence(context, answers), metering
+    return _strict_compose_evidence(context, answers, style_template), metering
 
 
 def regenerate_evidence_sentence(
     context: dict,
     answers: List[dict],
     rewrite_mode: str = "standard",
+    style_template: str = "evidence_forward",
 ) -> dict:
     """
     根据追问回答生成 example_after。
@@ -656,6 +674,7 @@ def regenerate_evidence_sentence(
     EVIDENCE_FOLLOWUP_STRICT=true 时强制 conservative（仅拼接，不调用 LLM）。
     """
     mode = _normalize_rewrite_mode(rewrite_mode)
+    style_template = normalize_style(style_template)
     if _strict_mode_enabled():
         # 严格模式：强制保守拼接，杜绝 LLM 扩写引入未经验证内容
         mode = "conservative"
@@ -682,9 +701,10 @@ def regenerate_evidence_sentence(
         example_before,
         answer_block,
         source_corpus,
+        style_template,
     )
     if not example_after:
-        example_after = _fallback_regenerate(context, answers)
+        example_after = _fallback_regenerate(context, answers, style_template)
 
     field_path = context["field_path"]
     patch = normalize_patch(patch_from_field_path(field_path, example_after))
@@ -724,5 +744,6 @@ def regenerate_evidence_sentence(
         "fidelity_result": fidelity_result,
         "semantic_analysis": semantic_analysis,
         "fidelity_note": fidelity_notes.get(mode),
+        **serialize_style(style_template),
         "_metering": metering,
     }

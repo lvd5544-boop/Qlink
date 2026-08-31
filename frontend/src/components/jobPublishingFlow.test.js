@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   buildRequirementChoices,
   confirmationPayload,
+  formToJob,
 } from './jobProfileEditorUtils.js';
 
 const postJob = fs.readFileSync(
@@ -60,4 +61,13 @@ test('employer workflow publishes once and screening starts in one action', () =
   assert.match(screening, /开始海选/);
   assert.match(screening, /批量标记已复核/);
   assert.doesNotMatch(screening, /创建批筛并配置规则|>执行批筛<|addonBefore="合规依据"/);
+});
+
+test('employer profile cannot configure school-prestige keywords', () => {
+  assert.doesNotMatch(profileEditor, /school_tier_keywords|学校层级关键词/);
+  const payload = formToJob(
+    { title: 'Backend Engineer', required_skills: 'Python' },
+    { school_tier_keywords: ['985'], publication_status: 'draft' },
+  );
+  assert.equal(Object.hasOwn(payload, 'school_tier_keywords'), false);
 });

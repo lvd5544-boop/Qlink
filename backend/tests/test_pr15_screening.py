@@ -12,9 +12,11 @@ from app.models_db import (
     JobApplication,
     JobRequirement,
     ScreeningResult,
+    ScreeningRule,
     ScreeningRun,
 )
 from app.application_state import _content_hash
+from app.screening import evaluate_keyword_and_taxonomy
 
 pytestmark = pytest.mark.asyncio
 
@@ -280,6 +282,57 @@ async def test_illegal_hard_rule_and_sensitive_supplement(
         headers=_headers(auth_header, employer_a, "bad-sensitive-en"),
     )
     assert sensitive_english.status_code == 422
+
+    for index, proxy_term in enumerate(("GPA 3.5", "985/211", "school prestige")):
+        proxy = await client.post(
+            f"/employer/screening-runs/{run_id}/rules",
+            json={
+                "rules": [
+                    {
+                        "rule_type": "keyword",
+                        "field": "keyword",
+                        "operator": "contains",
+                        "value": {"text": proxy_term},
+                    }
+                ]
+            },
+            headers=_headers(auth_header, employer_a, f"bad-proxy-{index}"),
+        )
+        assert proxy.status_code == 422
+
+
+async def test_keyword_matching_uses_values_and_technical_term_boundaries():
+    java_rule = ScreeningRule(
+        id=str(uuid.uuid4()),
+        run_id=str(uuid.uuid4()),
+        rule_type="keyword",
+        field="skill_keyword",
+        operator="contains",
+        value={"text": "Java"},
+        enabled=True,
+    )
+    schema_key_rule = ScreeningRule(
+        id=str(uuid.uuid4()),
+        run_id=java_rule.run_id,
+        rule_type="keyword",
+        field="keyword",
+        operator="contains",
+        value={"text": "skills"},
+        enabled=True,
+    )
+
+    javascript_only = evaluate_keyword_and_taxonomy(
+        rules=[java_rule, schema_key_rule],
+        resume_parsed={"skills": [{"name": "JavaScript"}]},
+    )
+    assert javascript_only[0]["matched"] is False
+    assert javascript_only[1]["matched"] is False
+
+    exact_java = evaluate_keyword_and_taxonomy(
+        rules=[java_rule],
+        resume_parsed={"skills": [{"name": "Java"}]},
+    )
+    assert exact_java[0]["matched"] is True
 
 
 async def test_unknown_is_not_fail_and_llm_cannot_mutate_status(

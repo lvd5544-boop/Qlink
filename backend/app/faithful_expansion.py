@@ -183,7 +183,7 @@ def analyze_answers(context: dict, answers: List[dict]) -> dict:
     if original and meaningful:
         interpretation_summary = (
             f"将保留原文「{original[:40]}{'…' if len(original) > 40 else ''}」，"
-            f"并追加您补充的 {len(meaningful)} 条信息，不添加您未提及的职责或技术。"
+            f"并整合您补充的 {len(meaningful)} 条信息；可能调整顺序，但不添加您未提及的职责或技术。"
         )
     elif meaningful:
         interpretation_summary = f"将仅使用您补充的 {len(meaningful)} 条信息组成描述。"

@@ -66,6 +66,10 @@ def _http_from_domain(exc: ValueError) -> HTTPException:
         return HTTPException(status_code=404, detail="资源不存在或无权访问")
     mapping = {
         "sensitive_rule_rejected": (422, "规则包含敏感或歧视性条件"),
+        "prohibited_education_proxy_rule": (
+            422,
+            "GPA 或院校声望不得作为关键词筛选代理",
+        ),
         "illegal_hard_field": (422, "硬条件 field 不在白名单"),
         "illegal_hard_operator": (422, "硬条件 operator 不在白名单"),
         "hard_rule_requires_employer_confirmed": (422, "硬条件必须 employer_confirmed"),
